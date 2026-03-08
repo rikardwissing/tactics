@@ -10,7 +10,10 @@ type CastSprite = {
 export class TitleScene extends Phaser.Scene {
   private backdropImage!: Phaser.GameObjects.Image;
   private backdropShade!: Phaser.GameObjects.Rectangle;
+  private vignette!: Phaser.GameObjects.Rectangle;
+  private topBanner!: Phaser.GameObjects.Rectangle;
   private frame!: Phaser.GameObjects.Rectangle;
+  private frameInner!: Phaser.GameObjects.Rectangle;
   private titleText!: Phaser.GameObjects.Text;
   private subtitleText!: Phaser.GameObjects.Text;
   private descriptionText!: Phaser.GameObjects.Text;
@@ -33,6 +36,8 @@ export class TitleScene extends Phaser.Scene {
 
     this.backdropImage = this.add.image(0, 0, 'title-backdrop').setAlpha(0.94);
     this.backdropShade = this.add.rectangle(0, 0, 0, 0, 0x081018, 0.48);
+    this.vignette = this.add.rectangle(0, 0, 0, 0, 0x08040b, 0.24).setDepth(1);
+    this.topBanner = this.add.rectangle(0, 0, 0, 0, 0x2a1018, 0.34).setDepth(2);
 
     this.add
       .particles(0, 0, 'spark', {
@@ -54,17 +59,17 @@ export class TitleScene extends Phaser.Scene {
       fontSize: '56px',
       color: '#fff3dc',
       fontStyle: 'bold',
-      letterSpacing: 12,
-      stroke: '#18070f',
+      letterSpacing: 10,
+      stroke: '#17060c',
       strokeThickness: 8
     })
       .setOrigin(0.5)
       .setDepth(3);
 
-    this.subtitleText = this.add.text(0, 0, 'A pixel-art tactics skirmish inspired by the classics', {
+    this.subtitleText = this.add.text(0, 0, 'War-torn heirs, ember rites, and highland steel', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '22px',
-      color: '#cde7e3',
+      color: '#e3cf9f',
       letterSpacing: 2
     })
       .setOrigin(0.5)
@@ -72,6 +77,9 @@ export class TitleScene extends Phaser.Scene {
 
     this.frame = this.add.rectangle(0, 0, 0, 0, 0x10131b, 0.3)
       .setStrokeStyle(2, 0xe1c27f, 0.58)
+      .setDepth(2);
+    this.frameInner = this.add.rectangle(0, 0, 0, 0, 0x2a1118, 0.38)
+      .setStrokeStyle(1, 0xf0dda8, 0.35)
       .setDepth(2);
 
     const cast = [
@@ -105,16 +113,16 @@ export class TitleScene extends Phaser.Scene {
     }
 
     const description = [
-      'The chapel ridge has fallen to gravebound raiders.',
-      'Use speed, elevation, and turn timing to break their line.'
+      'At the bells of vespers, the chapel ridge fell to gravebound raiders.',
+      'Gather your sworn companies and reclaim the pass before dawn.'
     ].join('\n');
 
     this.descriptionText = this.add.text(0, 0, description, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '24px',
+      fontSize: '23px',
       color: '#f4e8c8',
       align: 'center',
-      lineSpacing: 12
+      lineSpacing: 10
     })
       .setOrigin(0.5)
       .setDepth(4);
@@ -125,11 +133,11 @@ export class TitleScene extends Phaser.Scene {
       this.scene.start('battle');
     };
 
-    this.createButton('Begin Skirmish', startBattle);
+    this.createButton('Begin Campaign', startBattle);
 
     this.controlsText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '20px',
+      fontSize: '19px',
       color: '#d7c8a8',
       align: 'center',
       lineSpacing: 8
@@ -162,12 +170,12 @@ export class TitleScene extends Phaser.Scene {
 
   private createButton(label: string, onClick: () => void): void {
     this.startButtonBacking = this.add
-      .rectangle(0, 0, 270, 62, 0x1f4c4e, 0.94)
-      .setStrokeStyle(2, 0xf1d79a, 0.92);
-    this.startButtonShine = this.add.rectangle(0, -12, 248, 18, 0xf4dba1, 0.16);
+      .rectangle(0, 0, 300, 72, 0x58202a, 0.96)
+      .setStrokeStyle(3, 0xf1d79a, 0.92);
+    this.startButtonShine = this.add.rectangle(0, -14, 276, 20, 0xffe6b0, 0.2);
     this.startButtonText = this.add.text(0, 0, label, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '28px',
+      fontSize: '30px',
       color: '#fff6e1',
       fontStyle: 'bold',
       letterSpacing: 1
@@ -181,17 +189,17 @@ export class TitleScene extends Phaser.Scene {
     ]).setDepth(4);
 
     this.startButtonHitArea = this.add
-      .zone(0, 0, 270, 62)
+      .zone(0, 0, 300, 72)
       .setInteractive({ useHandCursor: true })
       .setDepth(5);
 
     this.startButtonHitArea.on('pointerover', () => {
-      this.startButtonBacking.setFillStyle(0x276164, 0.98);
+      this.startButtonBacking.setFillStyle(0x6b2d37, 0.98);
       this.startButton.setScale(this.startButtonBaseScale * 1.035);
     });
 
     this.startButtonHitArea.on('pointerout', () => {
-      this.startButtonBacking.setFillStyle(0x1f4c4e, 0.94);
+      this.startButtonBacking.setFillStyle(0x58202a, 0.96);
       this.startButton.setScale(this.startButtonBaseScale);
     });
 
@@ -202,16 +210,17 @@ export class TitleScene extends Phaser.Scene {
     const width = gameSize.width;
     const height = gameSize.height;
     const isPortrait = height > width;
+    const tiny = width < 460 || height < 760;
     const compact = width < 920 || height < 620;
-    const frameWidth = Math.min(width - 32, isPortrait ? width - 28 : width - 140);
-    const frameHeight = Math.min(height - 180, isPortrait ? height * 0.64 : height - 220);
-    const frameCenterY = isPortrait ? height * 0.55 : height * 0.56;
-    const titleY = Math.max(72, height * 0.16);
-    const subtitleY = titleY + (compact ? 42 : 58);
-    const descriptionY = frameCenterY - frameHeight * 0.3;
-    const buttonY = frameCenterY + frameHeight * 0.1;
-    const controlsY = frameCenterY + frameHeight * 0.28;
-    const buttonScale = compact ? 0.92 : 1;
+    const frameWidth = Math.min(width - (isPortrait ? 24 : 72), isPortrait ? width - 24 : width - 140);
+    const frameHeight = Math.min(height - (isPortrait ? 210 : 200), isPortrait ? height * 0.58 : height - 220);
+    const frameCenterY = isPortrait ? height * 0.56 : height * 0.57;
+    const titleY = Math.max(56, height * (isPortrait ? 0.11 : 0.14));
+    const subtitleY = titleY + (compact ? 34 : 48);
+    const descriptionY = frameCenterY - frameHeight * 0.26;
+    const buttonY = frameCenterY + frameHeight * (isPortrait ? 0.16 : 0.12);
+    const controlsY = frameCenterY + frameHeight * (isPortrait ? 0.35 : 0.3);
+    const buttonScale = isPortrait ? (tiny ? 0.9 : 0.95) : compact ? 0.95 : 1;
 
     this.backdropImage
       .setPosition(width / 2, height / 2)
@@ -219,56 +228,65 @@ export class TitleScene extends Phaser.Scene {
     this.backdropShade
       .setPosition(width / 2, height / 2)
       .setSize(width * 1.18, height * 1.18);
+    this.vignette
+      .setPosition(width / 2, height / 2)
+      .setSize(width * 1.18, height * 1.18);
+    this.topBanner
+      .setPosition(width / 2, titleY + 20)
+      .setSize(Math.min(width - 12, 960), isPortrait ? 88 : 102);
     this.frame
       .setPosition(width / 2, frameCenterY)
       .setSize(frameWidth, frameHeight);
+    this.frameInner
+      .setPosition(width / 2, frameCenterY)
+      .setSize(frameWidth - 18, frameHeight - 18);
 
     this.titleText
       .setPosition(width / 2, titleY)
-      .setFontSize(isPortrait ? 34 : compact ? 42 : 56)
-      .setLetterSpacing(isPortrait ? 7 : 12)
+      .setFontSize(isPortrait ? (tiny ? 28 : 32) : compact ? 40 : 56)
+      .setLetterSpacing(isPortrait ? (tiny ? 4 : 6) : 10)
       .setStroke('#2f1119', isPortrait ? 6 : 8);
     this.subtitleText
       .setPosition(width / 2, subtitleY)
-      .setFontSize(isPortrait ? 16 : compact ? 18 : 22)
+      .setFontSize(isPortrait ? (tiny ? 14 : 15) : compact ? 17 : 21)
       .setWordWrapWidth(Math.max(240, width - 80), true);
     this.descriptionText
       .setPosition(width / 2, descriptionY)
-      .setFontSize(isPortrait ? 18 : compact ? 21 : 24)
-      .setWordWrapWidth(frameWidth - (isPortrait ? 56 : 120), true);
+      .setFontSize(isPortrait ? (tiny ? 15 : 17) : compact ? 20 : 23)
+      .setWordWrapWidth(frameWidth - (isPortrait ? 36 : 120), true);
 
     const controlsText = isPortrait
-      ? 'Tap units and tiles to command them.\nDrag the field to pan.\nUse the HUD buttons in battle to zoom, rotate, and mute.'
+      ? 'Tap units and tiles to command your company.\nDrag the battlefield to pan.\nUse the battle HUD to zoom, rotate, and mute.'
       : compact
         ? 'Tap or click to command units. Drag to pan. Use the battle HUD to zoom, rotate, and mute.'
         : 'Tap or click to command units. Drag to pan. Use the battle HUD to zoom, rotate, and mute. R restarts.';
 
     this.controlsText
       .setPosition(width / 2, controlsY)
-      .setFontSize(isPortrait ? 14 : compact ? 16 : 20)
+      .setFontSize(isPortrait ? (tiny ? 12 : 13) : compact ? 15 : 19)
       .setText(controlsText)
-      .setWordWrapWidth(frameWidth - 56, true);
+      .setWordWrapWidth(frameWidth - (isPortrait ? 28 : 56), true);
 
-    const buttonWidth = isPortrait ? Math.min(286, width - 80) : compact ? 252 : 270;
-    const buttonHeight = isPortrait ? 68 : compact ? 60 : 62;
+    const buttonWidth = isPortrait ? Math.min(340, width - 42) : compact ? 286 : 300;
+    const buttonHeight = isPortrait ? (tiny ? 64 : 70) : compact ? 66 : 72;
     const shineWidth = Math.max(120, buttonWidth - 22);
 
     this.startButtonBaseScale = buttonScale;
     this.startButton.setPosition(width / 2, buttonY).setScale(buttonScale);
     this.startButtonBacking.setSize(buttonWidth, buttonHeight);
     this.startButtonShine.setSize(shineWidth, Math.max(14, buttonHeight * 0.28));
-    this.startButtonText.setFontSize(isPortrait ? 24 : compact ? 26 : 28);
+    this.startButtonText.setFontSize(isPortrait ? (tiny ? 22 : 24) : compact ? 27 : 30);
     this.startButtonHitArea
       .setPosition(width / 2, buttonY)
       .setSize(buttonWidth * buttonScale, buttonHeight * buttonScale);
 
     if (isPortrait) {
-      const portraitSlots = [0.22, 0.5, 0.78];
+      const portraitSlots = [0.18, 0.5, 0.82];
 
       for (const [index, cast] of this.castSprites.entries()) {
         cast.sprite
-          .setPosition(width * portraitSlots[index], height - 28)
-          .setScale(cast.baseScale * 0.42);
+          .setPosition(width * portraitSlots[index], height - 16)
+          .setScale(cast.baseScale * (tiny ? 0.33 : 0.4));
       }
 
       return;
