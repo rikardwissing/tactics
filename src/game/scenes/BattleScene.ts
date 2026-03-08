@@ -45,6 +45,7 @@ interface ChestView {
   openSprite: Phaser.GameObjects.Image;
   closedBaseY: number;
   openBaseY: number;
+  openBaseScale: number;
 }
 
 interface PropView {
@@ -657,7 +658,8 @@ export class BattleScene extends Phaser.Scene {
         closedSprite,
         openSprite,
         closedBaseY: closedSprite.y,
-        openBaseY: openSprite.y
+        openBaseY: openSprite.y,
+        openBaseScale: openSprite.scaleX
       });
       this.positionChest(chest);
       this.applyChestIdleAnimation(chest.id);
@@ -1910,7 +1912,7 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.killTweensOf(view.aura);
 
     view.closedSprite.setVisible(false);
-    view.openSprite.setVisible(true).setAlpha(1).setY(view.openBaseY).setScale(1.02);
+    view.openSprite.setVisible(true).setAlpha(1).setY(view.openBaseY).setScale(view.openBaseScale);
     view.aura.setAlpha(0.34).setScale(1, 1);
     view.shadow.setAlpha(0.3).setScale(1, 1);
 
@@ -1930,8 +1932,8 @@ export class BattleScene extends Phaser.Scene {
       this.tweens.add({
         targets: view.openSprite,
         y: view.openBaseY - 5,
-        scaleX: 1.06,
-        scaleY: 1.06,
+        scaleX: view.openBaseScale * 1.03,
+        scaleY: view.openBaseScale * 1.03,
         duration: 170,
         ease: 'Back.easeOut',
         onComplete: () => {
@@ -3444,7 +3446,6 @@ export class BattleScene extends Phaser.Scene {
     audioDirector.playHit(damageRoll.critical);
     targetView.sprite.setTintFill(0xffead0);
     this.getWorldCamera().shake(strikeAttacker.attackStyle === 'grave-cleave' ? 95 : 70, 0.0016);
-    this.emitImpactBurst(impactPoint.x, impactPoint.y, strikeAttacker.attackStyle);
 
     await Promise.all([
       new Promise<void>((resolve) => {
@@ -3780,31 +3781,6 @@ export class BattleScene extends Phaser.Scene {
         }
       });
     });
-  }
-
-  private emitImpactBurst(x: number, y: number, attackStyle: AttackStyle): void {
-    const tintMap: Record<AttackStyle, number[]> = {
-      'blade-arc': [0xfff3b9, 0xf0cc70, 0xffdca0],
-      'arrow-flight': [0xcdf6ff, 0x88f1f7, 0xffffff],
-      'ember-burst': [0xfff1b3, 0xf4934f, 0xd84a2f],
-      'grave-cleave': [0xe6afa5, 0xb75c5c, 0xeadac2],
-      'feather-shot': [0xe4d6ff, 0xb17ebb, 0xc7c7d7],
-      'ash-hex': [0xffd5a6, 0xee8c7d, 0x73605f]
-    };
-    const particles = this.registerWorldObject(this.add.particles(x, y, 'spark', {
-      speed: { min: 34, max: 168 },
-      lifespan: 360,
-      quantity: attackStyle === 'ash-hex' ? 20 : 14,
-      scale: { start: 1.9, end: 0 },
-      alpha: { start: 0.9, end: 0 },
-      tint: tintMap[attackStyle],
-      blendMode: attackStyle === 'grave-cleave' ? 'NORMAL' : 'ADD',
-      emitting: false
-    }));
-
-    particles.setDepth(961);
-    particles.explode(attackStyle === 'ash-hex' ? 18 : 12, x, y);
-    this.time.delayedCall(420, () => particles.destroy());
   }
 
   private emitSupportBurst(x: number, y: number, tint: number): void {
