@@ -7,6 +7,7 @@ import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } fr
 import { AttackStyle, BattleUnit, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
 import { createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
+import { TurnOrderPanel } from './components/TurnOrderPanel';
 
 type Phase =
   | 'intro'
@@ -276,12 +277,11 @@ export class BattleScene extends Phaser.Scene {
   private highlightOverlays: Phaser.GameObjects.Graphics[] = [];
   private uiGraphics!: Phaser.GameObjects.Graphics;
   private submenuUiGraphics!: Phaser.GameObjects.Graphics;
-  private turnOrderAvatars: Phaser.GameObjects.Image[] = [];
+  private turnOrderPanel!: TurnOrderPanel;
   private headerText!: Phaser.GameObjects.Text;
   private objectiveLabelText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
   private logLabelText!: Phaser.GameObjects.Text;
-  private turnOrderLabelText!: Phaser.GameObjects.Text;
   private phaseText!: Phaser.GameObjects.Text;
   private autoBattleToggleText!: Phaser.GameObjects.Text;
   private detailMetaText!: Phaser.GameObjects.Text;
@@ -841,7 +841,6 @@ export class BattleScene extends Phaser.Scene {
       this.headerText,
       this.objectiveText,
       this.logLabelText,
-      this.turnOrderLabelText,
       this.phaseText,
       this.autoBattleToggleText,
       this.detailMetaText,
@@ -856,7 +855,7 @@ export class BattleScene extends Phaser.Scene {
       this.menuBodyText,
       this.menuHintText,
       ...this.hudControls.map((control) => control.container),
-      ...this.turnOrderAvatars,
+      ...this.turnOrderPanel.getDisplayObjects(),
       ...this.actionMenuTexts,
       ...this.submenuTexts
     ];
@@ -1480,14 +1479,6 @@ export class BattleScene extends Phaser.Scene {
       letterSpacing: 2
     });
 
-    this.turnOrderLabelText = this.add.text(0, 0, 'TURN ORDER', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: '#d9c18a',
-      letterSpacing: 2
-    });
-
     this.phaseText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '16px',
@@ -1503,9 +1494,7 @@ export class BattleScene extends Phaser.Scene {
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
-    this.turnOrderAvatars = Array.from({ length: 6 }, () =>
-      this.add.image(0, 0, 'holy-knight').setVisible(false)
-    );
+    this.turnOrderPanel = new TurnOrderPanel(this, 6);
 
     this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -1607,7 +1596,6 @@ export class BattleScene extends Phaser.Scene {
       this.headerText,
       this.objectiveText,
       this.logLabelText,
-      this.turnOrderLabelText,
       this.phaseText,
       this.autoBattleToggleText,
       this.activeBadge,
@@ -1620,7 +1608,7 @@ export class BattleScene extends Phaser.Scene {
       this.menuTitleText,
       ...this.hudControls.map((control) => control.container),
       ...this.actionMenuTexts,
-      ...this.turnOrderAvatars
+      ...this.turnOrderPanel.getDisplayObjects()
     ];
 
     for (const [index, element] of uiElements.entries()) {
@@ -1795,11 +1783,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.logLabelText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
     this.logText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
-    this.turnOrderLabelText.setVisible(this.showTimelinePanel);
-    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
-      const visible = this.showTimelinePanel && index < this.visibleTurnOrderCount;
-      avatar.setVisible(visible);
-    }
+    this.turnOrderPanel.setVisible(this.showTimelinePanel);
 
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
 
@@ -1849,19 +1833,14 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.bottomLeft.x + 16, logBodyY)
       .setFontSize(this.portraitLayout ? 13 : 14)
       .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
-    this.turnOrderLabelText
-      .setPosition(this.uiPanels.bottomLeft.x + 16, orderLabelY)
-      .setFontSize(this.portraitLayout ? 10 : 11);
-
-    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
-      const visible = this.showTimelinePanel && index < this.visibleTurnOrderCount;
-      const y = turnOrderStartY + index * turnOrderGap;
-
-      avatar
-        .setPosition(this.uiPanels.bottomLeft.x + 30, y + 8)
-        .setDisplaySize(avatarSize, avatarSize)
-        .setVisible(visible);
-    }
+    this.turnOrderPanel.setLayout({
+      x: this.uiPanels.bottomLeft.x + 16,
+      labelY: orderLabelY,
+      startY: turnOrderStartY,
+      gap: turnOrderGap,
+      boxSize: avatarSize + 12,
+      titleFontSize: this.portraitLayout ? 10 : 11
+    });
 
     this.activeBadge
       .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 14)
@@ -4746,25 +4725,7 @@ export class BattleScene extends Phaser.Scene {
       .setColor(this.autoBattleEnabled ? '#fff1bc' : '#bca982');
 
     const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
-
-    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
-      if (index >= this.visibleTurnOrderCount) {
-        avatar.setVisible(false);
-        continue;
-      }
-
-      const unit = queue[index];
-
-      if (!unit) {
-        avatar.setVisible(false);
-        continue;
-      }
-
-      avatar
-        .setTexture(unit.spriteKey)
-        .clearTint()
-        .setVisible(true);
-    }
+    this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, this.showTimelinePanel);
 
     const focusUnit = this.getHoveredUnit() ?? this.getActiveUnit();
     const hoveredChest = this.hoverTile ? this.getChestAt(this.hoverTile.x, this.hoverTile.y) : null;
@@ -4902,7 +4863,6 @@ export class BattleScene extends Phaser.Scene {
 
     const activeUnit = this.getActiveUnit();
     const focusUnit = this.getHoveredUnit() ?? activeUnit;
-    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
     const autoTagBounds = this.autoBattleToggleText.getBounds();
     Phaser.Geom.Rectangle.Inflate(autoTagBounds, 14, 6);
 
@@ -4910,44 +4870,6 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics.fillRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
     this.uiGraphics.lineStyle(1, this.autoBattleEnabled ? 0xf3d690 : 0x8f7250, 0.56);
     this.uiGraphics.strokeRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
-
-    if (this.showTimelinePanel) {
-      const bottomDividerY = this.turnOrderLabelText.y - 10;
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.16);
-      this.uiGraphics.lineBetween(
-        this.uiPanels.bottomLeft.x + 16,
-        bottomDividerY,
-        this.uiPanels.bottomLeft.right - 16,
-        bottomDividerY
-      );
-    }
-
-    if (this.showTimelinePanel) {
-      for (const [index, unit] of queue.entries()) {
-        const avatar = this.turnOrderAvatars[index];
-
-        if (!unit || !avatar.visible) {
-          continue;
-        }
-
-        const rowBounds = new Phaser.Geom.Rectangle(
-          this.uiPanels.bottomLeft.x + 12,
-          avatar.y - 14,
-          this.uiPanels.bottomLeft.width - 24,
-          28
-        );
-        const activeRow = activeUnit?.id === unit.id;
-        const fill = activeRow ? 0x7a5233 : unit.team === 'player' ? 0x17383c : 0x3c1824;
-        const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7bd4d1 : 0xe28b9f;
-
-        this.uiGraphics.fillStyle(fill, activeRow ? 0.92 : 0.68);
-        this.uiGraphics.fillRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
-        this.uiGraphics.lineStyle(1, activeRow ? 0xf1d089 : dot, activeRow ? 0.46 : 0.22);
-        this.uiGraphics.strokeRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
-        this.uiGraphics.fillStyle(dot, 0.95);
-        this.uiGraphics.fillCircle(rowBounds.x + 18, rowBounds.centerY, activeRow ? 6 : 5);
-      }
-    }
 
     if (this.actionMenuAlpha > 0.01) {
       this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 44, 18, 0x6d5430);
