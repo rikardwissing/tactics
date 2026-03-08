@@ -24,6 +24,8 @@
 - Avoid oversized transparent padding around sprites; keep bounds tight so placement feels grounded.
 - Avoid text, UI, extra characters, complex backgrounds, or cinematic compositions in runtime assets.
 - New generated art should match the existing assets in [`src/assets/game`](src/assets/game) more than it matches a prompt in isolation.
+- When generating runtime art, specify the intended in-game render size in the prompt whenever it is known, for example `rendered around 58px wide on a 96x48 tile`.
+- If an asset will be shown small in-game, prompt for larger readable shapes and reduced micro-detail so it survives downscaling cleanly.
 
 ## Variant Generation Rules
 - When generating a variant of an existing character, item, prop, or terrain tile, preserve the core identity from the approved base asset.
@@ -34,6 +36,7 @@
 - For item variants, keep the base outline and key motif consistent so upgraded or charged versions still read as the same item family.
 - Use the approved runtime asset as the visual reference whenever possible. Do not regenerate variants from memory if a base asset already exists.
 - Name and organize variants clearly so the base asset remains obvious and the lineage is easy to track.
+- Keep the target render size consistent across the variant family so one state does not become over-detailed or over-thin relative to another.
 
 ## Audio Tone
 - Music should feel grand, slow, and martial rather than frantic or playful.
@@ -53,6 +56,7 @@
 - [`src/game/audio`](src/game/audio): procedural music and SFX
 - [`src/game/assets.ts`](src/game/assets.ts): runtime asset manifest
 - [`src/assets/game`](src/assets/game): committed game art used at runtime
+- [`prompts/imagegen`](prompts/imagegen): tracked JSONL generation specs for approved runtime art
 - `tmp/` and `output/`: disposable/generated scratch data, ignored by git
 
 ## Level Authoring
@@ -67,6 +71,14 @@
 - Generated source material, experiments, and discarded variants should stay out of `src/assets/game`.
 - When adding a runtime asset, update [`src/game/assets.ts`](src/game/assets.ts).
 - `output/` is for temporary generation artifacts only.
+- `tmp/imagegen/` is for working drafts only. If a generated asset is approved for the game, keep its final JSONL spec under [`prompts/imagegen`](prompts/imagegen).
+- Keep those stored JSONL files CLI-compatible so the asset can be regenerated later with the same structured instructions.
+- Use one JSONL file per approved asset family when practical, for example a closed/open chest pair in one file.
+- Do not promote generated art into [`src/assets/game`](src/assets/game) until the user has explicitly approved it.
+- After generation, show the candidate and ask for a direct `Approve` / `Not approve` decision before replacing runtime art.
+- If the asset is not approved, keep iterating in `tmp/` and `output/` and do not archive its JSONL in [`prompts/imagegen`](prompts/imagegen).
+- For multi-state asset families, generate and approve the anchor state first, then use that approved state as the reference for the remaining states.
+- For state variants like closed/open, idle/attack, or normal/damaged, prefer reference-preserving edits or tightly referenced follow-up generations over unrelated fresh generations.
 - If generated art misses the established style, revise the prompt or regenerate before promoting it into runtime assets.
 
 ## Working Rules

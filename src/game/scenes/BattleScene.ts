@@ -85,6 +85,12 @@ type PanKeys = {
 };
 
 const ROTATION_STEP_DEGREES = 90;
+const DEFAULT_BOARD_ZOOM = 1;
+const MIN_BOARD_ZOOM = 0.72;
+const MAX_BOARD_ZOOM = 1.8;
+const BOARD_ZOOM_SENSITIVITY = 0.00055;
+const CHEST_DISPLAY_WIDTH = 47;
+const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
 
 const UI_PANELS = {
   topLeft: new Phaser.Geom.Rectangle(20, 18, 336, 132),
@@ -440,6 +446,21 @@ export class BattleScene extends Phaser.Scene {
     this.input.on('pointerup', () => {
       this.isPanning = false;
     });
+    this.input.on(
+      'wheel',
+      (
+        pointer: Phaser.Input.Pointer,
+        _gameObjects: Phaser.GameObjects.GameObject[],
+        _deltaX: number,
+        deltaY: number
+      ) => {
+        if (this.phase === 'complete' || this.isPointerOverUi(pointer.x, pointer.y)) {
+          return;
+        }
+
+        this.zoomBoard(deltaY, pointer.x, pointer.y);
+      }
+    );
 
     this.input.keyboard?.removeAllListeners();
     this.cursorKeys = this.input.keyboard?.createCursorKeys();
@@ -531,6 +552,7 @@ export class BattleScene extends Phaser.Scene {
   private setupCameras(): void {
     this.worldCamera = this.cameras.main;
     this.worldCamera.setRotation(0);
+    this.worldCamera.setZoom(DEFAULT_BOARD_ZOOM);
 
     this.uiCamera?.destroy();
     this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
@@ -618,14 +640,14 @@ export class BattleScene extends Phaser.Scene {
 
   private createChests(): void {
     for (const chest of this.chests) {
-      const shadow = this.add.ellipse(0, 4, 28, 12, 0x060205, 0.34);
-      const aura = this.add.ellipse(0, -10, 34, 18, 0xf3c86a, 0.14);
-      const closedSprite = this.add.image(0, 6, 'chapel-chest-closed').setOrigin(0.5, 1);
-      closedSprite.displayHeight = 44;
-      closedSprite.scaleX = closedSprite.scaleY;
-      const openSprite = this.add.image(0, 8, 'chapel-chest-open').setOrigin(0.5, 1).setVisible(false);
-      openSprite.displayHeight = 48;
-      openSprite.scaleX = openSprite.scaleY;
+      const shadow = this.add.ellipse(0, -4, 36, 14, 0x060205, 0.28);
+      const aura = this.add.ellipse(0, -10, 42, 20, 0xf3c86a, 0.12);
+      const closedSprite = this.add.image(0, 0, 'chapel-chest-closed').setOrigin(0.5, 1);
+      closedSprite.displayWidth = CHEST_DISPLAY_WIDTH;
+      closedSprite.scaleY = closedSprite.scaleX;
+      const openSprite = this.add.image(0, 2, 'chapel-chest-open').setOrigin(0.5, 1).setVisible(false);
+      openSprite.displayWidth = CHEST_DISPLAY_WIDTH;
+      openSprite.scaleY = openSprite.scaleX;
       const container = this.add.container(0, 0, [shadow, aura, closedSprite, openSprite]).setDepth(180);
 
       this.chestViews.set(chest.id, {
@@ -1379,7 +1401,8 @@ export class BattleScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: view.closedSprite,
-      y: view.closedBaseY - 3,
+      y: view.closedBaseY - 5,
+      angle: -1.2,
       duration: 1450,
       ease: 'Sine.easeInOut',
       yoyo: true,
@@ -1389,9 +1412,9 @@ export class BattleScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: view.shadow,
-      scaleX: 0.9,
-      scaleY: 0.82,
-      alpha: 0.24,
+      alpha: 0.18,
+      scaleX: 0.82,
+      scaleY: 0.78,
       duration: 1450,
       ease: 'Sine.easeInOut',
       yoyo: true,
@@ -1402,9 +1425,9 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({
       targets: view.aura,
       alpha: 0.24,
-      scaleX: 1.12,
-      scaleY: 1.18,
-      duration: 1280,
+      scaleX: 1.16,
+      scaleY: 1.2,
+      duration: 1100,
       ease: 'Sine.easeInOut',
       yoyo: true,
       repeat: -1,
@@ -1808,7 +1831,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     const point = this.isoToScreen(tile);
-    view.container.setPosition(point.x, point.y);
+    view.container.setPosition(point.x, point.y + CHEST_GROUND_OFFSET_Y);
     view.container.setDepth(this.getChestDepth(tile));
     view.container.setVisible(true);
   }
@@ -1887,11 +1910,11 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.killTweensOf(view.aura);
 
     view.closedSprite.setVisible(false);
-    view.openSprite.setVisible(true).setAlpha(1).setY(view.openBaseY).setScale(view.closedSprite.scaleX * 1.02);
+    view.openSprite.setVisible(true).setAlpha(1).setY(view.openBaseY).setScale(1.02);
     view.aura.setAlpha(0.34).setScale(1, 1);
     view.shadow.setAlpha(0.3).setScale(1, 1);
 
-    const burst = this.registerWorldObject(this.add.particles(view.container.x, view.container.y - 26, 'spark', {
+    const burst = this.registerWorldObject(this.add.particles(view.container.x, view.container.y - 22, 'spark', {
       speed: { min: 28, max: 96 },
       angle: { min: 220, max: 320 },
       lifespan: 420,
@@ -1901,21 +1924,21 @@ export class BattleScene extends Phaser.Scene {
       tint: [0xf7d27d, 0xfff0b5, 0xc99c66],
       gravityY: 80
     }));
-    burst.explode(18, view.container.x, view.container.y - 26);
+    burst.explode(18, view.container.x, view.container.y - 22);
 
     await new Promise<void>((resolve) => {
       this.tweens.add({
         targets: view.openSprite,
-        y: view.openBaseY - 7,
-        scaleX: view.openSprite.scaleX * 1.04,
-        scaleY: view.openSprite.scaleY * 1.04,
+        y: view.openBaseY - 5,
+        scaleX: 1.06,
+        scaleY: 1.06,
         duration: 170,
         ease: 'Back.easeOut',
         onComplete: () => {
           this.tweens.add({
             targets: [view.container, view.shadow, view.aura],
             alpha: 0,
-            y: '-=12',
+            y: '-=8',
             duration: 260,
             ease: 'Quad.easeIn',
             onComplete: () => {
@@ -2235,13 +2258,52 @@ export class BattleScene extends Phaser.Scene {
 
   private setBoardScroll(scrollX: number, scrollY: number): void {
     const camera = this.getWorldCamera();
-    const maxScrollX = Math.max(this.cameraBounds.x, this.cameraBounds.right - camera.width);
-    const maxScrollY = Math.max(this.cameraBounds.y, this.cameraBounds.bottom - camera.height);
+    const visibleWidth = camera.width / camera.zoom;
+    const visibleHeight = camera.height / camera.zoom;
+    const maxScrollX = this.cameraBounds.right - visibleWidth;
+    const maxScrollY = this.cameraBounds.bottom - visibleHeight;
+    const resolvedScrollX =
+      maxScrollX <= this.cameraBounds.x
+        ? this.cameraBounds.centerX - visibleWidth / 2
+        : Phaser.Math.Clamp(scrollX, this.cameraBounds.x, maxScrollX);
+    const resolvedScrollY =
+      maxScrollY <= this.cameraBounds.y
+        ? this.cameraBounds.centerY - visibleHeight / 2
+        : Phaser.Math.Clamp(scrollY, this.cameraBounds.y, maxScrollY);
 
-    camera.setScroll(
-      Phaser.Math.Clamp(scrollX, this.cameraBounds.x, maxScrollX),
-      Phaser.Math.Clamp(scrollY, this.cameraBounds.y, maxScrollY)
+    camera.setScroll(resolvedScrollX, resolvedScrollY);
+  }
+
+  private zoomBoard(deltaY: number, screenX: number, screenY: number): void {
+    if (deltaY === 0) {
+      return;
+    }
+
+    const camera = this.getWorldCamera();
+    const zoomFactor = Math.exp(-deltaY * BOARD_ZOOM_SENSITIVITY);
+    const nextZoom = Phaser.Math.Clamp(
+      camera.zoom * zoomFactor,
+      MIN_BOARD_ZOOM,
+      MAX_BOARD_ZOOM
     );
+
+    if (Math.abs(nextZoom - camera.zoom) < 0.001) {
+      return;
+    }
+
+    const worldPointBefore = camera.getWorldPoint(screenX, screenY);
+    camera.setZoom(nextZoom);
+    const worldPointAfter = camera.getWorldPoint(screenX, screenY);
+
+    this.setBoardScroll(
+      camera.scrollX + (worldPointBefore.x - worldPointAfter.x),
+      camera.scrollY + (worldPointBefore.y - worldPointAfter.y)
+    );
+
+    const anchoredWorldPoint = camera.getWorldPoint(screenX, screenY);
+    this.hoverTile = this.pickTile(anchoredWorldPoint.x, anchoredWorldPoint.y);
+    this.drawHighlights();
+    this.refreshUi();
   }
 
   private isPointerOverUi(x: number, y: number): boolean {
@@ -3884,7 +3946,7 @@ export class BattleScene extends Phaser.Scene {
         [
           'Player turns begin with movement.',
           'Higher tiles boost damage and reduce return fire.',
-          'Right-drag or use WASD/arrow keys to pan. Q/E rotate the field. T cycles scene lighting.'
+          'Right-drag or use WASD/arrow keys to pan. Scroll zooms. Q/E rotate the field. T cycles scene lighting.'
         ].join('\n')
       );
     }

@@ -38,12 +38,27 @@ This file lists the common project workflows for contributors and agents working
 - Keep prompts, masks, and scratch files under `tmp/`.
 - Keep generated outputs under `output/` until the selected final asset is approved.
 - Move only the approved final files into [`src/assets/game`](src/assets/game).
+- Once an asset is approved and used in the game, keep the final JSONL prompt spec in [`prompts/imagegen`](prompts/imagegen).
+- The stored JSONL should be the final approved generation recipe, not every failed iteration.
+- Keep it runnable with the imagegen CLI when possible.
+- Add an approval gate before promotion:
+- generate candidate art under `output/`
+- show the candidate to the user
+- ask for a direct `Approve` / `Not approve`
+- only after approval move the asset into [`src/assets/game`](src/assets/game) and archive the JSONL in [`prompts/imagegen`](prompts/imagegen)
+- For multi-state asset families:
+- generate the anchor state first
+- get that state approved
+- use the approved state as the reference for the next states
+- review the derived states before promotion
 - Prompt for the project style explicitly:
 - moody fantasy tactics
 - painterly pixel-art-inspired rendering
 - grounded isometric readability
 - ruined chapel / moss / stone / ember-lit atmosphere
 - no photorealism, no glossy 3D, no UI text, no extra subjects
+- Include the intended runtime render size in the prompt whenever possible, for example `rendered around 58px wide on a 96x48 tile`.
+- If the asset will be rendered small, explicitly ask for big readable shapes, simplified detailing, and crisp silhouette preservation after downscaling.
 - Reject or revise outputs that look too generic, too bright, too floaty, or too cinematic for tactical play.
 - When generating a variant of an existing asset:
 - use the current approved runtime asset as the reference point
@@ -51,6 +66,9 @@ This file lists the common project workflows for contributors and agents working
 - change only the intended dimension: pose, upgrade trim, charge state, damage state, open/closed state, elemental inflection, or attack-frame emphasis
 - avoid redesign drift between variants; they should read as one asset family at a glance
 - keep framing, scale, and canvas treatment compatible with the existing asset set so swapping variants in code does not require special handling
+- prefer reference-preserving edits or tightly constrained follow-up generations instead of unrelated fresh generations
+- for closed/open or similar state pairs, the later states should derive from the approved earlier state
+- keep the same target render size and readability constraints across the whole state family
 
 ## 4a. Character And Item Variant Checklist
 - Character variants should preserve:

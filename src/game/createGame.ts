@@ -12,9 +12,9 @@ export function createGame(parent: string): Phaser.Game {
     backgroundColor: '#12070d',
     pixelArt: true,
     render: {
-      antialias: false,
-      roundPixels: true,
-      pixelArt: true
+      antialias: true,
+      roundPixels: false,
+      pixelArt: false
     },
     scale: {
       mode: Phaser.Scale.FIT,
