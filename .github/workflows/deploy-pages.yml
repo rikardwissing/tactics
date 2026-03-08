@@ -52,6 +52,7 @@ jobs:
           path: ./dist
 
   deploy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
@@ -66,7 +67,8 @@ jobs:
           preview: ${{ github.event_name == 'pull_request' }}
 
       - name: Comment preview URL on PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && (steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url)
+        continue-on-error: true
         uses: actions/github-script@v7
         env:
           PAGE_URL: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
