@@ -1494,7 +1494,9 @@ export class BattleScene extends Phaser.Scene {
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
-    this.turnOrderPanel = new TurnOrderPanel(this, 6);
+    this.turnOrderPanel = new TurnOrderPanel(this, 6, undefined, (unitId) => {
+      void this.panToUnitFromTurnOrder(unitId);
+    });
 
     this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -1835,11 +1837,9 @@ export class BattleScene extends Phaser.Scene {
       .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
     this.turnOrderPanel.setLayout({
       x: this.uiPanels.bottomLeft.x + 16,
-      labelY: orderLabelY,
       startY: turnOrderStartY,
       gap: turnOrderGap,
-      boxSize: avatarSize + 12,
-      titleFontSize: this.portraitLayout ? 10 : 11
+      avatarSize: avatarSize + 14
     });
 
     this.activeBadge
@@ -3623,6 +3623,12 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    const turnOrderUnitId = this.turnOrderPanel.getUnitIdAt(pointer.x, pointer.y);
+    if (turnOrderUnitId) {
+      await this.panToUnitFromTurnOrder(turnOrderUnitId);
+      return;
+    }
+
     if (this.isPointerOverUi(pointer.x, pointer.y)) {
       return;
     }
@@ -3669,6 +3675,17 @@ export class BattleScene extends Phaser.Scene {
 
       await this.performAbility(activeUnit, target, selectedAbility);
     }
+  }
+
+  private async panToUnitFromTurnOrder(unitId: string): Promise<void> {
+    const unit = this.units.find((entry) => entry.id === unitId && entry.alive);
+
+    if (!unit) {
+      return;
+    }
+
+    const focusPoint = this.getUnitWorldPoint(unit);
+    await this.panCameraToPoint(focusPoint.x, focusPoint.y, 260);
   }
 
   private async handleSpaceKey(): Promise<void> {
