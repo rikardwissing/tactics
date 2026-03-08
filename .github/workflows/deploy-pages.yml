@@ -54,7 +54,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
 
@@ -69,7 +69,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGE_URL: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
         with:
           script: |
             const marker = '<!-- pages-preview-link -->';
