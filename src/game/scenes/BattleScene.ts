@@ -278,10 +278,15 @@ export class BattleScene extends Phaser.Scene {
   private submenuUiGraphics!: Phaser.GameObjects.Graphics;
   private turnOrderTexts: Phaser.GameObjects.Text[] = [];
   private headerText!: Phaser.GameObjects.Text;
+  private objectiveLabelText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
+  private logLabelText!: Phaser.GameObjects.Text;
+  private turnOrderLabelText!: Phaser.GameObjects.Text;
   private phaseText!: Phaser.GameObjects.Text;
   private autoBattleToggleText!: Phaser.GameObjects.Text;
+  private detailMetaText!: Phaser.GameObjects.Text;
   private detailTitleText!: Phaser.GameObjects.Text;
+  private detailStatTexts: Phaser.GameObjects.Text[] = [];
   private detailBodyText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
   private activeBadge!: Phaser.GameObjects.Text;
@@ -729,11 +734,16 @@ export class BattleScene extends Phaser.Scene {
     return [
       this.uiGraphics,
       this.submenuUiGraphics,
+      this.objectiveLabelText,
       this.headerText,
       this.objectiveText,
+      this.logLabelText,
+      this.turnOrderLabelText,
       this.phaseText,
       this.autoBattleToggleText,
+      this.detailMetaText,
       this.detailTitleText,
+      ...this.detailStatTexts,
       this.detailBodyText,
       this.logText,
       this.activeBadge,
@@ -1337,46 +1347,73 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createUi(): void {
+    this.objectiveLabelText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#d9c18a',
+      letterSpacing: 2
+    });
+
     this.headerText = this.add.text(0, 0, this.level.name, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '27px',
       fontStyle: 'bold',
-      color: '#fff2d2'
+      color: '#fff3da'
     });
 
     this.objectiveText = this.add.text(0, 0, this.level.objective, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '16px',
-      color: '#d7c7a3'
+      color: '#e3d3b1',
+      lineSpacing: 4
+    });
+
+    this.logLabelText = this.add.text(0, 0, 'BATTLE LOG', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#d9c18a',
+      letterSpacing: 2
+    });
+
+    this.turnOrderLabelText = this.add.text(0, 0, 'TURN ORDER', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#d9c18a',
+      letterSpacing: 2
     });
 
     this.phaseText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '18px',
-      color: '#f1d79a'
+      fontSize: '16px',
+      color: '#f3ddb0'
     });
 
     this.autoBattleToggleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '14px',
+      fontSize: '13px',
       fontStyle: 'bold',
-      color: '#d8c8a5'
+      color: '#f7ebc8',
+      letterSpacing: 0.5
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
     this.turnOrderTexts = Array.from({ length: 6 }, (_, index) =>
       this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '13px',
-        color: '#eedfba'
+        fontSize: '12px',
+        color: '#f1e5c8'
       })
     );
 
     this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '18px',
+      fontSize: '13px',
       fontStyle: 'bold',
-      color: '#f7edc4'
+      color: '#fff3da',
+      letterSpacing: 1
     });
 
     this.portrait = this.add
@@ -1384,39 +1421,55 @@ export class BattleScene extends Phaser.Scene {
       .setVisible(false)
       .setScale(0.24);
 
+    this.detailMetaText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '13px',
+      color: '#cfbc92',
+      letterSpacing: 0.5
+    });
+
     this.detailTitleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '23px',
+      fontSize: '24px',
       fontStyle: 'bold',
-      color: '#fff2d2'
+      color: '#fff3da'
     });
+
+    this.detailStatTexts = Array.from({ length: 4 }, () =>
+      this.add.text(0, 0, '', {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '11px',
+        fontStyle: 'bold',
+        color: '#fff1cd'
+      })
+    );
 
     this.detailBodyText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '15px',
-      color: '#d8c8a5',
-      lineSpacing: 4
+      fontSize: '14px',
+      color: '#d9c6a4',
+      lineSpacing: 5
     });
 
     this.logText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '14px',
-      color: '#e8dbba',
-      lineSpacing: 4
+      color: '#efe4ca',
+      lineSpacing: 5
     });
 
     this.menuTitleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '20px',
       fontStyle: 'bold',
-      color: '#fff2d2'
+      color: '#fff3da'
     });
 
     this.actionMenuTexts = Array.from({ length: 6 }, (_, index) =>
       this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '14px',
-        color: '#e8dbba'
+        color: '#f5e9cf'
       })
     );
 
@@ -1424,40 +1477,45 @@ export class BattleScene extends Phaser.Scene {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '20px',
       fontStyle: 'bold',
-      color: '#fff2d2'
+      color: '#fff3da'
     });
 
     this.submenuTexts = Array.from({ length: 6 }, (_, index) =>
       this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '15px',
-        color: '#f2e3ba'
+        color: '#f5e9cf'
       })
     );
 
     this.menuBodyText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '12px',
-      color: '#d8c8a5',
-      lineSpacing: 3
+      color: '#d9c7a8',
+      lineSpacing: 4
     });
 
     this.menuHintText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '12px',
-      color: '#cdbd95'
+      color: '#d6c196'
     });
 
     this.createHudControls();
 
     const uiElements = [
+      this.objectiveLabelText,
       this.headerText,
       this.objectiveText,
+      this.logLabelText,
+      this.turnOrderLabelText,
       this.phaseText,
       this.autoBattleToggleText,
       this.activeBadge,
       this.portrait,
+      this.detailMetaText,
       this.detailTitleText,
+      ...this.detailStatTexts,
       this.detailBodyText,
       this.logText,
       this.menuTitleText,
@@ -1486,24 +1544,35 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createHudControls(): void {
-    const configs: Array<{ action: HudControlAction; label: string }> = [
-      { action: 'zoom-in', label: '+' },
-      { action: 'zoom-out', label: '-' },
-      { action: 'rotate-left', label: 'L' },
-      { action: 'rotate-right', label: 'R' },
-      { action: 'mute', label: 'M' }
+    const configs: Array<{ action: HudControlAction; icon: string; label: string }> = [
+      { action: 'zoom-in', icon: '+', label: 'Zoom' },
+      { action: 'zoom-out', icon: '-', label: 'Out' },
+      { action: 'rotate-left', icon: 'Q', label: 'Left' },
+      { action: 'rotate-right', icon: 'E', label: 'Right' },
+      { action: 'mute', icon: 'M', label: 'Audio' }
     ];
 
-    this.hudControls = configs.map(({ action, label }) => {
-      const backing = this.add.circle(0, 0, 24, 0x12070d, 0.88).setStrokeStyle(2, 0xd5ba7a, 0.42);
-      const text = this.add.text(0, 0, label, {
+    this.hudControls = configs.map(({ action, icon, label }) => {
+      const shadow = this.add.rectangle(2, 3, 60, 46, 0x050203, 0.28).setOrigin(0.5);
+      const backing = this.add.rectangle(0, 0, 60, 46, 0x180c11, 0.94)
+        .setOrigin(0.5)
+        .setStrokeStyle(2, 0xd5ba7a, 0.34);
+      const sheen = this.add.rectangle(0, -10, 52, 10, 0xf4ddb0, 0.08).setOrigin(0.5);
+      const iconText = this.add.text(-14, -1, icon, {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '20px',
+        fontSize: '18px',
         fontStyle: 'bold',
         color: '#fff2d2'
       }).setOrigin(0.5);
+      const labelText = this.add.text(8, -1, label, {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        color: '#d8c7a4',
+        letterSpacing: 1
+      }).setOrigin(0.5);
 
-      const container = this.add.container(0, 0, [backing, text]).setSize(48, 48);
+      const container = this.add.container(0, 0, [shadow, backing, sheen, iconText, labelText]).setSize(60, 46);
 
       return { action, container };
     });
@@ -1610,60 +1679,91 @@ export class BattleScene extends Phaser.Scene {
       132,
       this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
     );
-    const turnOrderStartY = this.uiPanels.bottomLeft.y + (this.portraitLayout ? 70 : this.compactLayout ? 82 : 92);
-    const turnOrderGap = this.portraitLayout ? 15 : 15;
+    const logLabelY = this.uiPanels.bottomLeft.y + 14;
+    const logBodyY = logLabelY + 20;
+    const orderLabelY = this.portraitLayout ? this.uiPanels.bottomLeft.y + 74 : this.compactLayout ? this.uiPanels.bottomLeft.y + 82 : this.uiPanels.bottomLeft.y + 88;
+    const turnOrderStartY = orderLabelY + 20;
+    const turnOrderGap = this.portraitLayout ? 22 : this.compactLayout ? 23 : 24;
+    const detailStatWidth = Math.max(72, Math.floor((detailTextWidth - 10) / 2));
+    const detailStatGap = 10;
+    const detailStatsY = this.uiPanels.topRight.y + (this.showPortraitPanel ? 104 : 110);
 
-    this.headerText
+    this.objectiveLabelText
       .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 12)
-      .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27);
+      .setFontSize(this.portraitLayout ? 10 : 11);
+    this.headerText
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 28)
+      .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27)
+      .setWordWrapWidth(this.uiPanels.topLeft.width - 32, true);
     this.objectiveText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.portraitLayout ? 40 : 46))
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.portraitLayout ? 54 : 60))
       .setFontSize(this.portraitLayout ? 14 : this.compactLayout ? 15 : 16)
       .setWordWrapWidth(this.uiPanels.topLeft.width - 34, true);
     this.phaseText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - 30)
-      .setFontSize(this.portraitLayout ? 15 : this.compactLayout ? 16 : 18);
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - 34)
+      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
+      .setWordWrapWidth(this.uiPanels.topLeft.width - 120, true);
     this.autoBattleToggleText
       .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + 16)
-      .setFontSize(this.portraitLayout ? 13 : 14);
+      .setFontSize(this.portraitLayout ? 12 : 13);
 
+    this.logLabelText
+      .setPosition(this.uiPanels.bottomLeft.x + 16, logLabelY)
+      .setFontSize(this.portraitLayout ? 10 : 11);
     this.logText
-      .setPosition(this.uiPanels.bottomLeft.x + 16, this.uiPanels.bottomLeft.y + 18)
+      .setPosition(this.uiPanels.bottomLeft.x + 16, logBodyY)
       .setFontSize(this.portraitLayout ? 13 : 14)
       .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
+    this.turnOrderLabelText
+      .setPosition(this.uiPanels.bottomLeft.x + 16, orderLabelY)
+      .setFontSize(this.portraitLayout ? 10 : 11);
 
     for (const [index, text] of this.turnOrderTexts.entries()) {
       text
-        .setPosition(this.uiPanels.bottomLeft.x + 16, turnOrderStartY + index * turnOrderGap)
+        .setPosition(this.uiPanels.bottomLeft.x + 44, turnOrderStartY + index * turnOrderGap)
         .setFontSize(this.portraitLayout ? 12 : 13)
         .setVisible(index < this.visibleTurnOrderCount);
     }
 
     this.activeBadge
       .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 14)
-      .setFontSize(this.portraitLayout ? 16 : 18);
+      .setFontSize(this.portraitLayout ? 12 : 13);
 
     this.portrait
       .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY + 6)
       .setVisible(this.showPortraitPanel && this.portrait.visible);
 
-    this.detailTitleText
-      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + (this.showPortraitPanel ? 42 : 38))
-      .setFontSize(this.portraitLayout ? 19 : this.compactLayout ? 21 : 23)
+    this.detailMetaText
+      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 48)
+      .setFontSize(this.portraitLayout ? 12 : 13)
       .setWordWrapWidth(detailTextWidth, true);
+    this.detailTitleText
+      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 66)
+      .setFontSize(this.portraitLayout ? 21 : this.compactLayout ? 23 : 25)
+      .setWordWrapWidth(detailTextWidth, true);
+    for (const [index, text] of this.detailStatTexts.entries()) {
+      const column = index % 2;
+      const row = Math.floor(index / 2);
+      text
+        .setPosition(
+          this.uiPanels.topRight.x + 28 + column * (detailStatWidth + detailStatGap),
+          detailStatsY + row * 28
+        )
+        .setFontSize(this.portraitLayout ? 10 : 11);
+    }
     this.detailBodyText
-      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + (this.showPortraitPanel ? 100 : 76))
+      .setPosition(this.uiPanels.topRight.x + 16, detailStatsY + 58)
       .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
       .setWordWrapWidth(detailTextWidth + (this.showPortraitPanel ? 0 : 6), true);
 
     this.menuTitleText
-      .setPosition(this.actionMenuPanels.root.x + 12, this.actionMenuPanels.root.y + 12)
+      .setPosition(this.actionMenuPanels.root.x + 14, this.actionMenuPanels.root.y + 12)
       .setFontSize(this.portraitLayout ? 18 : 20);
     for (const [index, text] of this.actionMenuTexts.entries()) {
       text
         .setPosition(
-          this.actionMenuPanels.root.x + 12,
-          this.actionMenuPanels.root.y + 48 + index * this.actionMenuRowHeight
+          this.actionMenuPanels.root.x + 42,
+          this.actionMenuPanels.root.y + 50 + index * this.actionMenuRowHeight
         )
         .setFontSize(this.portraitLayout ? 13 : 14);
     }
@@ -1686,19 +1786,19 @@ export class BattleScene extends Phaser.Scene {
     const availableTop = this.uiPanels.topRight.bottom + 16;
     const availableBottom = Math.min(this.actionMenuPanels.root.y, this.uiPanels.bottomLeft.y) - 16;
     const span = Math.max(180, availableBottom - availableTop);
-    const scale = this.portraitLayout ? 0.82 : this.compactLayout ? 0.84 : 0.76;
-    const gap = 8;
-    const totalHeight = this.hudControls.length * 48 * scale + (this.hudControls.length - 1) * gap;
+    const scale = this.portraitLayout ? 0.84 : this.compactLayout ? 0.86 : 0.8;
+    const gap = 10;
+    const totalHeight = this.hudControls.length * 46 * scale + (this.hudControls.length - 1) * gap;
     const startY = Phaser.Math.Clamp(
       availableTop + (span - totalHeight) / 2,
       availableTop,
       Math.max(availableTop, availableBottom - totalHeight)
     );
-    const x = width - margin - 28 * scale;
+    const x = width - margin - 30 * scale;
 
     for (const [index, control] of this.hudControls.entries()) {
       control.container
-        .setPosition(x, startY + index * (48 * scale + gap))
+        .setPosition(x, startY + index * (46 * scale + gap))
         .setScale(scale)
         .setVisible(this.showHudControls);
     }
@@ -1744,8 +1844,10 @@ export class BattleScene extends Phaser.Scene {
       this.cameraBounds.height
     );
 
-    if (centerOnBoard) {
-      camera.centerOn(boardFocus.x, boardFocus.y);
+    if (centerOnBoard || camera.zoom <= this.getMinimumBoardZoom() + 0.001) {
+      const centeredScroll = this.getCameraScrollForFocus(boardFocus.x, boardFocus.y);
+      camera.setScroll(centeredScroll.x, centeredScroll.y);
+      return;
     }
 
     this.setBoardScroll(camera.scrollX, camera.scrollY);
@@ -1765,7 +1867,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getBoardFitSize(): { width: number; height: number } {
-    const boardBounds = this.getBoardBounds();
+    const boardBounds = this.getBoardPlaneBounds();
     const boardFocus = this.getBoardFocusPoint();
 
     return {
@@ -2458,6 +2560,23 @@ export class BattleScene extends Phaser.Scene {
     return new Phaser.Geom.Rectangle(minX, minY, maxX - minX, maxY - minY);
   }
 
+  private getBoardPlaneBounds(): Phaser.Geom.Rectangle {
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const tile of this.map) {
+      const center = this.getBasePlanePoint(tile);
+      minX = Math.min(minX, center.x - TILE_WIDTH / 2);
+      maxX = Math.max(maxX, center.x + TILE_WIDTH / 2);
+      minY = Math.min(minY, center.y - TILE_HEIGHT / 2);
+      maxY = Math.max(maxY, center.y + TILE_HEIGHT / 2);
+    }
+
+    return new Phaser.Geom.Rectangle(minX, minY, maxX - minX, maxY - minY);
+  }
+
   private getPreviewOrigin(unit: BattleUnit): Point | null {
     if (
       this.hoverTile &&
@@ -2689,20 +2808,86 @@ export class BattleScene extends Phaser.Scene {
     const camera = this.getWorldCamera();
     const boardFocus = this.getBoardFocusPoint();
     const fitSize = this.getBoardFitSize();
+    const resolved = this.resolveBoardScroll(scrollX, scrollY, camera, boardFocus, fitSize, false);
+
+    camera.setScroll(resolved.x, resolved.y);
+  }
+
+  private getCameraScrollForFocus(focusX: number, focusY: number): Phaser.Math.Vector2 {
+    const camera = this.getWorldCamera();
+    const boardFocus = this.getBoardFocusPoint();
+    const fitSize = this.getBoardFitSize();
+    const visibleWidth = camera.width / camera.zoom;
+    const visibleHeight = camera.height / camera.zoom;
+
+    return this.resolveBoardScroll(
+      focusX - visibleWidth / 2,
+      focusY - visibleHeight / 2,
+      camera,
+      boardFocus,
+      fitSize,
+      true
+    );
+  }
+
+  private resolveBoardScroll(
+    scrollX: number,
+    scrollY: number,
+    camera: Phaser.Cameras.Scene2D.Camera,
+    boardFocus: Phaser.Math.Vector2,
+    fitSize: { width: number; height: number },
+    lockToBoard: boolean
+  ): Phaser.Math.Vector2 {
     const visibleWidth = camera.width / camera.zoom;
     const visibleHeight = camera.height / camera.zoom;
     const maxScrollX = this.cameraBounds.right - visibleWidth;
     const maxScrollY = this.cameraBounds.bottom - visibleHeight;
+    const canScrollX = maxScrollX > this.cameraBounds.x;
+    const canScrollY = maxScrollY > this.cameraBounds.y;
     const resolvedScrollX =
-      visibleWidth >= fitSize.width || maxScrollX <= this.cameraBounds.x
+      (lockToBoard && visibleWidth >= fitSize.width) || !canScrollX
         ? boardFocus.x - visibleWidth / 2
         : Phaser.Math.Clamp(scrollX, this.cameraBounds.x, maxScrollX);
     const resolvedScrollY =
-      visibleHeight >= fitSize.height || maxScrollY <= this.cameraBounds.y
+      (lockToBoard && visibleHeight >= fitSize.height) || !canScrollY
         ? boardFocus.y - visibleHeight / 2
         : Phaser.Math.Clamp(scrollY, this.cameraBounds.y, maxScrollY);
 
-    camera.setScroll(resolvedScrollX, resolvedScrollY);
+    return new Phaser.Math.Vector2(resolvedScrollX, resolvedScrollY);
+  }
+
+  private panCameraToPoint(focusX: number, focusY: number, duration: number): Promise<void> {
+    const camera = this.getWorldCamera();
+    const targetScroll = this.getCameraScrollForFocus(focusX, focusY);
+
+    if (
+      Phaser.Math.Distance.Between(
+        camera.scrollX,
+        camera.scrollY,
+        targetScroll.x,
+        targetScroll.y
+      ) < 0.5
+    ) {
+      this.setBoardScroll(targetScroll.x, targetScroll.y);
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: camera,
+        scrollX: targetScroll.x,
+        scrollY: targetScroll.y,
+        duration,
+        ease: 'Sine.easeOut',
+        onUpdate: () => {
+          this.setBoardScroll(camera.scrollX, camera.scrollY);
+        },
+        onComplete: () => {
+          this.setBoardScroll(targetScroll.x, targetScroll.y);
+          resolve();
+        }
+      });
+    });
   }
 
   private zoomBoard(deltaY: number, screenX: number, screenY: number): void {
@@ -2736,6 +2921,7 @@ export class BattleScene extends Phaser.Scene {
 
   private applyBoardZoom(nextZoom: number, screenX: number, screenY: number): void {
     const camera = this.getWorldCamera();
+    const minimumZoom = this.getMinimumBoardZoom();
 
     if (Math.abs(nextZoom - camera.zoom) < 0.001) {
       return;
@@ -2745,10 +2931,16 @@ export class BattleScene extends Phaser.Scene {
     camera.setZoom(nextZoom);
     const worldPointAfter = camera.getWorldPoint(screenX, screenY);
 
-    this.setBoardScroll(
-      camera.scrollX + (worldPointBefore.x - worldPointAfter.x),
-      camera.scrollY + (worldPointBefore.y - worldPointAfter.y)
-    );
+    if (nextZoom <= minimumZoom + 0.001) {
+      const boardFocus = this.getBoardFocusPoint();
+      const centeredScroll = this.getCameraScrollForFocus(boardFocus.x, boardFocus.y);
+      camera.setScroll(centeredScroll.x, centeredScroll.y);
+    } else {
+      this.setBoardScroll(
+        camera.scrollX + (worldPointBefore.x - worldPointAfter.x),
+        camera.scrollY + (worldPointBefore.y - worldPointAfter.y)
+      );
+    }
 
     const anchoredWorldPoint = camera.getWorldPoint(screenX, screenY);
     this.hoverTile = this.pickTile(anchoredWorldPoint.x, anchoredWorldPoint.y);
@@ -2960,44 +3152,50 @@ export class BattleScene extends Phaser.Scene {
     this.submenuUiGraphics.clear();
 
     if (visible) {
-      this.submenuUiGraphics.fillStyle(0x18100d, 0.96 * alpha);
-      this.submenuUiGraphics.fillRoundedRect(
-        this.submenuPanelX,
-        this.actionMenuPanels.sub.y,
-        this.actionMenuPanels.sub.width,
-        this.actionMenuPanels.sub.height,
+      this.drawUiPanelShell(
+        this.submenuUiGraphics,
+        new Phaser.Geom.Rectangle(
+          this.submenuPanelX,
+          this.actionMenuPanels.sub.y,
+          this.actionMenuPanels.sub.width,
+          this.actionMenuPanels.sub.height
+        ),
+        alpha,
+        40,
         16
       );
-      this.submenuUiGraphics.lineStyle(2, 0xd5ba7a, 0.34 * alpha);
-      this.submenuUiGraphics.strokeRoundedRect(
-        this.submenuPanelX,
-        this.actionMenuPanels.sub.y,
-        this.actionMenuPanels.sub.width,
-        this.actionMenuPanels.sub.height,
-        16
-      );
-      this.submenuUiGraphics.lineStyle(1, 0xd5ba7a, 0.18 * alpha);
-      this.submenuUiGraphics.lineBetween(
-        this.submenuPanelX + 12,
-        this.actionMenuPanels.sub.y + 40,
-        this.submenuPanelX + this.actionMenuPanels.sub.width - 12,
-        this.actionMenuPanels.sub.y + 40
-      );
+
+      const selectedAbility = this.getSelectedAbility();
+
+      for (const [index, entry] of submenuEntries.entries()) {
+        const bounds = this.getSubmenuEntryBounds(index);
+        const active = !!entry.abilityId && entry.abilityId === selectedAbility?.id;
+        const fill = active ? 0x69402d : entry.enabled ? 0x241519 : 0x171012;
+        const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
+        const dotColor = active ? 0xf1d089 : entry.enabled ? 0xd4b470 : 0x7a6a52;
+
+        this.submenuUiGraphics.fillStyle(fill, (active ? 0.9 : 0.72) * alpha);
+        this.submenuUiGraphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+        this.submenuUiGraphics.lineStyle(1, 0xd5ba7a, strokeAlpha * alpha);
+        this.submenuUiGraphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+        this.submenuUiGraphics.fillStyle(dotColor, 0.95 * alpha);
+        this.submenuUiGraphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
+      }
     }
 
     this.submenuTitleText
       .setPosition(this.submenuPanelX + 14, this.actionMenuPanels.sub.y + 12)
       .setAlpha(alpha)
       .setVisible(visible);
-    this.menuBodyText.setPosition(this.submenuPanelX + 14, submenuInfoY).setAlpha(alpha).setVisible(visible);
+    this.menuBodyText.setPosition(this.submenuPanelX + 18, submenuInfoY).setAlpha(alpha).setVisible(visible);
     this.menuHintText
-      .setPosition(this.submenuPanelX + 14, this.actionMenuPanels.sub.bottom - 22)
+      .setPosition(this.submenuPanelX + 18, this.actionMenuPanels.sub.bottom - 24)
       .setAlpha(alpha)
       .setVisible(visible);
 
     for (const [index, text] of this.submenuTexts.entries()) {
       text
-        .setPosition(this.submenuPanelX + 18, this.actionMenuPanels.sub.y + 50 + index * this.submenuRowHeight)
+        .setPosition(this.submenuPanelX + 40, this.actionMenuPanels.sub.y + 52 + index * this.submenuRowHeight)
         .setAlpha(alpha)
         .setVisible(visible);
     }
@@ -3783,7 +3981,6 @@ export class BattleScene extends Phaser.Scene {
     }
 
     const camera = this.getWorldCamera();
-    camera.startFollow(view.container, false, 0.2, 0.2);
 
     try {
       for (const step of path) {
@@ -3796,9 +3993,10 @@ export class BattleScene extends Phaser.Scene {
         const destination = this.isoToScreen(tile);
         const startDepth = view.container.depth;
         const destinationDepth = this.getUnitDepth(tile);
+        const cameraPanPromise = this.panCameraToPoint(destination.x, destination.y, 240);
         audioDirector.playStep();
 
-        await new Promise<void>((resolve) => {
+        const movementPromise = new Promise<void>((resolve) => {
           this.tweens.add({
             targets: view.container,
             x: destination.x,
@@ -3827,9 +4025,10 @@ export class BattleScene extends Phaser.Scene {
             }
           });
         });
+
+        await Promise.all([movementPromise, cameraPanPromise]);
       }
     } finally {
-      camera.stopFollow();
       this.setBoardScroll(camera.scrollX, camera.scrollY);
     }
   }
@@ -4400,12 +4599,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshUi(): void {
-    this.drawUiPanels();
-
-    this.phaseText.setText(`${TIME_OF_DAY_CONFIG[this.timeOfDay].label} | ${this.describePhase()}`);
-    this.activeBadge.setText(this.getActiveUnit() ? 'Active Unit' : 'Battleflow');
+    const timeOfDayLabel = TIME_OF_DAY_CONFIG[this.timeOfDay].label.toUpperCase();
+    this.objectiveLabelText.setText(`${timeOfDayLabel} SKIRMISH`);
+    this.phaseText.setText(this.describePhase());
     this.autoBattleToggleText
-      .setText(`Auto ${this.autoBattleEnabled ? 'ON' : 'OFF'}`)
+      .setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`)
       .setColor(this.autoBattleEnabled ? '#fff1bc' : '#bca982');
 
     const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
@@ -4423,8 +4621,10 @@ export class BattleScene extends Phaser.Scene {
         continue;
       }
 
-      text.setText(`${index + 1}. ${unit.team === 'player' ? 'Ally' : 'Foe'} ${unit.name}`);
-      text.setColor(unit.team === 'player' ? '#c8f0eb' : '#f1b4b4');
+      text.setText(
+        `${String(index + 1).padStart(2, '0')}  ${unit.name}  •  ${unit.team === 'player' ? 'ALLY' : 'FOE'}`
+      );
+      text.setColor(unit.team === 'player' ? '#d6f4ee' : '#f4c3c3');
     }
 
     const focusUnit = this.getHoveredUnit() ?? this.getActiveUnit();
@@ -4437,18 +4637,40 @@ export class BattleScene extends Phaser.Scene {
         this.portrait.displayHeight = Math.max(82, this.uiPanels.portrait.height - 28);
         this.portrait.scaleX = this.portrait.scaleY;
       }
-      this.detailTitleText.setText(`${focusUnit.name}\n${focusUnit.className}`);
+      this.activeBadge
+        .setText(focusUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT')
+        .setColor(focusUnit.team === 'player' ? '#ecfff6' : '#ffe0d7');
+      this.detailMetaText.setText(
+        `${focusUnit.team === 'player' ? 'Dawn Company' : 'Ashen Host'}  •  ${focusUnit.className}`
+      );
+      this.detailTitleText.setText(focusUnit.name);
       this.detailBodyText.setText(
         [
-          `${focusUnit.team === 'player' ? 'Ally' : 'Enemy'}  HP ${focusUnit.hp}/${focusUnit.maxHp}`,
-          `Move ${focusUnit.move}   Speed ${focusUnit.speed}`,
-          `Range ${focusUnit.rangeMin}-${focusUnit.rangeMax}`,
+          `${focusUnit.attackName}`,
           focusUnit.attackText
         ].join('\n')
       );
+      this.setDetailStatValues([
+        `HP ${focusUnit.hp}/${focusUnit.maxHp}`,
+        `MOVE ${focusUnit.move}`,
+        `SPD ${focusUnit.speed}`,
+        `RNG ${focusUnit.rangeMin}-${focusUnit.rangeMax}`
+      ]);
     } else if (this.hoverTile) {
       this.portrait.setVisible(false);
-      this.detailTitleText.setText(`Tile (${this.hoverTile.x}, ${this.hoverTile.y})`);
+      this.activeBadge
+        .setText(hoveredChest ? 'CHEST CACHE' : hoveredProp ? 'FIELD PROP' : 'TERRAIN TILE')
+        .setColor(hoveredChest ? '#fff0ba' : hoveredProp ? '#ffd9b1' : '#f7edc4');
+      this.detailMetaText.setText(
+        `Coords ${this.hoverTile.x}, ${this.hoverTile.y}  •  ${this.formatTerrainName(this.hoverTile.terrain)}`
+      );
+      this.detailTitleText.setText(
+        hoveredChest
+          ? 'Supply Chest'
+          : hoveredProp
+            ? this.getPropTitle(hoveredProp.assetId)
+            : `${this.formatTerrainName(this.hoverTile.terrain)} Ground`
+      );
       this.detailBodyText.setText(
         [
           `Height ${this.hoverTile.height}   Terrain ${this.hoverTile.terrain}`,
@@ -4459,8 +4681,16 @@ export class BattleScene extends Phaser.Scene {
             : this.describeTerrain(this.hoverTile.terrain)
         ].join('\n')
       );
+      this.setDetailStatValues([
+        `HEIGHT ${this.hoverTile.height}`,
+        `TERRAIN ${this.formatTerrainName(this.hoverTile.terrain).toUpperCase()}`,
+        hoveredChest ? 'LOOT READY' : hoveredProp ? 'OCCUPIED' : '',
+        hoveredProp && PROP_RENDER_CONFIG[hoveredProp.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+      ]);
     } else {
       this.portrait.setVisible(false);
+      this.activeBadge.setText('FIELD MANUAL').setColor('#f7edc4');
+      this.detailMetaText.setText('Current battlefield doctrine');
       this.detailTitleText.setText('Battlefield Brief');
       this.detailBodyText.setText(
         [
@@ -4471,6 +4701,12 @@ export class BattleScene extends Phaser.Scene {
             : 'Right-drag or use WASD/arrow keys to pan. Scroll zooms. Q/E rotate the field. T cycles scene lighting.'
         ].join('\n')
       );
+      this.setDetailStatValues([
+        `ALLIES ${this.units.filter((unit) => unit.team === 'player' && unit.alive).length}`,
+        `FOES ${this.units.filter((unit) => unit.team === 'enemy' && unit.alive).length}`,
+        `CHESTS ${this.chests.filter((chest) => !chest.opened).length}`,
+        `SCENE ${TIME_OF_DAY_CONFIG[this.timeOfDay].label.toUpperCase()}`
+      ]);
     }
 
     this.logText.setText(this.logLines.slice(0, this.visibleLogLines).join('\n'));
@@ -4488,7 +4724,7 @@ export class BattleScene extends Phaser.Scene {
       }
 
       const active = currentMenuAction === entry.action;
-      text.setText(`${active ? '> ' : '  '}${entry.label}`);
+      text.setText(`${active ? '› ' : ''}${entry.label}`);
       text.setColor(!entry.enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba');
     }
 
@@ -4503,7 +4739,7 @@ export class BattleScene extends Phaser.Scene {
       }
 
       const active = !!entry.abilityId && entry.abilityId === selectedAbility?.id;
-      text.setText(`${active ? '> ' : '  '}${entry.label}`);
+      text.setText(`${active ? '› ' : ''}${entry.label}`);
       text.setColor(!entry.enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba');
     }
 
@@ -4524,55 +4760,190 @@ export class BattleScene extends Phaser.Scene {
     ];
 
     for (const panel of panels) {
-      this.uiGraphics.fillStyle(0x12070d, 0.92);
-      this.uiGraphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, 20);
-      this.uiGraphics.lineStyle(2, 0xd5ba7a, 0.42);
-      this.uiGraphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, 20);
+      this.drawUiPanelShell(this.uiGraphics, panel);
+    }
+
+    const activeUnit = this.getActiveUnit();
+    const focusUnit = this.getHoveredUnit() ?? activeUnit;
+    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
+    const bottomDividerY = this.turnOrderLabelText.y - 10;
+    const autoTagBounds = this.autoBattleToggleText.getBounds();
+    Phaser.Geom.Rectangle.Inflate(autoTagBounds, 14, 6);
+
+    this.uiGraphics.fillStyle(this.autoBattleEnabled ? 0x67502a : 0x27191a, 0.9);
+    this.uiGraphics.fillRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
+    this.uiGraphics.lineStyle(1, this.autoBattleEnabled ? 0xf3d690 : 0x8f7250, 0.56);
+    this.uiGraphics.strokeRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
+
+    this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.16);
+    this.uiGraphics.lineBetween(
+      this.uiPanels.bottomLeft.x + 16,
+      bottomDividerY,
+      this.uiPanels.bottomLeft.right - 16,
+      bottomDividerY
+    );
+
+    for (const [index, unit] of queue.entries()) {
+      const text = this.turnOrderTexts[index];
+
+      if (!unit || !text.visible || !text.text) {
+        continue;
+      }
+
+      const rowBounds = new Phaser.Geom.Rectangle(
+        this.uiPanels.bottomLeft.x + 12,
+        text.y - 4,
+        this.uiPanels.bottomLeft.width - 24,
+        text.height + 8
+      );
+      const activeRow = activeUnit?.id === unit.id;
+      const fill = activeRow ? 0x6b3b2b : unit.team === 'player' ? 0x193027 : 0x311d21;
+      const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7ecab6 : 0xd48787;
+
+      this.uiGraphics.fillStyle(fill, activeRow ? 0.92 : 0.68);
+      this.uiGraphics.fillRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, activeRow ? 0.42 : 0.16);
+      this.uiGraphics.strokeRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
+      this.uiGraphics.fillStyle(dot, 0.95);
+      this.uiGraphics.fillCircle(rowBounds.x + 18, rowBounds.centerY, activeRow ? 6 : 5);
     }
 
     if (this.actionMenuAlpha > 0.01) {
-      this.uiGraphics.fillStyle(0x12070d, 0.94 * this.actionMenuAlpha);
-      this.uiGraphics.fillRoundedRect(
-        this.actionMenuPanels.root.x,
-        this.actionMenuPanels.root.y,
-        this.actionMenuPanels.root.width,
-        this.actionMenuPanels.root.height,
-        16
-      );
-      this.uiGraphics.lineStyle(2, 0xd5ba7a, 0.42 * this.actionMenuAlpha);
-      this.uiGraphics.strokeRoundedRect(
-        this.actionMenuPanels.root.x,
-        this.actionMenuPanels.root.y,
-        this.actionMenuPanels.root.width,
-        this.actionMenuPanels.root.height,
-        16
-      );
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.22 * this.actionMenuAlpha);
-      this.uiGraphics.lineBetween(
-        this.actionMenuPanels.root.x + 10,
-        this.actionMenuPanels.root.y + 40,
-        this.actionMenuPanels.root.right - 10,
-        this.actionMenuPanels.root.y + 40
-      );
+      this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 40, 16);
+
+      const menuEntries = this.getMenuEntries();
+      const currentMenuAction = this.getCurrentMenuAction();
+
+      for (const [index, entry] of menuEntries.entries()) {
+        const bounds = this.getActionMenuEntryBounds(index);
+        const active = currentMenuAction === entry.action;
+        const fill = active ? 0x6b3b2b : entry.enabled ? 0x241519 : 0x171012;
+        const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
+        const dotColor = active ? 0xf1d089 : entry.enabled ? 0xd4b470 : 0x7a6a52;
+
+        this.uiGraphics.fillStyle(fill, (active ? 0.9 : 0.72) * this.actionMenuAlpha);
+        this.uiGraphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+        this.uiGraphics.lineStyle(1, 0xd5ba7a, strokeAlpha * this.actionMenuAlpha);
+        this.uiGraphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+        this.uiGraphics.fillStyle(dotColor, 0.95 * this.actionMenuAlpha);
+        this.uiGraphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
+      }
     }
 
     if (this.showPortraitPanel) {
-      this.uiGraphics.fillStyle(0x5f2a36, 0.15);
+      this.drawUiPanelShell(this.uiGraphics, this.uiPanels.portrait, 0.86, 28, 14);
+      this.uiGraphics.fillStyle(0xf5e1b2, 0.06);
       this.uiGraphics.fillRoundedRect(
-        this.uiPanels.portrait.x,
-        this.uiPanels.portrait.y,
-        this.uiPanels.portrait.width,
-        this.uiPanels.portrait.height,
-        14
+        this.uiPanels.portrait.x + 8,
+        this.uiPanels.portrait.y + 8,
+        this.uiPanels.portrait.width - 16,
+        8,
+        4
       );
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.22);
-      this.uiGraphics.strokeRoundedRect(
-        this.uiPanels.portrait.x,
-        this.uiPanels.portrait.y,
-        this.uiPanels.portrait.width,
-        this.uiPanels.portrait.height,
-        14
+    }
+
+    const badgeBounds = this.activeBadge.getBounds();
+    Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
+    const badgeFill = focusUnit
+      ? focusUnit.team === 'player'
+        ? 0x234739
+        : 0x54272b
+      : this.hoverTile
+        ? 0x3a3120
+        : 0x2b2432;
+    this.uiGraphics.fillStyle(badgeFill, 0.94);
+    this.uiGraphics.fillRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
+    this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.38);
+    this.uiGraphics.strokeRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
+
+    for (const text of this.detailStatTexts) {
+      if (!text.text) {
+        continue;
+      }
+
+      const chip = text.getBounds();
+      const chipWidth = Math.max(74, chip.width + 16);
+      this.uiGraphics.fillStyle(0x22151a, 0.86);
+      this.uiGraphics.fillRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
+      this.uiGraphics.strokeRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+    }
+
+    if (focusUnit) {
+      const barX = this.uiPanels.topRight.x + 16;
+      const barY = this.detailMetaText.y + 22;
+      const barWidth = Math.max(
+        116,
+        this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
       );
+      const barFill = focusUnit.team === 'player' ? 0x6ed2a6 : 0xde8d8d;
+
+      this.uiGraphics.fillStyle(0x1a0d10, 0.92);
+      this.uiGraphics.fillRoundedRect(barX, barY, barWidth, 12, 6);
+      this.uiGraphics.fillStyle(barFill, 0.95);
+      this.uiGraphics.fillRoundedRect(barX + 2, barY + 2, Math.max(6, (barWidth - 4) * (focusUnit.hp / focusUnit.maxHp)), 8, 4);
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
+      this.uiGraphics.strokeRoundedRect(barX, barY, barWidth, 12, 6);
+    }
+  }
+
+  private drawUiPanelShell(
+    graphics: Phaser.GameObjects.Graphics,
+    panel: Phaser.Geom.Rectangle,
+    alpha = 1,
+    headerHeight = 34,
+    radius = 20
+  ): void {
+    graphics.fillStyle(0x040203, 0.32 * alpha);
+    graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
+    graphics.fillStyle(0x12070d, 0.96 * alpha);
+    graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.fillStyle(0x211115, 0.92 * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.fillStyle(0x4b2c23, 0.4 * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
+    graphics.fillStyle(0xf4ddb0, 0.05 * alpha);
+    graphics.fillRoundedRect(panel.x + 8, panel.y + 8, panel.width - 16, 6, 3);
+    graphics.lineStyle(2, 0xd5ba7a, 0.42 * alpha);
+    graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.lineStyle(1, 0x6f4e3c, 0.34 * alpha);
+    graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.lineStyle(1, 0xd5ba7a, 0.12 * alpha);
+    graphics.lineBetween(panel.x + 14, panel.y + headerHeight, panel.right - 14, panel.y + headerHeight);
+  }
+
+  private setDetailStatValues(values: string[]): void {
+    for (const [index, text] of this.detailStatTexts.entries()) {
+      const value = values[index] ?? '';
+      text.setText(value).setVisible(value.length > 0);
+    }
+  }
+
+  private formatTerrainName(terrain: TerrainType): string {
+    switch (terrain) {
+      case 'grass':
+        return 'Grass';
+      case 'moss':
+        return 'Moss';
+      case 'stone':
+        return 'Stone';
+      case 'sanctum':
+        return 'Sanctum';
+      default:
+        return terrain;
+    }
+  }
+
+  private getPropTitle(assetId: MapPropAssetId): string {
+    switch (assetId) {
+      case 'obstacle-rubble-barricade':
+        return 'Stone Monolith';
+      case 'light-torch':
+        return 'Torch Stand';
+      case 'sanctum-brazier':
+        return 'Sanctum Brazier';
+      default:
+        return 'Map Prop';
     }
   }
 
