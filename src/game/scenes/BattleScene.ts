@@ -1494,7 +1494,9 @@ export class BattleScene extends Phaser.Scene {
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
-    this.turnOrderPanel = new TurnOrderPanel(this, 6);
+    this.turnOrderPanel = new TurnOrderPanel(this, 6, undefined, (unitId) => {
+      void this.panToUnitFromTurnOrder(unitId);
+    });
 
     this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -1781,8 +1783,8 @@ export class BattleScene extends Phaser.Scene {
     this.objectiveLabelText.setVisible(!this.minimalMobileLayout);
     this.objectiveText.setVisible(!this.minimalMobileLayout);
 
-    this.logLabelText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
-    this.logText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
+    this.logLabelText.setVisible(false);
+    this.logText.setVisible(false);
     this.turnOrderPanel.setVisible(this.showTimelinePanel);
 
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
@@ -1793,14 +1795,7 @@ export class BattleScene extends Phaser.Scene {
     );
     const logLabelY = this.uiPanels.bottomLeft.y + 14;
     const logBodyY = logLabelY + 20;
-    const orderLabelY = this.minimalMobileLayout
-      ? this.uiPanels.bottomLeft.y + 14
-      : this.portraitLayout
-        ? this.uiPanels.bottomLeft.y + 74
-        : this.compactLayout
-          ? this.uiPanels.bottomLeft.y + 82
-          : this.uiPanels.bottomLeft.y + 88;
-    const turnOrderStartY = orderLabelY + 20;
+    const turnOrderStartY = this.uiPanels.bottomLeft.y + (this.minimalMobileLayout ? 12 : this.portraitLayout ? 16 : 18);
     const turnOrderGap = this.minimalMobileLayout ? 30 : this.portraitLayout ? 26 : this.compactLayout ? 28 : 30;
     const avatarSize = this.minimalMobileLayout ? 24 : this.portraitLayout ? 20 : 22;
     const detailStatWidth = Math.max(72, Math.floor((detailTextWidth - 10) / 2));
@@ -1835,11 +1830,9 @@ export class BattleScene extends Phaser.Scene {
       .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
     this.turnOrderPanel.setLayout({
       x: this.uiPanels.bottomLeft.x + 16,
-      labelY: orderLabelY,
       startY: turnOrderStartY,
       gap: turnOrderGap,
-      boxSize: avatarSize + 12,
-      titleFontSize: this.portraitLayout ? 10 : 11
+      avatarSize: avatarSize + 14
     });
 
     this.activeBadge
@@ -3068,7 +3061,6 @@ export class BattleScene extends Phaser.Scene {
   private isPointerOverUi(x: number, y: number): boolean {
     const staticPanels = [
       this.uiPanels.topLeft,
-      ...(this.showTimelinePanel ? [this.uiPanels.bottomLeft] : []),
       ...(this.showDetailPanel ? [this.uiPanels.topRight] : []),
       ...(this.showPortraitPanel ? [this.uiPanels.portrait] : [])
     ];
@@ -3623,6 +3615,12 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    const turnOrderUnitId = this.turnOrderPanel.getUnitIdAt(pointer.x, pointer.y);
+    if (turnOrderUnitId) {
+      await this.panToUnitFromTurnOrder(turnOrderUnitId);
+      return;
+    }
+
     if (this.isPointerOverUi(pointer.x, pointer.y)) {
       return;
     }
@@ -3669,6 +3667,17 @@ export class BattleScene extends Phaser.Scene {
 
       await this.performAbility(activeUnit, target, selectedAbility);
     }
+  }
+
+  private async panToUnitFromTurnOrder(unitId: string): Promise<void> {
+    const unit = this.units.find((entry) => entry.id === unitId && entry.alive);
+
+    if (!unit) {
+      return;
+    }
+
+    const focusPoint = this.getUnitWorldPoint(unit);
+    await this.panCameraToPoint(focusPoint.x, focusPoint.y, 260);
   }
 
   private async handleSpaceKey(): Promise<void> {
@@ -4855,7 +4864,6 @@ export class BattleScene extends Phaser.Scene {
 
     const panels = [
       { panel: this.uiPanels.topLeft, accent: 0x2f5b5e },
-      ...(this.showTimelinePanel ? [{ panel: this.uiPanels.bottomLeft, accent: 0x6a4a2d }] : []),
       ...(this.showDetailPanel ? [{ panel: this.uiPanels.topRight, accent: 0x6a2f47 }] : [])
     ];
 
