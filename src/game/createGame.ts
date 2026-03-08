@@ -3,12 +3,15 @@ import { BootScene } from './scenes/BootScene';
 import { TitleScene } from './scenes/TitleScene';
 import { BattleScene } from './scenes/BattleScene';
 
-export function createGame(parent: string): Phaser.Game {
+export function createGame(
+  parent: string,
+  initialSize = { width: 1280, height: 720 }
+): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
     parent,
-    width: 1280,
-    height: 720,
+    width: initialSize.width,
+    height: initialSize.height,
     backgroundColor: '#12070d',
     pixelArt: true,
     render: {
@@ -17,7 +20,7 @@ export function createGame(parent: string): Phaser.Game {
       pixelArt: false
     },
     scale: {
-      mode: Phaser.Scale.FIT,
+      mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH
     },
     scene: [BootScene, TitleScene, BattleScene]

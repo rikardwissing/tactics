@@ -1,7 +1,28 @@
 import Phaser from 'phaser';
 import { audioDirector } from '../audio/audioDirector';
 
+type CastSprite = {
+  sprite: Phaser.GameObjects.Image;
+  desktopOffsetX: number;
+  baseScale: number;
+};
+
 export class TitleScene extends Phaser.Scene {
+  private backdropImage!: Phaser.GameObjects.Image;
+  private backdropShade!: Phaser.GameObjects.Rectangle;
+  private frame!: Phaser.GameObjects.Rectangle;
+  private titleText!: Phaser.GameObjects.Text;
+  private subtitleText!: Phaser.GameObjects.Text;
+  private descriptionText!: Phaser.GameObjects.Text;
+  private controlsText!: Phaser.GameObjects.Text;
+  private startButton!: Phaser.GameObjects.Container;
+  private startButtonBacking!: Phaser.GameObjects.Rectangle;
+  private startButtonShine!: Phaser.GameObjects.Rectangle;
+  private startButtonText!: Phaser.GameObjects.Text;
+  private startButtonHitArea!: Phaser.GameObjects.Zone;
+  private castSprites: CastSprite[] = [];
+  private startButtonBaseScale = 1;
+
   constructor() {
     super('title');
   }
@@ -10,19 +31,13 @@ export class TitleScene extends Phaser.Scene {
     audioDirector.bindScene(this);
     audioDirector.setMusic('title');
 
-    const { width, height } = this.scale;
-
-    this.add
-      .image(width / 2, height / 2, 'title-backdrop')
-      .setDisplaySize(width, height)
-      .setAlpha(0.92);
-
-    this.add.rectangle(width / 2, height / 2, width, height, 0x12070d, 0.42);
+    this.backdropImage = this.add.image(0, 0, 'title-backdrop').setAlpha(0.92);
+    this.backdropShade = this.add.rectangle(0, 0, 0, 0, 0x12070d, 0.42);
 
     this.add
       .particles(0, 0, 'spark', {
-        x: { min: 0, max: width },
-        y: { min: 0, max: height },
+        x: { min: 0, max: this.scale.width },
+        y: { min: 0, max: this.scale.height },
         lifespan: 4400,
         speedY: { min: -4, max: 6 },
         speedX: { min: -3, max: 3 },
@@ -34,55 +49,49 @@ export class TitleScene extends Phaser.Scene {
       })
       .setDepth(2);
 
-    this.add
-      .text(width / 2, 118, 'CRIMSON TACTICS', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '56px',
-        color: '#f8edd0',
-        fontStyle: 'bold',
-        letterSpacing: 12,
-        stroke: '#2f1119',
-        strokeThickness: 8
-      })
+    this.titleText = this.add.text(0, 0, 'CRIMSON TACTICS', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '56px',
+      color: '#f8edd0',
+      fontStyle: 'bold',
+      letterSpacing: 12,
+      stroke: '#2f1119',
+      strokeThickness: 8
+    })
       .setOrigin(0.5)
       .setDepth(3);
 
-    this.add
-      .text(width / 2, 176, 'A pixel-art tactics skirmish inspired by the classics', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '22px',
-        color: '#e1cc96',
-        letterSpacing: 2
-      })
+    this.subtitleText = this.add.text(0, 0, 'A pixel-art tactics skirmish inspired by the classics', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '22px',
+      color: '#e1cc96',
+      letterSpacing: 2
+    })
       .setOrigin(0.5)
       .setDepth(3);
 
-    const frame = this.add
-      .rectangle(width / 2, height / 2 + 42, width - 220, height - 220, 0x2a1320, 0.18)
+    this.frame = this.add.rectangle(0, 0, 0, 0, 0x2a1320, 0.18)
       .setStrokeStyle(2, 0xdabf83, 0.55)
       .setDepth(2);
 
     const cast = [
-      { key: 'holy-knight', x: width / 2 - 200, y: height - 28, scale: 0.56 },
-      { key: 'wild-archer', x: width / 2 + 10, y: height - 36, scale: 0.54 },
-      { key: 'ember-mage', x: width / 2 + 205, y: height - 40, scale: 0.53 }
+      { key: 'holy-knight', desktopOffsetX: -200, scale: 0.56 },
+      { key: 'wild-archer', desktopOffsetX: 10, scale: 0.54 },
+      { key: 'ember-mage', desktopOffsetX: 205, scale: 0.53 }
     ];
 
     for (const [index, entry] of cast.entries()) {
       const sprite = this.add
-        .image(entry.x, entry.y, entry.key)
+        .image(0, 0, entry.key)
         .setOrigin(0.5, 1)
         .setScale(entry.scale)
         .setAlpha(0.96)
         .setDepth(3 + index);
 
-      this.tweens.add({
-        targets: sprite,
-        y: entry.y - 12,
-        duration: 2600 + index * 180,
-        ease: 'Sine.easeInOut',
-        repeat: -1,
-        yoyo: true
+      this.castSprites.push({
+        sprite,
+        desktopOffsetX: entry.desktopOffsetX,
+        baseScale: entry.scale
       });
 
       this.tweens.add({
@@ -100,14 +109,13 @@ export class TitleScene extends Phaser.Scene {
       'Use speed, elevation, and turn timing to break their line.'
     ].join('\n');
 
-    this.add
-      .text(width / 2, frame.y - 86, description, {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '24px',
-        color: '#f3e5bd',
-        align: 'center',
-        lineSpacing: 12
-      })
+    this.descriptionText = this.add.text(0, 0, description, {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '24px',
+      color: '#f3e5bd',
+      align: 'center',
+      lineSpacing: 12
+    })
       .setOrigin(0.5)
       .setDepth(4);
 
@@ -117,26 +125,32 @@ export class TitleScene extends Phaser.Scene {
       this.scene.start('battle');
     };
 
-    const startButton = this.createButton(width / 2, frame.y + 40, 'Begin Skirmish', startBattle);
+    this.createButton('Begin Skirmish', startBattle);
 
-    const controlsText = this.add
-      .text(width / 2, frame.y + 118, 'Mouse: move and target   |   Space: wait   |   Q/E: rotate   |   R: restart   |   M: mute', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '20px',
-        color: '#d3c19a',
-        letterSpacing: 1
-      })
+    this.controlsText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '20px',
+      color: '#d3c19a',
+      align: 'center',
+      lineSpacing: 8
+    })
       .setOrigin(0.5)
       .setDepth(4);
 
     this.tweens.add({
-      targets: [startButton, controlsText],
+      targets: [this.startButton, this.controlsText],
       alpha: { from: 0.82, to: 1 },
       duration: 980,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+    });
+    this.handleResize(this.scale.gameSize);
 
     this.input.keyboard?.once('keydown-ENTER', () => {
       startBattle();
@@ -146,43 +160,124 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  private createButton(
-    x: number,
-    y: number,
-    label: string,
-    onClick: () => void
-  ): Phaser.GameObjects.Container {
-    const backing = this.add
+  private createButton(label: string, onClick: () => void): void {
+    this.startButtonBacking = this.add
       .rectangle(0, 0, 270, 62, 0x6d3a28, 0.9)
       .setStrokeStyle(2, 0xf1d79a, 0.9);
-    const shine = this.add.rectangle(0, -12, 248, 18, 0xf4dba1, 0.12);
-    const text = this.add.text(0, 0, label, {
+    this.startButtonShine = this.add.rectangle(0, -12, 248, 18, 0xf4dba1, 0.12);
+    this.startButtonText = this.add.text(0, 0, label, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '28px',
       color: '#fff5dd',
       fontStyle: 'bold',
       letterSpacing: 1
     });
-    text.setOrigin(0.5);
+    this.startButtonText.setOrigin(0.5);
 
-    const button = this.add.container(x, y, [backing, shine, text]).setDepth(4);
-    const hitArea = this.add
-      .zone(x, y, 270, 62)
+    this.startButton = this.add.container(0, 0, [
+      this.startButtonBacking,
+      this.startButtonShine,
+      this.startButtonText
+    ]).setDepth(4);
+
+    this.startButtonHitArea = this.add
+      .zone(0, 0, 270, 62)
       .setInteractive({ useHandCursor: true })
       .setDepth(5);
 
-    hitArea.on('pointerover', () => {
-      backing.setFillStyle(0x84503a, 0.96);
-      button.setScale(1.03);
+    this.startButtonHitArea.on('pointerover', () => {
+      this.startButtonBacking.setFillStyle(0x84503a, 0.96);
+      this.startButton.setScale(this.startButtonBaseScale * 1.03);
     });
 
-    hitArea.on('pointerout', () => {
-      backing.setFillStyle(0x6d3a28, 0.9);
-      button.setScale(1);
+    this.startButtonHitArea.on('pointerout', () => {
+      this.startButtonBacking.setFillStyle(0x6d3a28, 0.9);
+      this.startButton.setScale(this.startButtonBaseScale);
     });
 
-    hitArea.on('pointerdown', onClick);
+    this.startButtonHitArea.on('pointerdown', onClick);
+  }
 
-    return button;
+  private handleResize(gameSize: Phaser.Structs.Size): void {
+    const width = gameSize.width;
+    const height = gameSize.height;
+    const isPortrait = height > width;
+    const compact = width < 920 || height < 620;
+    const frameWidth = Math.min(width - 32, isPortrait ? width - 28 : width - 140);
+    const frameHeight = Math.min(height - 180, isPortrait ? height * 0.64 : height - 220);
+    const frameCenterY = isPortrait ? height * 0.55 : height * 0.56;
+    const titleY = Math.max(72, height * 0.16);
+    const subtitleY = titleY + (compact ? 42 : 58);
+    const descriptionY = frameCenterY - frameHeight * 0.3;
+    const buttonY = frameCenterY + frameHeight * 0.1;
+    const controlsY = frameCenterY + frameHeight * 0.28;
+    const buttonScale = compact ? 0.92 : 1;
+
+    this.backdropImage
+      .setPosition(width / 2, height / 2)
+      .setDisplaySize(width * 1.16, height * 1.16);
+    this.backdropShade
+      .setPosition(width / 2, height / 2)
+      .setSize(width * 1.18, height * 1.18);
+    this.frame
+      .setPosition(width / 2, frameCenterY)
+      .setSize(frameWidth, frameHeight);
+
+    this.titleText
+      .setPosition(width / 2, titleY)
+      .setFontSize(isPortrait ? 34 : compact ? 42 : 56)
+      .setLetterSpacing(isPortrait ? 7 : 12)
+      .setStroke('#2f1119', isPortrait ? 6 : 8);
+    this.subtitleText
+      .setPosition(width / 2, subtitleY)
+      .setFontSize(isPortrait ? 16 : compact ? 18 : 22)
+      .setWordWrapWidth(Math.max(240, width - 80), true);
+    this.descriptionText
+      .setPosition(width / 2, descriptionY)
+      .setFontSize(isPortrait ? 18 : compact ? 21 : 24)
+      .setWordWrapWidth(frameWidth - (isPortrait ? 56 : 120), true);
+
+    const controlsText = isPortrait
+      ? 'Tap units and tiles to command them.\nDrag the field to pan.\nUse the HUD buttons in battle to zoom, rotate, and mute.'
+      : compact
+        ? 'Tap or click to command units. Drag to pan. Use the battle HUD to zoom, rotate, and mute.'
+        : 'Tap or click to command units. Drag to pan. Use the battle HUD to zoom, rotate, and mute. R restarts.';
+
+    this.controlsText
+      .setPosition(width / 2, controlsY)
+      .setFontSize(isPortrait ? 14 : compact ? 16 : 20)
+      .setText(controlsText)
+      .setWordWrapWidth(frameWidth - 56, true);
+
+    const buttonWidth = isPortrait ? Math.min(286, width - 80) : compact ? 252 : 270;
+    const buttonHeight = isPortrait ? 68 : compact ? 60 : 62;
+    const shineWidth = Math.max(120, buttonWidth - 22);
+
+    this.startButtonBaseScale = buttonScale;
+    this.startButton.setPosition(width / 2, buttonY).setScale(buttonScale);
+    this.startButtonBacking.setSize(buttonWidth, buttonHeight);
+    this.startButtonShine.setSize(shineWidth, Math.max(14, buttonHeight * 0.28));
+    this.startButtonText.setFontSize(isPortrait ? 24 : compact ? 26 : 28);
+    this.startButtonHitArea
+      .setPosition(width / 2, buttonY)
+      .setSize(buttonWidth * buttonScale, buttonHeight * buttonScale);
+
+    if (isPortrait) {
+      const portraitSlots = [0.22, 0.5, 0.78];
+
+      for (const [index, cast] of this.castSprites.entries()) {
+        cast.sprite
+          .setPosition(width * portraitSlots[index], height - 28)
+          .setScale(cast.baseScale * 0.42);
+      }
+
+      return;
+    }
+
+    for (const cast of this.castSprites) {
+      cast.sprite
+        .setPosition(width / 2 + cast.desktopOffsetX, height - 28)
+        .setScale(cast.baseScale * (compact ? 0.82 : 1));
+    }
   }
 }

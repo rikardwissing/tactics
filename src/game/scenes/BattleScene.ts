@@ -87,13 +87,14 @@ type PanKeys = {
 
 const ROTATION_STEP_DEGREES = 90;
 const DEFAULT_BOARD_ZOOM = 1;
-const MIN_BOARD_ZOOM = 0.72;
+const BASE_MIN_BOARD_ZOOM = 0.72;
 const MAX_BOARD_ZOOM = 1.8;
 const BOARD_ZOOM_SENSITIVITY = 0.00055;
+const TOUCH_PAN_THRESHOLD = 14;
 const CHEST_DISPLAY_WIDTH = 47;
 const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
 
-const UI_PANELS = {
+const BASE_UI_PANELS = {
   topLeft: new Phaser.Geom.Rectangle(20, 18, 336, 132),
   bottomLeft: new Phaser.Geom.Rectangle(20, 514, 336, 186),
   topRight: new Phaser.Geom.Rectangle(904, 18, 356, 218),
@@ -101,10 +102,17 @@ const UI_PANELS = {
   portrait: new Phaser.Geom.Rectangle(1098, 58, 146, 150)
 } as const;
 
-const ACTION_MENU_PANELS = {
+const BASE_ACTION_MENU_PANELS = {
   root: new Phaser.Geom.Rectangle(904, 514, 136, 146),
   sub: new Phaser.Geom.Rectangle(1026, 514, 234, 186)
 } as const;
+
+type HudControlAction = 'zoom-in' | 'zoom-out' | 'rotate-left' | 'rotate-right' | 'mute';
+
+interface HudControl {
+  action: HudControlAction;
+  container: Phaser.GameObjects.Container;
+}
 
 const TERRAIN_TILE_ASSETS: Record<TerrainType, readonly string[]> = {
   grass: ['terrain-grass-a', 'terrain-grass-b'],
@@ -310,13 +318,74 @@ export class BattleScene extends Phaser.Scene {
   private actionMenuAlpha = 0;
   private actionMenuVisible = false;
   private actionMenuTween?: Phaser.Tweens.Tween;
-  private submenuPanelX = ACTION_MENU_PANELS.sub.x - 24;
+  private submenuPanelX = BASE_ACTION_MENU_PANELS.sub.x - 24;
   private submenuPanelAlpha = 0;
   private submenuOpen = false;
   private submenuTween?: Phaser.Tweens.Tween;
   private autoBattleEnabled = false;
   private timeOfDay: TimeOfDayId = 'dusk';
   private restarting = false;
+  private uiPanels = {
+    topLeft: new Phaser.Geom.Rectangle(
+      BASE_UI_PANELS.topLeft.x,
+      BASE_UI_PANELS.topLeft.y,
+      BASE_UI_PANELS.topLeft.width,
+      BASE_UI_PANELS.topLeft.height
+    ),
+    bottomLeft: new Phaser.Geom.Rectangle(
+      BASE_UI_PANELS.bottomLeft.x,
+      BASE_UI_PANELS.bottomLeft.y,
+      BASE_UI_PANELS.bottomLeft.width,
+      BASE_UI_PANELS.bottomLeft.height
+    ),
+    topRight: new Phaser.Geom.Rectangle(
+      BASE_UI_PANELS.topRight.x,
+      BASE_UI_PANELS.topRight.y,
+      BASE_UI_PANELS.topRight.width,
+      BASE_UI_PANELS.topRight.height
+    ),
+    bottomRight: new Phaser.Geom.Rectangle(
+      BASE_UI_PANELS.bottomRight.x,
+      BASE_UI_PANELS.bottomRight.y,
+      BASE_UI_PANELS.bottomRight.width,
+      BASE_UI_PANELS.bottomRight.height
+    ),
+    portrait: new Phaser.Geom.Rectangle(
+      BASE_UI_PANELS.portrait.x,
+      BASE_UI_PANELS.portrait.y,
+      BASE_UI_PANELS.portrait.width,
+      BASE_UI_PANELS.portrait.height
+    )
+  };
+  private actionMenuPanels = {
+    root: new Phaser.Geom.Rectangle(
+      BASE_ACTION_MENU_PANELS.root.x,
+      BASE_ACTION_MENU_PANELS.root.y,
+      BASE_ACTION_MENU_PANELS.root.width,
+      BASE_ACTION_MENU_PANELS.root.height
+    ),
+    sub: new Phaser.Geom.Rectangle(
+      BASE_ACTION_MENU_PANELS.sub.x,
+      BASE_ACTION_MENU_PANELS.sub.y,
+      BASE_ACTION_MENU_PANELS.sub.width,
+      BASE_ACTION_MENU_PANELS.sub.height
+    )
+  };
+  private hudControls: HudControl[] = [];
+  private showHudControls = false;
+  private showPortraitPanel = true;
+  private compactLayout = false;
+  private portraitLayout = false;
+  private visibleTurnOrderCount = 6;
+  private visibleLogLines = 3;
+  private actionMenuRowHeight = 22;
+  private submenuRowHeight = 22;
+  private touchPointerId: number | null = null;
+  private pendingTouchTap = false;
+  private touchTapOrigin = new Phaser.Math.Vector2();
+  private resultOverlayShade?: Phaser.GameObjects.Rectangle;
+  private resultOverlayTitle?: Phaser.GameObjects.Text;
+  private resultOverlayBody?: Phaser.GameObjects.Text;
   private rng = new Phaser.Math.RandomDataGenerator(['crimson-tactics']);
 
   constructor() {
@@ -362,9 +431,16 @@ export class BattleScene extends Phaser.Scene {
     this.turnActionUsed = false;
     this.boardRotationStep = 0;
     this.boardPivot = this.getBaseBoardPivot();
+    this.touchPointerId = null;
+    this.pendingTouchTap = false;
+    this.resultOverlayShade = undefined;
+    this.resultOverlayTitle = undefined;
+    this.resultOverlayBody = undefined;
 
-    this.backdropImage = this.add.image(640, 360, 'title-backdrop').setDisplaySize(1600, 960).setScrollFactor(0);
-    this.backdropShade = this.add.rectangle(640, 360, 1600, 960, 0x12070d, 0.58).setScrollFactor(0);
+    this.input.addPointer(2);
+
+    this.backdropImage = this.add.image(this.scale.width / 2, this.scale.height / 2, 'title-backdrop').setScrollFactor(0);
+    this.backdropShade = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x12070d, 0.58).setScrollFactor(0);
     this.createLightTexture();
 
     this.boardGraphics = this.add.graphics();
@@ -378,7 +454,7 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics.setDepth(860).setScrollFactor(0);
     this.submenuUiGraphics.setDepth(900).setScrollFactor(0);
     this.ambientOverlay = this.add
-      .rectangle(640, 360, 1600, 960, 0x102746, 0)
+      .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x102746, 0)
       .setDepth(44)
       .setScrollFactor(0);
 
@@ -392,8 +468,10 @@ export class BattleScene extends Phaser.Scene {
     this.createUi();
     this.createParticles();
     this.setupCameras();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.registerInputs();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
+    this.handleResize(this.scale.gameSize);
 
     this.pushLog('Dawn Company engages the Ashen Host on the ruined ridge.');
     this.pushLog('Take the crest and cut down the enemy casters first.');
@@ -409,6 +487,11 @@ export class BattleScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (this.phase === 'complete') {
+        return;
+      }
+
+      if (pointer.wasTouch) {
+        this.handleTouchPointerMove(pointer);
         return;
       }
 
@@ -437,6 +520,11 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.wasTouch) {
+        this.handleTouchPointerDown(pointer);
+        return;
+      }
+
       if (pointer.button === 1 || pointer.button === 2) {
         this.beginPan(pointer);
         return;
@@ -444,7 +532,13 @@ export class BattleScene extends Phaser.Scene {
 
       void this.handlePointerDown(pointer);
     });
-    this.input.on('pointerup', () => {
+
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.wasTouch) {
+        void this.handleTouchPointerUp(pointer);
+        return;
+      }
+
       this.isPanning = false;
     });
     this.input.on(
@@ -513,7 +607,68 @@ export class BattleScene extends Phaser.Scene {
     this.scene.restart({ levelId: this.level.id });
   }
 
+  private handleTouchPointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.isPointerOverUi(pointer.x, pointer.y)) {
+      void this.handlePointerDown(pointer);
+      return;
+    }
+
+    this.touchPointerId = pointer.id;
+    this.pendingTouchTap = true;
+    this.touchTapOrigin.set(pointer.x, pointer.y);
+  }
+
+  private handleTouchPointerMove(pointer: Phaser.Input.Pointer): void {
+    if (pointer.id !== this.touchPointerId) {
+      return;
+    }
+
+    if (this.isPanning) {
+      const camera = this.getWorldCamera();
+      this.setBoardScroll(
+        this.panCameraOrigin.x - (pointer.x - this.panPointerOrigin.x) / camera.zoom,
+        this.panCameraOrigin.y - (pointer.y - this.panPointerOrigin.y) / camera.zoom
+      );
+      return;
+    }
+
+    if (!pointer.isDown || !this.pendingTouchTap) {
+      return;
+    }
+
+    const distance = Phaser.Math.Distance.Between(
+      pointer.x,
+      pointer.y,
+      this.touchTapOrigin.x,
+      this.touchTapOrigin.y
+    );
+
+    if (distance <= TOUCH_PAN_THRESHOLD) {
+      return;
+    }
+
+    this.pendingTouchTap = false;
+    this.beginPan(pointer);
+  }
+
+  private async handleTouchPointerUp(pointer: Phaser.Input.Pointer): Promise<void> {
+    if (pointer.id !== this.touchPointerId) {
+      return;
+    }
+
+    const wasTap = this.pendingTouchTap;
+
+    this.pendingTouchTap = false;
+    this.touchPointerId = null;
+    this.isPanning = false;
+
+    if (wasTap) {
+      await this.handlePointerDown(pointer);
+    }
+  }
+
   private handleShutdown(): void {
+    this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.input.removeAllListeners();
     this.input.keyboard?.removeAllListeners();
     this.actionMenuTween?.stop();
@@ -521,6 +676,8 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.killAll();
     this.time.removeAllEvents();
     this.isPanning = false;
+    this.touchPointerId = null;
+    this.pendingTouchTap = false;
     this.restarting = false;
   }
 
@@ -554,6 +711,7 @@ export class BattleScene extends Phaser.Scene {
     this.worldCamera = this.cameras.main;
     this.worldCamera.setRotation(0);
     this.worldCamera.setZoom(DEFAULT_BOARD_ZOOM);
+    this.worldCamera.setSize(this.scale.width, this.scale.height);
 
     this.uiCamera?.destroy();
     this.uiCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
@@ -584,6 +742,7 @@ export class BattleScene extends Phaser.Scene {
       this.submenuTitleText,
       this.menuBodyText,
       this.menuHintText,
+      ...this.hudControls.map((control) => control.container),
       ...this.turnOrderTexts,
       ...this.actionMenuTexts,
       ...this.submenuTexts
@@ -1178,27 +1337,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createUi(): void {
-    this.headerText = this.add.text(UI_PANELS.topLeft.x + 16, UI_PANELS.topLeft.y + 12, this.level.name, {
+    this.headerText = this.add.text(0, 0, this.level.name, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '27px',
       fontStyle: 'bold',
       color: '#fff2d2'
     });
 
-    this.objectiveText = this.add.text(UI_PANELS.topLeft.x + 16, UI_PANELS.topLeft.y + 46, this.level.objective, {
+    this.objectiveText = this.add.text(0, 0, this.level.objective, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '16px',
-      color: '#d7c7a3',
-      wordWrap: { width: UI_PANELS.topLeft.width - 34 }
+      color: '#d7c7a3'
     });
 
-    this.phaseText = this.add.text(UI_PANELS.topLeft.x + 16, UI_PANELS.topLeft.y + 102, '', {
+    this.phaseText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '18px',
       color: '#f1d79a'
     });
 
-    this.autoBattleToggleText = this.add.text(UI_PANELS.topLeft.right - 16, UI_PANELS.topLeft.y + 16, '', {
+    this.autoBattleToggleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '14px',
       fontStyle: 'bold',
@@ -1207,14 +1365,14 @@ export class BattleScene extends Phaser.Scene {
     this.autoBattleToggleText.setOrigin(1, 0);
 
     this.turnOrderTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(UI_PANELS.bottomLeft.x + 16, UI_PANELS.bottomLeft.y + 92 + index * 15, '', {
+      this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '13px',
         color: '#eedfba'
       })
     );
 
-    this.activeBadge = this.add.text(UI_PANELS.topRight.x + 16, UI_PANELS.topRight.y + 14, '', {
+    this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '18px',
       fontStyle: 'bold',
@@ -1222,35 +1380,32 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.portrait = this.add
-      .image(UI_PANELS.portrait.centerX, UI_PANELS.portrait.centerY + 6, 'holy-knight')
+      .image(0, 0, 'holy-knight')
       .setVisible(false)
       .setScale(0.24);
 
-    this.detailTitleText = this.add.text(UI_PANELS.topRight.x + 16, UI_PANELS.topRight.y + 42, '', {
+    this.detailTitleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '23px',
       fontStyle: 'bold',
-      color: '#fff2d2',
-      wordWrap: { width: 150 }
+      color: '#fff2d2'
     });
 
-    this.detailBodyText = this.add.text(UI_PANELS.topRight.x + 16, UI_PANELS.topRight.y + 104, '', {
+    this.detailBodyText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '15px',
       color: '#d8c8a5',
-      lineSpacing: 4,
-      wordWrap: { width: 164 }
+      lineSpacing: 4
     });
 
-    this.logText = this.add.text(UI_PANELS.bottomLeft.x + 16, UI_PANELS.bottomLeft.y + 22, '', {
+    this.logText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '14px',
       color: '#e8dbba',
-      lineSpacing: 4,
-      wordWrap: { width: UI_PANELS.bottomLeft.width - 32 }
+      lineSpacing: 4
     });
 
-    this.menuTitleText = this.add.text(ACTION_MENU_PANELS.root.x + 12, ACTION_MENU_PANELS.root.y + 12, '', {
+    this.menuTitleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '20px',
       fontStyle: 'bold',
@@ -1258,14 +1413,14 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.actionMenuTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(ACTION_MENU_PANELS.root.x + 12, ACTION_MENU_PANELS.root.y + 48 + index * 22, '', {
+      this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '14px',
         color: '#e8dbba'
       })
     );
 
-    this.submenuTitleText = this.add.text(ACTION_MENU_PANELS.sub.x + 14, ACTION_MENU_PANELS.sub.y + 12, '', {
+    this.submenuTitleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '20px',
       fontStyle: 'bold',
@@ -1273,26 +1428,27 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.submenuTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(ACTION_MENU_PANELS.sub.x + 18, ACTION_MENU_PANELS.sub.y + 50 + index * 22, '', {
+      this.add.text(0, 0, '', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '15px',
         color: '#f2e3ba'
       })
     );
 
-    this.menuBodyText = this.add.text(ACTION_MENU_PANELS.sub.x + 14, ACTION_MENU_PANELS.sub.y + 104, '', {
+    this.menuBodyText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '12px',
       color: '#d8c8a5',
-      lineSpacing: 3,
-      wordWrap: { width: ACTION_MENU_PANELS.sub.width - 28 }
+      lineSpacing: 3
     });
 
-    this.menuHintText = this.add.text(ACTION_MENU_PANELS.sub.x + 14, ACTION_MENU_PANELS.sub.bottom - 22, '', {
+    this.menuHintText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '12px',
       color: '#cdbd95'
     });
+
+    this.createHudControls();
 
     const uiElements = [
       this.headerText,
@@ -1305,6 +1461,7 @@ export class BattleScene extends Phaser.Scene {
       this.detailBodyText,
       this.logText,
       this.menuTitleText,
+      ...this.hudControls.map((control) => control.container),
       ...this.actionMenuTexts,
       ...this.turnOrderTexts
     ];
@@ -1325,12 +1482,252 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.applyActionMenuAlpha();
+    this.updateUiLayout(this.scale.width, this.scale.height);
+  }
+
+  private createHudControls(): void {
+    const configs: Array<{ action: HudControlAction; label: string }> = [
+      { action: 'zoom-in', label: '+' },
+      { action: 'zoom-out', label: '-' },
+      { action: 'rotate-left', label: 'L' },
+      { action: 'rotate-right', label: 'R' },
+      { action: 'mute', label: 'M' }
+    ];
+
+    this.hudControls = configs.map(({ action, label }) => {
+      const backing = this.add.circle(0, 0, 24, 0x12070d, 0.88).setStrokeStyle(2, 0xd5ba7a, 0.42);
+      const text = this.add.text(0, 0, label, {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '20px',
+        fontStyle: 'bold',
+        color: '#fff2d2'
+      }).setOrigin(0.5);
+
+      const container = this.add.container(0, 0, [backing, text]).setSize(48, 48);
+
+      return { action, container };
+    });
+  }
+
+  private handleResize(gameSize: Phaser.Structs.Size): void {
+    const width = gameSize.width;
+    const height = gameSize.height;
+
+    this.backdropImage
+      .setPosition(width / 2, height / 2)
+      .setDisplaySize(width * 1.18, height * 1.18);
+    this.backdropShade
+      .setPosition(width / 2, height / 2)
+      .setSize(width * 1.22, height * 1.22);
+    this.ambientOverlay
+      .setPosition(width / 2, height / 2)
+      .setSize(width * 1.22, height * 1.22);
+
+    this.getWorldCamera().setSize(width, height);
+    this.uiCamera?.setViewport(0, 0, width, height).setSize(width, height);
+
+    this.updateUiLayout(width, height);
+    this.configureCamera(false);
+    this.drawHighlights();
+    this.layoutResultOverlay();
+    this.refreshUi();
+  }
+
+  private updateUiLayout(width: number, height: number): void {
+    const margin = Math.max(10, Math.round(Math.min(width, height) * 0.018));
+
+    this.portraitLayout = width < height;
+    this.compactLayout = width < 1180 || height < 720;
+    this.showHudControls = this.sys.game.device.input.touch || this.compactLayout;
+    this.showPortraitPanel = !this.portraitLayout && width >= 900 && height >= 540;
+    this.visibleTurnOrderCount = this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
+    this.visibleLogLines = this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
+    this.actionMenuRowHeight = this.portraitLayout ? 24 : this.compactLayout ? 20 : 22;
+    this.submenuRowHeight = this.portraitLayout ? 24 : this.compactLayout ? 20 : 22;
+
+    if (this.portraitLayout) {
+      const innerWidth = width - margin * 2;
+      const topHeight = height < 760 ? 100 : 108;
+      const detailHeight = height < 760 ? 120 : 132;
+      const bottomHeight = height < 760 ? 122 : 134;
+      const actionHeight = 164;
+      const rootWidth = Phaser.Math.Clamp(innerWidth * 0.32, 114, 130);
+      const actionY = Math.max(
+        margin + topHeight + detailHeight + 24,
+        height - margin - bottomHeight - 10 - actionHeight
+      );
+
+      this.uiPanels.topLeft.setTo(margin, margin, innerWidth, topHeight);
+      this.uiPanels.topRight.setTo(margin, this.uiPanels.topLeft.bottom + 10, innerWidth, detailHeight);
+      this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, innerWidth, bottomHeight);
+      this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
+      this.uiPanels.portrait.setTo(0, 0, 0, 0);
+
+      this.actionMenuPanels.root.setTo(margin, actionY, rootWidth, 148);
+      this.actionMenuPanels.sub.setTo(
+        margin + rootWidth - 10,
+        actionY,
+        innerWidth - rootWidth + 10,
+        actionHeight
+      );
+    } else {
+      const leftWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.31 : 0.27), 260, BASE_UI_PANELS.topLeft.width);
+      const topHeight = this.compactLayout ? 116 : BASE_UI_PANELS.topLeft.height;
+      const bottomHeight = this.compactLayout ? 166 : BASE_UI_PANELS.bottomLeft.height;
+      const rightWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.3 : 0.28), 258, BASE_UI_PANELS.topRight.width);
+      const rightHeight = this.compactLayout ? 190 : BASE_UI_PANELS.topRight.height;
+      const actionRootWidth = this.compactLayout ? 146 : BASE_ACTION_MENU_PANELS.root.width;
+      const actionRootHeight = this.compactLayout ? 154 : BASE_ACTION_MENU_PANELS.root.height;
+      const actionSubWidth = Phaser.Math.Clamp(
+        width * (this.compactLayout ? 0.22 : 0.2),
+        208,
+        BASE_ACTION_MENU_PANELS.sub.width
+      );
+      const actionSubHeight = this.compactLayout ? 190 : BASE_ACTION_MENU_PANELS.sub.height;
+      const subX = width - margin - actionSubWidth;
+      const actionY = height - margin - actionSubHeight;
+      const portraitWidth = this.showPortraitPanel ? (this.compactLayout ? 116 : BASE_UI_PANELS.portrait.width) : 0;
+      const portraitHeight = this.showPortraitPanel ? (this.compactLayout ? 120 : BASE_UI_PANELS.portrait.height) : 0;
+
+      this.uiPanels.topLeft.setTo(margin, margin, leftWidth, topHeight);
+      this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, leftWidth, bottomHeight);
+      this.uiPanels.topRight.setTo(width - margin - rightWidth, margin, rightWidth, rightHeight);
+      this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
+      this.uiPanels.portrait.setTo(
+        this.uiPanels.topRight.right - portraitWidth - 16,
+        this.uiPanels.topRight.y + 52,
+        portraitWidth,
+        portraitHeight
+      );
+
+      this.actionMenuPanels.sub.setTo(subX, actionY, actionSubWidth, actionSubHeight);
+      this.actionMenuPanels.root.setTo(subX - actionRootWidth + 14, actionY, actionRootWidth, actionRootHeight);
+    }
+
+    this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
+
+    const detailTextWidth = Math.max(
+      132,
+      this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
+    );
+    const turnOrderStartY = this.uiPanels.bottomLeft.y + (this.portraitLayout ? 70 : this.compactLayout ? 82 : 92);
+    const turnOrderGap = this.portraitLayout ? 15 : 15;
+
+    this.headerText
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 12)
+      .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27);
+    this.objectiveText
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.portraitLayout ? 40 : 46))
+      .setFontSize(this.portraitLayout ? 14 : this.compactLayout ? 15 : 16)
+      .setWordWrapWidth(this.uiPanels.topLeft.width - 34, true);
+    this.phaseText
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - 30)
+      .setFontSize(this.portraitLayout ? 15 : this.compactLayout ? 16 : 18);
+    this.autoBattleToggleText
+      .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + 16)
+      .setFontSize(this.portraitLayout ? 13 : 14);
+
+    this.logText
+      .setPosition(this.uiPanels.bottomLeft.x + 16, this.uiPanels.bottomLeft.y + 18)
+      .setFontSize(this.portraitLayout ? 13 : 14)
+      .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
+
+    for (const [index, text] of this.turnOrderTexts.entries()) {
+      text
+        .setPosition(this.uiPanels.bottomLeft.x + 16, turnOrderStartY + index * turnOrderGap)
+        .setFontSize(this.portraitLayout ? 12 : 13)
+        .setVisible(index < this.visibleTurnOrderCount);
+    }
+
+    this.activeBadge
+      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 14)
+      .setFontSize(this.portraitLayout ? 16 : 18);
+
+    this.portrait
+      .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY + 6)
+      .setVisible(this.showPortraitPanel && this.portrait.visible);
+
+    this.detailTitleText
+      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + (this.showPortraitPanel ? 42 : 38))
+      .setFontSize(this.portraitLayout ? 19 : this.compactLayout ? 21 : 23)
+      .setWordWrapWidth(detailTextWidth, true);
+    this.detailBodyText
+      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + (this.showPortraitPanel ? 100 : 76))
+      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
+      .setWordWrapWidth(detailTextWidth + (this.showPortraitPanel ? 0 : 6), true);
+
+    this.menuTitleText
+      .setPosition(this.actionMenuPanels.root.x + 12, this.actionMenuPanels.root.y + 12)
+      .setFontSize(this.portraitLayout ? 18 : 20);
+    for (const [index, text] of this.actionMenuTexts.entries()) {
+      text
+        .setPosition(
+          this.actionMenuPanels.root.x + 12,
+          this.actionMenuPanels.root.y + 48 + index * this.actionMenuRowHeight
+        )
+        .setFontSize(this.portraitLayout ? 13 : 14);
+    }
+
+    this.submenuTitleText.setFontSize(this.portraitLayout ? 18 : 20);
+    this.menuBodyText
+      .setFontSize(this.portraitLayout ? 11 : 12)
+      .setWordWrapWidth(this.actionMenuPanels.sub.width - 28, true);
+    this.menuHintText.setFontSize(this.portraitLayout ? 11 : 12);
+    for (const text of this.submenuTexts) {
+      text.setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15);
+    }
+
+    this.layoutHudControls(margin, width, height);
     this.layoutSubmenuUi();
+    this.layoutResultOverlay();
+  }
+
+  private layoutHudControls(margin: number, width: number, height: number): void {
+    const availableTop = this.uiPanels.topRight.bottom + 16;
+    const availableBottom = Math.min(this.actionMenuPanels.root.y, this.uiPanels.bottomLeft.y) - 16;
+    const span = Math.max(180, availableBottom - availableTop);
+    const scale = this.portraitLayout ? 0.82 : this.compactLayout ? 0.84 : 0.76;
+    const gap = 8;
+    const totalHeight = this.hudControls.length * 48 * scale + (this.hudControls.length - 1) * gap;
+    const startY = Phaser.Math.Clamp(
+      availableTop + (span - totalHeight) / 2,
+      availableTop,
+      Math.max(availableTop, availableBottom - totalHeight)
+    );
+    const x = width - margin - 28 * scale;
+
+    for (const [index, control] of this.hudControls.entries()) {
+      control.container
+        .setPosition(x, startY + index * (48 * scale + gap))
+        .setScale(scale)
+        .setVisible(this.showHudControls);
+    }
+  }
+
+  private layoutResultOverlay(): void {
+    if (!this.resultOverlayShade || !this.resultOverlayTitle || !this.resultOverlayBody) {
+      return;
+    }
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+
+    this.resultOverlayShade
+      .setPosition(width / 2, height / 2)
+      .setSize(width, height);
+    this.resultOverlayTitle
+      .setPosition(width / 2, height * 0.4)
+      .setFontSize(this.portraitLayout ? 46 : this.compactLayout ? 58 : 74);
+    this.resultOverlayBody
+      .setPosition(width / 2, height * 0.54)
+      .setFontSize(this.portraitLayout ? 18 : 24)
+      .setWordWrapWidth(Math.min(width - 56, 560), true);
   }
 
   private configureCamera(centerOnBoard = false): void {
     const camera = this.getWorldCamera();
     const boardBounds = this.getBoardBounds();
+    const boardFocus = this.getBoardFocusPoint();
     const paddingX = 360;
     const paddingY = 240;
     this.cameraBounds.setTo(
@@ -1348,10 +1745,39 @@ export class BattleScene extends Phaser.Scene {
     );
 
     if (centerOnBoard) {
-      camera.centerOn(boardBounds.centerX, boardBounds.centerY + 24);
+      camera.centerOn(boardFocus.x, boardFocus.y);
     }
 
     this.setBoardScroll(camera.scrollX, camera.scrollY);
+  }
+
+  private getMinimumBoardZoom(): number {
+    const camera = this.getWorldCamera();
+    const fitSize = this.getBoardFitSize();
+    const fitWidth = Math.max(1, camera.width - 24) / fitSize.width;
+    const fitHeight = Math.max(1, camera.height - 24) / fitSize.height;
+
+    return Math.min(BASE_MIN_BOARD_ZOOM, fitWidth, fitHeight);
+  }
+
+  private getBoardFocusPoint(): Phaser.Math.Vector2 {
+    return this.boardPivot;
+  }
+
+  private getBoardFitSize(): { width: number; height: number } {
+    const boardBounds = this.getBoardBounds();
+    const boardFocus = this.getBoardFocusPoint();
+
+    return {
+      width: Math.max(
+        boardBounds.width,
+        Math.max(boardFocus.x - boardBounds.left, boardBounds.right - boardFocus.x) * 2
+      ),
+      height: Math.max(
+        boardBounds.height,
+        Math.max(boardFocus.y - boardBounds.top, boardBounds.bottom - boardFocus.y) * 2
+      )
+    };
   }
 
   private createUnits(): void {
@@ -2197,6 +2623,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.boardRotationStep = Phaser.Math.Wrap(this.boardRotationStep + stepDelta, 0, 4);
+    this.boardPivot = this.getBaseBoardPivot();
     this.hoverTile = null;
     this.getWorldCamera().setRotation(0);
     this.drawBoard();
@@ -2260,17 +2687,19 @@ export class BattleScene extends Phaser.Scene {
 
   private setBoardScroll(scrollX: number, scrollY: number): void {
     const camera = this.getWorldCamera();
+    const boardFocus = this.getBoardFocusPoint();
+    const fitSize = this.getBoardFitSize();
     const visibleWidth = camera.width / camera.zoom;
     const visibleHeight = camera.height / camera.zoom;
     const maxScrollX = this.cameraBounds.right - visibleWidth;
     const maxScrollY = this.cameraBounds.bottom - visibleHeight;
     const resolvedScrollX =
-      maxScrollX <= this.cameraBounds.x
-        ? this.cameraBounds.centerX - visibleWidth / 2
+      visibleWidth >= fitSize.width || maxScrollX <= this.cameraBounds.x
+        ? boardFocus.x - visibleWidth / 2
         : Phaser.Math.Clamp(scrollX, this.cameraBounds.x, maxScrollX);
     const resolvedScrollY =
-      maxScrollY <= this.cameraBounds.y
-        ? this.cameraBounds.centerY - visibleHeight / 2
+      visibleHeight >= fitSize.height || maxScrollY <= this.cameraBounds.y
+        ? boardFocus.y - visibleHeight / 2
         : Phaser.Math.Clamp(scrollY, this.cameraBounds.y, maxScrollY);
 
     camera.setScroll(resolvedScrollX, resolvedScrollY);
@@ -2283,11 +2712,30 @@ export class BattleScene extends Phaser.Scene {
 
     const camera = this.getWorldCamera();
     const zoomFactor = Math.exp(-deltaY * BOARD_ZOOM_SENSITIVITY);
+    const minimumZoom = this.getMinimumBoardZoom();
     const nextZoom = Phaser.Math.Clamp(
       camera.zoom * zoomFactor,
-      MIN_BOARD_ZOOM,
+      minimumZoom,
       MAX_BOARD_ZOOM
     );
+
+    this.applyBoardZoom(nextZoom, screenX, screenY);
+  }
+
+  private stepBoardZoom(step: number): void {
+    const camera = this.getWorldCamera();
+    const minimumZoom = this.getMinimumBoardZoom();
+    const nextZoom = Phaser.Math.Clamp(
+      camera.zoom * (step > 0 ? 1.16 : 1 / 1.16),
+      minimumZoom,
+      MAX_BOARD_ZOOM
+    );
+
+    this.applyBoardZoom(nextZoom, this.scale.width / 2, this.scale.height / 2);
+  }
+
+  private applyBoardZoom(nextZoom: number, screenX: number, screenY: number): void {
+    const camera = this.getWorldCamera();
 
     if (Math.abs(nextZoom - camera.zoom) < 0.001) {
       return;
@@ -2310,17 +2758,21 @@ export class BattleScene extends Phaser.Scene {
 
   private isPointerOverUi(x: number, y: number): boolean {
     const staticPanels = [
-      UI_PANELS.topLeft,
-      UI_PANELS.bottomLeft,
-      UI_PANELS.topRight,
-      UI_PANELS.portrait
+      this.uiPanels.topLeft,
+      this.uiPanels.bottomLeft,
+      this.uiPanels.topRight,
+      ...(this.showPortraitPanel ? [this.uiPanels.portrait] : [])
     ];
 
     if (staticPanels.some((panel) => panel.contains(x, y))) {
       return true;
     }
 
-    if (this.actionMenuAlpha > 0.01 && ACTION_MENU_PANELS.root.contains(x, y)) {
+    if (this.showHudControls && this.hudControls.some((control) => control.container.visible && control.container.getBounds().contains(x, y))) {
+      return true;
+    }
+
+    if (this.actionMenuAlpha > 0.01 && this.actionMenuPanels.root.contains(x, y)) {
       return true;
     }
 
@@ -2330,9 +2782,9 @@ export class BattleScene extends Phaser.Scene {
 
     return this.getSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
       this.submenuPanelX,
-      ACTION_MENU_PANELS.sub.y,
-      ACTION_MENU_PANELS.sub.width,
-      ACTION_MENU_PANELS.sub.height
+      this.actionMenuPanels.sub.y,
+      this.actionMenuPanels.sub.width,
+      this.actionMenuPanels.sub.height
     ).contains(x, y);
   }
 
@@ -2467,8 +2919,8 @@ export class BattleScene extends Phaser.Scene {
     this.submenuOpen = open;
     this.submenuTween?.stop();
 
-    const closedX = ACTION_MENU_PANELS.sub.x - 26;
-    const targetX = open ? ACTION_MENU_PANELS.sub.x : closedX;
+    const closedX = this.actionMenuPanels.sub.x - 26;
+    const targetX = open ? this.actionMenuPanels.sub.x : closedX;
     const targetAlpha = open ? 1 : 0;
 
     if (!open && this.submenuPanelAlpha <= 0.01) {
@@ -2502,8 +2954,8 @@ export class BattleScene extends Phaser.Scene {
     const submenuEntries = this.getSubmenuEntries();
     const submenuInfoY =
       submenuEntries.length > 0
-        ? ACTION_MENU_PANELS.sub.y + 56 + Math.min(submenuEntries.length, 4) * 22
-        : ACTION_MENU_PANELS.sub.y + 54;
+        ? this.actionMenuPanels.sub.y + 56 + Math.min(submenuEntries.length, 4) * this.submenuRowHeight
+        : this.actionMenuPanels.sub.y + 54;
 
     this.submenuUiGraphics.clear();
 
@@ -2511,38 +2963,99 @@ export class BattleScene extends Phaser.Scene {
       this.submenuUiGraphics.fillStyle(0x18100d, 0.96 * alpha);
       this.submenuUiGraphics.fillRoundedRect(
         this.submenuPanelX,
-        ACTION_MENU_PANELS.sub.y,
-        ACTION_MENU_PANELS.sub.width,
-        ACTION_MENU_PANELS.sub.height,
+        this.actionMenuPanels.sub.y,
+        this.actionMenuPanels.sub.width,
+        this.actionMenuPanels.sub.height,
         16
       );
       this.submenuUiGraphics.lineStyle(2, 0xd5ba7a, 0.34 * alpha);
       this.submenuUiGraphics.strokeRoundedRect(
         this.submenuPanelX,
-        ACTION_MENU_PANELS.sub.y,
-        ACTION_MENU_PANELS.sub.width,
-        ACTION_MENU_PANELS.sub.height,
+        this.actionMenuPanels.sub.y,
+        this.actionMenuPanels.sub.width,
+        this.actionMenuPanels.sub.height,
         16
       );
       this.submenuUiGraphics.lineStyle(1, 0xd5ba7a, 0.18 * alpha);
       this.submenuUiGraphics.lineBetween(
         this.submenuPanelX + 12,
-        ACTION_MENU_PANELS.sub.y + 40,
-        this.submenuPanelX + ACTION_MENU_PANELS.sub.width - 12,
-        ACTION_MENU_PANELS.sub.y + 40
+        this.actionMenuPanels.sub.y + 40,
+        this.submenuPanelX + this.actionMenuPanels.sub.width - 12,
+        this.actionMenuPanels.sub.y + 40
       );
     }
 
-    this.submenuTitleText.setPosition(this.submenuPanelX + 14, ACTION_MENU_PANELS.sub.y + 12).setAlpha(alpha).setVisible(visible);
+    this.submenuTitleText
+      .setPosition(this.submenuPanelX + 14, this.actionMenuPanels.sub.y + 12)
+      .setAlpha(alpha)
+      .setVisible(visible);
     this.menuBodyText.setPosition(this.submenuPanelX + 14, submenuInfoY).setAlpha(alpha).setVisible(visible);
-    this.menuHintText.setPosition(this.submenuPanelX + 14, ACTION_MENU_PANELS.sub.bottom - 22).setAlpha(alpha).setVisible(visible);
+    this.menuHintText
+      .setPosition(this.submenuPanelX + 14, this.actionMenuPanels.sub.bottom - 22)
+      .setAlpha(alpha)
+      .setVisible(visible);
 
     for (const [index, text] of this.submenuTexts.entries()) {
       text
-        .setPosition(this.submenuPanelX + 18, ACTION_MENU_PANELS.sub.y + 50 + index * 22)
+        .setPosition(this.submenuPanelX + 18, this.actionMenuPanels.sub.y + 50 + index * this.submenuRowHeight)
         .setAlpha(alpha)
         .setVisible(visible);
     }
+  }
+
+  private getActionMenuEntryBounds(index: number): Phaser.Geom.Rectangle {
+    return new Phaser.Geom.Rectangle(
+      this.actionMenuPanels.root.x + 10,
+      this.actionMenuPanels.root.y + 44 + index * this.actionMenuRowHeight,
+      this.actionMenuPanels.root.width - 20,
+      this.actionMenuRowHeight + 8
+    );
+  }
+
+  private getSubmenuEntryBounds(index: number): Phaser.Geom.Rectangle {
+    return new Phaser.Geom.Rectangle(
+      this.submenuPanelX + 12,
+      this.actionMenuPanels.sub.y + 46 + index * this.submenuRowHeight,
+      this.actionMenuPanels.sub.width - 24,
+      this.submenuRowHeight + 8
+    );
+  }
+
+  private handleHudControlPointer(x: number, y: number): boolean {
+    if (!this.showHudControls) {
+      return false;
+    }
+
+    for (const control of this.hudControls) {
+      if (!control.container.visible || !control.container.getBounds().contains(x, y)) {
+        continue;
+      }
+
+      switch (control.action) {
+        case 'zoom-in':
+          this.stepBoardZoom(1);
+          return true;
+        case 'zoom-out':
+          this.stepBoardZoom(-1);
+          return true;
+        case 'rotate-left':
+          this.rotateBoard(-1);
+          return true;
+        case 'rotate-right':
+          this.rotateBoard(1);
+          return true;
+        case 'mute': {
+          const muted = audioDirector.toggleMute();
+          this.pushLog(`Audio ${muted ? 'muted' : 'enabled'}.`);
+          this.refreshUi();
+          return true;
+        }
+        default:
+          return false;
+      }
+    }
+
+    return false;
   }
 
   private getSubmenuEntries(): SubmenuEntry[] {
@@ -2623,14 +3136,14 @@ export class BattleScene extends Phaser.Scene {
     const submenuEntries = this.getSubmenuEntries();
     const submenuBounds = new Phaser.Geom.Rectangle(
       this.submenuPanelX,
-      ACTION_MENU_PANELS.sub.y,
-      ACTION_MENU_PANELS.sub.width,
-      ACTION_MENU_PANELS.sub.height
+      this.actionMenuPanels.sub.y,
+      this.actionMenuPanels.sub.width,
+      this.actionMenuPanels.sub.height
     );
 
     if (this.getSubmenuVisibleAlpha() > 0.01 && submenuBounds.contains(x, y)) {
       for (const [index, entry] of submenuEntries.entries()) {
-        if (this.submenuTexts[index].getBounds().contains(x, y)) {
+        if (this.getSubmenuEntryBounds(index).contains(x, y)) {
           if (entry.enabled) {
             await this.activateSubmenuEntry(entry);
           }
@@ -2642,9 +3155,9 @@ export class BattleScene extends Phaser.Scene {
       return this.isSubmenuPhase();
     }
 
-    if (this.actionMenuAlpha > 0.01 && ACTION_MENU_PANELS.root.contains(x, y)) {
+    if (this.actionMenuAlpha > 0.01 && this.actionMenuPanels.root.contains(x, y)) {
       for (const [index, entry] of entries.entries()) {
-        if (this.actionMenuTexts[index].getBounds().contains(x, y)) {
+        if (this.getActionMenuEntryBounds(index).contains(x, y)) {
           if (entry.enabled) {
             await this.activateMenuEntry(entry);
           }
@@ -2769,11 +3282,23 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async handlePointerDown(pointer: Phaser.Input.Pointer): Promise<void> {
-    if (this.busy || this.phase === 'complete') {
+    if (this.phase === 'complete') {
+      this.restartBattle();
       return;
     }
 
-    if (this.autoBattleToggleText.getBounds().contains(pointer.x, pointer.y)) {
+    if (this.busy) {
+      return;
+    }
+
+    if (this.handleHudControlPointer(pointer.x, pointer.y)) {
+      return;
+    }
+
+    const autoBattleBounds = this.autoBattleToggleText.getBounds();
+    Phaser.Geom.Rectangle.Inflate(autoBattleBounds, 12, 8);
+
+    if (autoBattleBounds.contains(pointer.x, pointer.y)) {
       await this.toggleAutoBattle();
       return;
     }
@@ -3257,47 +3782,55 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    for (const step of path) {
-      const tile = getTile(this.map, step.x, step.y);
+    const camera = this.getWorldCamera();
+    camera.startFollow(view.container, false, 0.2, 0.2);
 
-      if (!tile) {
-        continue;
-      }
+    try {
+      for (const step of path) {
+        const tile = getTile(this.map, step.x, step.y);
 
-      const destination = this.isoToScreen(tile);
-      const startDepth = view.container.depth;
-      const destinationDepth = this.getUnitDepth(tile);
-      audioDirector.playStep();
+        if (!tile) {
+          continue;
+        }
 
-      await new Promise<void>((resolve) => {
-        this.tweens.add({
-          targets: view.container,
-          x: destination.x,
-          y: destination.y - 10,
-          duration: 150,
-          ease: 'Quad.easeOut',
-          onUpdate: (_tween, target) => {
-            const progress = Phaser.Math.Easing.Quadratic.Out(_tween.progress);
-            target.setDepth(Phaser.Math.Linear(startDepth, destinationDepth, progress));
-          },
-          onComplete: () => {
-            view.container.setDepth(destinationDepth);
-            this.tweens.add({
-              targets: view.container,
-              y: destination.y,
-              duration: 90,
-              ease: 'Quad.easeIn',
-              onUpdate: () => {
-                view.container.setDepth(destinationDepth);
-              },
-              onComplete: () => {
-                view.container.setDepth(destinationDepth);
-                resolve();
-              }
-            });
-          }
+        const destination = this.isoToScreen(tile);
+        const startDepth = view.container.depth;
+        const destinationDepth = this.getUnitDepth(tile);
+        audioDirector.playStep();
+
+        await new Promise<void>((resolve) => {
+          this.tweens.add({
+            targets: view.container,
+            x: destination.x,
+            y: destination.y - 10,
+            duration: 150,
+            ease: 'Quad.easeOut',
+            onUpdate: (_tween, target) => {
+              const progress = Phaser.Math.Easing.Quadratic.Out(_tween.progress);
+              target.setDepth(Phaser.Math.Linear(startDepth, destinationDepth, progress));
+            },
+            onComplete: () => {
+              view.container.setDepth(destinationDepth);
+              this.tweens.add({
+                targets: view.container,
+                y: destination.y,
+                duration: 90,
+                ease: 'Quad.easeIn',
+                onUpdate: () => {
+                  view.container.setDepth(destinationDepth);
+                },
+                onComplete: () => {
+                  view.container.setDepth(destinationDepth);
+                  resolve();
+                }
+              });
+            }
+          });
         });
-      });
+      }
+    } finally {
+      camera.stopFollow();
+      this.setBoardScroll(camera.scrollX, camera.scrollY);
     }
   }
 
@@ -3829,9 +4362,12 @@ export class BattleScene extends Phaser.Scene {
     this.drawHighlights();
     this.refreshUi();
 
-    this.registerUiObject(this.add.rectangle(640, 360, 1280, 720, 0x090407, 0.62).setDepth(1000).setScrollFactor(0));
-    this.registerUiObject(this.add
-      .text(640, 280, result.toUpperCase(), {
+    this.resultOverlayShade = this.registerUiObject(this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x090407, 0.62)
+      .setDepth(1000)
+      .setScrollFactor(0));
+    this.resultOverlayTitle = this.registerUiObject(this.add
+      .text(0, 0, result.toUpperCase(), {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '74px',
         fontStyle: 'bold',
@@ -3843,13 +4379,13 @@ export class BattleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(1001)
       .setScrollFactor(0));
-    this.registerUiObject(this.add
+    this.resultOverlayBody = this.registerUiObject(this.add
       .text(
-        640,
-        376,
+        0,
+        0,
         result === 'Victory'
-          ? 'The chapel ridge is yours. Press R to battle again or Esc for the title.'
-          : 'The Ashen Host holds the altar. Press R to try again or Esc for the title.',
+          ? 'The chapel ridge is yours.\nTap or click to battle again.'
+          : 'The Ashen Host holds the altar.\nTap or click to try again.',
         {
           fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
           fontSize: '24px',
@@ -3860,6 +4396,7 @@ export class BattleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(1001)
       .setScrollFactor(0));
+    this.layoutResultOverlay();
   }
 
   private refreshUi(): void {
@@ -3871,9 +4408,14 @@ export class BattleScene extends Phaser.Scene {
       .setText(`Auto ${this.autoBattleEnabled ? 'ON' : 'OFF'}`)
       .setColor(this.autoBattleEnabled ? '#fff1bc' : '#bca982');
 
-    const queue = projectTurnOrder(this.units, 6);
+    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
 
     for (const [index, text] of this.turnOrderTexts.entries()) {
+      if (index >= this.visibleTurnOrderCount) {
+        text.setText('');
+        continue;
+      }
+
       const unit = queue[index];
 
       if (!unit) {
@@ -3890,9 +4432,11 @@ export class BattleScene extends Phaser.Scene {
     const hoveredProp = this.hoverTile ? this.getPropAt(this.hoverTile.x, this.hoverTile.y) : null;
 
     if (focusUnit) {
-      this.portrait.setTexture(focusUnit.spriteKey).setVisible(true);
-      this.portrait.displayHeight = 100;
-      this.portrait.scaleX = this.portrait.scaleY;
+      this.portrait.setTexture(focusUnit.spriteKey).setVisible(this.showPortraitPanel);
+      if (this.showPortraitPanel) {
+        this.portrait.displayHeight = Math.max(82, this.uiPanels.portrait.height - 28);
+        this.portrait.scaleX = this.portrait.scaleY;
+      }
       this.detailTitleText.setText(`${focusUnit.name}\n${focusUnit.className}`);
       this.detailBodyText.setText(
         [
@@ -3922,12 +4466,14 @@ export class BattleScene extends Phaser.Scene {
         [
           'Player turns begin with movement.',
           'Higher tiles boost damage and reduce return fire.',
-          'Right-drag or use WASD/arrow keys to pan. Scroll zooms. Q/E rotate the field. T cycles scene lighting.'
+          this.showHudControls
+            ? 'Drag to pan. Use the HUD buttons to zoom, rotate, and mute.'
+            : 'Right-drag or use WASD/arrow keys to pan. Scroll zooms. Q/E rotate the field. T cycles scene lighting.'
         ].join('\n')
       );
     }
 
-    this.logText.setText(this.logLines.slice(0, 3).join('\n'));
+    this.logText.setText(this.logLines.slice(0, this.visibleLogLines).join('\n'));
 
     const menuEntries = this.getMenuEntries();
     const currentMenuAction = this.getCurrentMenuAction();
@@ -3972,9 +4518,9 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics.clear();
 
     const panels = [
-      UI_PANELS.topLeft,
-      UI_PANELS.bottomLeft,
-      UI_PANELS.topRight
+      this.uiPanels.topLeft,
+      this.uiPanels.bottomLeft,
+      this.uiPanels.topRight
     ];
 
     for (const panel of panels) {
@@ -3987,45 +4533,47 @@ export class BattleScene extends Phaser.Scene {
     if (this.actionMenuAlpha > 0.01) {
       this.uiGraphics.fillStyle(0x12070d, 0.94 * this.actionMenuAlpha);
       this.uiGraphics.fillRoundedRect(
-        ACTION_MENU_PANELS.root.x,
-        ACTION_MENU_PANELS.root.y,
-        ACTION_MENU_PANELS.root.width,
-        ACTION_MENU_PANELS.root.height,
+        this.actionMenuPanels.root.x,
+        this.actionMenuPanels.root.y,
+        this.actionMenuPanels.root.width,
+        this.actionMenuPanels.root.height,
         16
       );
       this.uiGraphics.lineStyle(2, 0xd5ba7a, 0.42 * this.actionMenuAlpha);
       this.uiGraphics.strokeRoundedRect(
-        ACTION_MENU_PANELS.root.x,
-        ACTION_MENU_PANELS.root.y,
-        ACTION_MENU_PANELS.root.width,
-        ACTION_MENU_PANELS.root.height,
+        this.actionMenuPanels.root.x,
+        this.actionMenuPanels.root.y,
+        this.actionMenuPanels.root.width,
+        this.actionMenuPanels.root.height,
         16
       );
       this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.22 * this.actionMenuAlpha);
       this.uiGraphics.lineBetween(
-        ACTION_MENU_PANELS.root.x + 10,
-        ACTION_MENU_PANELS.root.y + 40,
-        ACTION_MENU_PANELS.root.right - 10,
-        ACTION_MENU_PANELS.root.y + 40
+        this.actionMenuPanels.root.x + 10,
+        this.actionMenuPanels.root.y + 40,
+        this.actionMenuPanels.root.right - 10,
+        this.actionMenuPanels.root.y + 40
       );
     }
 
-    this.uiGraphics.fillStyle(0x5f2a36, 0.15);
-    this.uiGraphics.fillRoundedRect(
-      UI_PANELS.portrait.x,
-      UI_PANELS.portrait.y,
-      UI_PANELS.portrait.width,
-      UI_PANELS.portrait.height,
-      14
-    );
-    this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.22);
-    this.uiGraphics.strokeRoundedRect(
-      UI_PANELS.portrait.x,
-      UI_PANELS.portrait.y,
-      UI_PANELS.portrait.width,
-      UI_PANELS.portrait.height,
-      14
-    );
+    if (this.showPortraitPanel) {
+      this.uiGraphics.fillStyle(0x5f2a36, 0.15);
+      this.uiGraphics.fillRoundedRect(
+        this.uiPanels.portrait.x,
+        this.uiPanels.portrait.y,
+        this.uiPanels.portrait.width,
+        this.uiPanels.portrait.height,
+        14
+      );
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.22);
+      this.uiGraphics.strokeRoundedRect(
+        this.uiPanels.portrait.x,
+        this.uiPanels.portrait.y,
+        this.uiPanels.portrait.width,
+        this.uiPanels.portrait.height,
+        14
+      );
+    }
   }
 
   private describePhase(): string {
@@ -4137,14 +4685,14 @@ export class BattleScene extends Phaser.Scene {
   private getMenuHintText(): string {
     switch (this.phase) {
       case 'player-abilities':
-        return 'Space closes.';
+        return this.showHudControls ? 'Tap an ability.' : 'Space closes.';
       case 'player-items':
       case 'player-move':
-        return 'Space returns.';
+        return this.showHudControls ? 'Tap a command or the field.' : 'Space returns.';
       case 'player-action':
-        return 'Space backs out.';
+        return this.showHudControls ? 'Tap a target.' : 'Space backs out.';
       case 'player-menu':
-        return 'Click a command.';
+        return this.showHudControls ? 'Tap a command.' : 'Click a command.';
       default:
         return 'Chests open when a player unit ends movement on them.';
     }

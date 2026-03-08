@@ -8,25 +8,34 @@ if (!app) {
 }
 
 app.innerHTML = `
-  <main class="shell">
-    <section class="stage-frame">
-      <div class="stage-header">
-        <div>
-          <p class="eyebrow">Phaser 3 + TypeScript</p>
-          <h1>Crimson Tactics</h1>
-        </div>
-        <p class="header-copy">
-          A compact tactics RPG homage built around elevation, initiative, and
-          pressure on the high ground.
-        </p>
-      </div>
-      <div class="stage" id="game-root"></div>
-      <div class="stage-footer">
-        <span>Click highlighted tiles to move and attack.</span>
-        <span>Space waits. R restarts the battle.</span>
-      </div>
-    </section>
+  <main class="game-shell">
+    <div class="game-root" id="game-root"></div>
   </main>
 `;
 
-createGame('game-root');
+const gameRoot = document.querySelector<HTMLDivElement>('#game-root');
+
+if (!gameRoot) {
+  throw new Error('Game root not found');
+}
+
+const measureGameRoot = () => {
+  const bounds = gameRoot.getBoundingClientRect();
+
+  return {
+    width: Math.max(1, Math.round(bounds.width)),
+    height: Math.max(1, Math.round(bounds.height))
+  };
+};
+
+const game = createGame('game-root', measureGameRoot());
+const refreshGameScale = () => {
+  game.scale.refresh();
+};
+
+const resizeObserver = new ResizeObserver(() => {
+  refreshGameScale();
+});
+
+resizeObserver.observe(gameRoot);
+window.visualViewport?.addEventListener('resize', refreshGameScale);
