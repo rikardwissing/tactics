@@ -31,8 +31,8 @@ export class TitleScene extends Phaser.Scene {
     audioDirector.bindScene(this);
     audioDirector.setMusic('title');
 
-    this.backdropImage = this.add.image(0, 0, 'title-backdrop').setAlpha(0.92);
-    this.backdropShade = this.add.rectangle(0, 0, 0, 0, 0x12070d, 0.42);
+    this.backdropImage = this.add.image(0, 0, 'title-backdrop').setAlpha(0.94);
+    this.backdropShade = this.add.rectangle(0, 0, 0, 0, 0x081018, 0.48);
 
     this.add
       .particles(0, 0, 'spark', {
@@ -52,10 +52,10 @@ export class TitleScene extends Phaser.Scene {
     this.titleText = this.add.text(0, 0, 'CRIMSON TACTICS', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '56px',
-      color: '#f8edd0',
+      color: '#fff3dc',
       fontStyle: 'bold',
       letterSpacing: 12,
-      stroke: '#2f1119',
+      stroke: '#18070f',
       strokeThickness: 8
     })
       .setOrigin(0.5)
@@ -64,14 +64,14 @@ export class TitleScene extends Phaser.Scene {
     this.subtitleText = this.add.text(0, 0, 'A pixel-art tactics skirmish inspired by the classics', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '22px',
-      color: '#e1cc96',
+      color: '#cde7e3',
       letterSpacing: 2
     })
       .setOrigin(0.5)
       .setDepth(3);
 
-    this.frame = this.add.rectangle(0, 0, 0, 0, 0x2a1320, 0.18)
-      .setStrokeStyle(2, 0xdabf83, 0.55)
+    this.frame = this.add.rectangle(0, 0, 0, 0, 0x10131b, 0.3)
+      .setStrokeStyle(2, 0xe1c27f, 0.58)
       .setDepth(2);
 
     const cast = [
@@ -112,7 +112,7 @@ export class TitleScene extends Phaser.Scene {
     this.descriptionText = this.add.text(0, 0, description, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '24px',
-      color: '#f3e5bd',
+      color: '#f4e8c8',
       align: 'center',
       lineSpacing: 12
     })
@@ -130,7 +130,7 @@ export class TitleScene extends Phaser.Scene {
     this.controlsText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '20px',
-      color: '#d3c19a',
+      color: '#d7c8a8',
       align: 'center',
       lineSpacing: 8
     })
@@ -162,13 +162,13 @@ export class TitleScene extends Phaser.Scene {
 
   private createButton(label: string, onClick: () => void): void {
     this.startButtonBacking = this.add
-      .rectangle(0, 0, 270, 62, 0x6d3a28, 0.9)
-      .setStrokeStyle(2, 0xf1d79a, 0.9);
-    this.startButtonShine = this.add.rectangle(0, -12, 248, 18, 0xf4dba1, 0.12);
+      .rectangle(0, 0, 270, 62, 0x1f4c4e, 0.94)
+      .setStrokeStyle(2, 0xf1d79a, 0.92);
+    this.startButtonShine = this.add.rectangle(0, -12, 248, 18, 0xf4dba1, 0.16);
     this.startButtonText = this.add.text(0, 0, label, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '28px',
-      color: '#fff5dd',
+      color: '#fff6e1',
       fontStyle: 'bold',
       letterSpacing: 1
     });
@@ -186,12 +186,12 @@ export class TitleScene extends Phaser.Scene {
       .setDepth(5);
 
     this.startButtonHitArea.on('pointerover', () => {
-      this.startButtonBacking.setFillStyle(0x84503a, 0.96);
-      this.startButton.setScale(this.startButtonBaseScale * 1.03);
+      this.startButtonBacking.setFillStyle(0x276164, 0.98);
+      this.startButton.setScale(this.startButtonBaseScale * 1.035);
     });
 
     this.startButtonHitArea.on('pointerout', () => {
-      this.startButtonBacking.setFillStyle(0x6d3a28, 0.9);
+      this.startButtonBacking.setFillStyle(0x1f4c4e, 0.94);
       this.startButton.setScale(this.startButtonBaseScale);
     });
 

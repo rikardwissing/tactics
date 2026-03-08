@@ -103,8 +103,8 @@ const BASE_UI_PANELS = {
 } as const;
 
 const BASE_ACTION_MENU_PANELS = {
-  root: new Phaser.Geom.Rectangle(904, 514, 136, 146),
-  sub: new Phaser.Geom.Rectangle(1026, 514, 234, 186)
+  root: new Phaser.Geom.Rectangle(880, 498, 186, 188),
+  sub: new Phaser.Geom.Rectangle(1038, 498, 286, 222)
 } as const;
 
 type HudControlAction = 'zoom-in' | 'zoom-out' | 'rotate-left' | 'rotate-right' | 'mute';
@@ -1611,16 +1611,16 @@ export class BattleScene extends Phaser.Scene {
     this.showPortraitPanel = !this.portraitLayout && width >= 900 && height >= 540;
     this.visibleTurnOrderCount = this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
     this.visibleLogLines = this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
-    this.actionMenuRowHeight = this.portraitLayout ? 24 : this.compactLayout ? 20 : 22;
-    this.submenuRowHeight = this.portraitLayout ? 24 : this.compactLayout ? 20 : 22;
+    this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
+    this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
 
     if (this.portraitLayout) {
       const innerWidth = width - margin * 2;
       const topHeight = height < 760 ? 100 : 108;
       const detailHeight = height < 760 ? 120 : 132;
       const bottomHeight = height < 760 ? 122 : 134;
-      const actionHeight = 164;
-      const rootWidth = Phaser.Math.Clamp(innerWidth * 0.32, 114, 130);
+      const actionHeight = 196;
+      const rootWidth = Phaser.Math.Clamp(innerWidth * 0.36, 158, 182);
       const actionY = Math.max(
         margin + topHeight + detailHeight + 24,
         height - margin - bottomHeight - 10 - actionHeight
@@ -1632,11 +1632,11 @@ export class BattleScene extends Phaser.Scene {
       this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
       this.uiPanels.portrait.setTo(0, 0, 0, 0);
 
-      this.actionMenuPanels.root.setTo(margin, actionY, rootWidth, 148);
+      this.actionMenuPanels.root.setTo(margin, actionY, rootWidth, 180);
       this.actionMenuPanels.sub.setTo(
-        margin + rootWidth - 10,
+        margin + rootWidth - 14,
         actionY,
-        innerWidth - rootWidth + 10,
+        innerWidth - rootWidth + 14,
         actionHeight
       );
     } else {
@@ -1645,14 +1645,14 @@ export class BattleScene extends Phaser.Scene {
       const bottomHeight = this.compactLayout ? 166 : BASE_UI_PANELS.bottomLeft.height;
       const rightWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.3 : 0.28), 258, BASE_UI_PANELS.topRight.width);
       const rightHeight = this.compactLayout ? 190 : BASE_UI_PANELS.topRight.height;
-      const actionRootWidth = this.compactLayout ? 146 : BASE_ACTION_MENU_PANELS.root.width;
-      const actionRootHeight = this.compactLayout ? 154 : BASE_ACTION_MENU_PANELS.root.height;
+      const actionRootWidth = this.compactLayout ? 168 : BASE_ACTION_MENU_PANELS.root.width;
+      const actionRootHeight = this.compactLayout ? 176 : BASE_ACTION_MENU_PANELS.root.height;
       const actionSubWidth = Phaser.Math.Clamp(
-        width * (this.compactLayout ? 0.22 : 0.2),
-        208,
+        width * (this.compactLayout ? 0.255 : 0.23),
+        248,
         BASE_ACTION_MENU_PANELS.sub.width
       );
-      const actionSubHeight = this.compactLayout ? 190 : BASE_ACTION_MENU_PANELS.sub.height;
+      const actionSubHeight = this.compactLayout ? 206 : BASE_ACTION_MENU_PANELS.sub.height;
       const subX = width - margin - actionSubWidth;
       const actionY = height - margin - actionSubHeight;
       const portraitWidth = this.showPortraitPanel ? (this.compactLayout ? 116 : BASE_UI_PANELS.portrait.width) : 0;
@@ -1670,7 +1670,7 @@ export class BattleScene extends Phaser.Scene {
       );
 
       this.actionMenuPanels.sub.setTo(subX, actionY, actionSubWidth, actionSubHeight);
-      this.actionMenuPanels.root.setTo(subX - actionRootWidth + 14, actionY, actionRootWidth, actionRootHeight);
+      this.actionMenuPanels.root.setTo(subX - actionRootWidth + 22, actionY, actionRootWidth, actionRootHeight);
     }
 
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
@@ -3162,7 +3162,8 @@ export class BattleScene extends Phaser.Scene {
         ),
         alpha,
         40,
-        16
+        16,
+        0x345168
       );
 
       const selectedAbility = this.getSelectedAbility();
@@ -4754,13 +4755,13 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics.clear();
 
     const panels = [
-      this.uiPanels.topLeft,
-      this.uiPanels.bottomLeft,
-      this.uiPanels.topRight
+      { panel: this.uiPanels.topLeft, accent: 0x2f5b5e },
+      { panel: this.uiPanels.bottomLeft, accent: 0x6a4a2d },
+      { panel: this.uiPanels.topRight, accent: 0x6a2f47 }
     ];
 
-    for (const panel of panels) {
-      this.drawUiPanelShell(this.uiGraphics, panel);
+    for (const { panel, accent } of panels) {
+      this.drawUiPanelShell(this.uiGraphics, panel, 1, 40, 20, accent);
     }
 
     const activeUnit = this.getActiveUnit();
@@ -4797,19 +4798,19 @@ export class BattleScene extends Phaser.Scene {
         text.height + 8
       );
       const activeRow = activeUnit?.id === unit.id;
-      const fill = activeRow ? 0x6b3b2b : unit.team === 'player' ? 0x193027 : 0x311d21;
-      const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7ecab6 : 0xd48787;
+      const fill = activeRow ? 0x7a5233 : unit.team === 'player' ? 0x17383c : 0x3c1824;
+      const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7bd4d1 : 0xe28b9f;
 
       this.uiGraphics.fillStyle(fill, activeRow ? 0.92 : 0.68);
       this.uiGraphics.fillRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, activeRow ? 0.42 : 0.16);
+      this.uiGraphics.lineStyle(1, activeRow ? 0xf1d089 : dot, activeRow ? 0.46 : 0.22);
       this.uiGraphics.strokeRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
       this.uiGraphics.fillStyle(dot, 0.95);
       this.uiGraphics.fillCircle(rowBounds.x + 18, rowBounds.centerY, activeRow ? 6 : 5);
     }
 
     if (this.actionMenuAlpha > 0.01) {
-      this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 40, 16);
+      this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 44, 18, 0x6d5430);
 
       const menuEntries = this.getMenuEntries();
       const currentMenuAction = this.getCurrentMenuAction();
@@ -4817,9 +4818,9 @@ export class BattleScene extends Phaser.Scene {
       for (const [index, entry] of menuEntries.entries()) {
         const bounds = this.getActionMenuEntryBounds(index);
         const active = currentMenuAction === entry.action;
-        const fill = active ? 0x6b3b2b : entry.enabled ? 0x241519 : 0x171012;
+        const fill = active ? 0x7a5233 : entry.enabled ? 0x22171f : 0x161016;
         const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
-        const dotColor = active ? 0xf1d089 : entry.enabled ? 0xd4b470 : 0x7a6a52;
+        const dotColor = active ? 0xf1d089 : entry.enabled ? 0x8ad0cf : 0x7a6a52;
 
         this.uiGraphics.fillStyle(fill, (active ? 0.9 : 0.72) * this.actionMenuAlpha);
         this.uiGraphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
@@ -4831,7 +4832,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     if (this.showPortraitPanel) {
-      this.drawUiPanelShell(this.uiGraphics, this.uiPanels.portrait, 0.86, 28, 14);
+      this.drawUiPanelShell(this.uiGraphics, this.uiPanels.portrait, 0.86, 28, 14, 0x4f3140);
       this.uiGraphics.fillStyle(0xf5e1b2, 0.06);
       this.uiGraphics.fillRoundedRect(
         this.uiPanels.portrait.x + 8,
@@ -4846,11 +4847,11 @@ export class BattleScene extends Phaser.Scene {
     Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
     const badgeFill = focusUnit
       ? focusUnit.team === 'player'
-        ? 0x234739
-        : 0x54272b
+        ? 0x1d4644
+        : 0x5a2434
       : this.hoverTile
-        ? 0x3a3120
-        : 0x2b2432;
+        ? 0x56462c
+        : 0x2f3044;
     this.uiGraphics.fillStyle(badgeFill, 0.94);
     this.uiGraphics.fillRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
     this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.38);
@@ -4876,7 +4877,7 @@ export class BattleScene extends Phaser.Scene {
         116,
         this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
       );
-      const barFill = focusUnit.team === 'player' ? 0x6ed2a6 : 0xde8d8d;
+      const barFill = focusUnit.team === 'player' ? 0x61d7c7 : 0xe8898f;
 
       this.uiGraphics.fillStyle(0x1a0d10, 0.92);
       this.uiGraphics.fillRoundedRect(barX, barY, barWidth, 12, 6);
@@ -4892,24 +4893,27 @@ export class BattleScene extends Phaser.Scene {
     panel: Phaser.Geom.Rectangle,
     alpha = 1,
     headerHeight = 34,
-    radius = 20
+    radius = 20,
+    accentColor = 0x5a3a2d
   ): void {
     graphics.fillStyle(0x040203, 0.32 * alpha);
     graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
-    graphics.fillStyle(0x12070d, 0.96 * alpha);
+    graphics.fillStyle(0x0b1018, 0.96 * alpha);
     graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    graphics.fillStyle(0x211115, 0.92 * alpha);
+    graphics.fillStyle(0x17131d, 0.96 * alpha);
     graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    graphics.fillStyle(0x4b2c23, 0.4 * alpha);
+    graphics.fillStyle(accentColor, 0.54 * alpha);
     graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
-    graphics.fillStyle(0xf4ddb0, 0.05 * alpha);
-    graphics.fillRoundedRect(panel.x + 8, panel.y + 8, panel.width - 16, 6, 3);
+    graphics.fillStyle(accentColor, 0.24 * alpha);
+    graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
+    graphics.fillStyle(0xf4ddb0, 0.08 * alpha);
+    graphics.fillRoundedRect(panel.x + 18, panel.y + 9, panel.width - 36, 6, 3);
     graphics.lineStyle(2, 0xd5ba7a, 0.42 * alpha);
     graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    graphics.lineStyle(1, 0x6f4e3c, 0.34 * alpha);
+    graphics.lineStyle(1, accentColor, 0.34 * alpha);
     graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    graphics.lineStyle(1, 0xd5ba7a, 0.12 * alpha);
-    graphics.lineBetween(panel.x + 14, panel.y + headerHeight, panel.right - 14, panel.y + headerHeight);
+    graphics.lineStyle(1, accentColor, 0.24 * alpha);
+    graphics.lineBetween(panel.x + 18, panel.y + headerHeight, panel.right - 18, panel.y + headerHeight);
   }
 
   private setDetailStatValues(values: string[]): void {
