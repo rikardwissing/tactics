@@ -17,7 +17,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  issues: write
 
 concurrency:
   group: pages-${{ github.event_name }}-${{ github.ref }}
@@ -52,11 +51,11 @@ jobs:
           path: ./dist
 
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.preview_url || steps.deployment.outputs.page_url }}
 
     steps:
       - name: Deploy to GitHub Pages
@@ -64,43 +63,3 @@ jobs:
         uses: actions/deploy-pages@v4
         with:
           preview: ${{ github.event_name == 'pull_request' }}
-
-      - name: Comment preview URL on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
-        with:
-          script: |
-            const marker = '<!-- pages-preview-link -->';
-            const body = `${marker}\n🚀 GitHub Pages preview is deployed:\n\n${process.env.PAGE_URL}`;
-
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100
-            });
-
-            const existing = comments.find((comment) =>
-              comment.user?.type === 'Bot' && comment.body?.includes(marker)
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body
-              });
-            }
