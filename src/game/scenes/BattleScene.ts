@@ -276,7 +276,7 @@ export class BattleScene extends Phaser.Scene {
   private highlightOverlays: Phaser.GameObjects.Graphics[] = [];
   private uiGraphics!: Phaser.GameObjects.Graphics;
   private submenuUiGraphics!: Phaser.GameObjects.Graphics;
-  private turnOrderTexts: Phaser.GameObjects.Text[] = [];
+  private turnOrderAvatars: Phaser.GameObjects.Image[] = [];
   private headerText!: Phaser.GameObjects.Text;
   private objectiveLabelText!: Phaser.GameObjects.Text;
   private objectiveText!: Phaser.GameObjects.Text;
@@ -856,7 +856,7 @@ export class BattleScene extends Phaser.Scene {
       this.menuBodyText,
       this.menuHintText,
       ...this.hudControls.map((control) => control.container),
-      ...this.turnOrderTexts,
+      ...this.turnOrderAvatars,
       ...this.actionMenuTexts,
       ...this.submenuTexts
     ];
@@ -1503,12 +1503,8 @@ export class BattleScene extends Phaser.Scene {
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
-    this.turnOrderTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(0, 0, '', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '12px',
-        color: '#f1e5c8'
-      })
+    this.turnOrderAvatars = Array.from({ length: 6 }, () =>
+      this.add.image(0, 0, 'holy-knight').setVisible(false)
     );
 
     this.activeBadge = this.add.text(0, 0, '', {
@@ -1624,7 +1620,7 @@ export class BattleScene extends Phaser.Scene {
       this.menuTitleText,
       ...this.hudControls.map((control) => control.container),
       ...this.actionMenuTexts,
-      ...this.turnOrderTexts
+      ...this.turnOrderAvatars
     ];
 
     for (const [index, element] of uiElements.entries()) {
@@ -1712,11 +1708,11 @@ export class BattleScene extends Phaser.Scene {
     this.portraitLayout = width < height;
     this.compactLayout = width < 1180 || height < 720;
     this.minimalMobileLayout = isTouchDevice && (this.portraitLayout || width < 980 || height < 620);
-    this.showHudControls = isTouchDevice ? !this.minimalMobileLayout : this.compactLayout;
+    this.showHudControls = false;
     this.showDetailPanel = !this.minimalMobileLayout;
-    this.showTimelinePanel = !this.minimalMobileLayout;
+    this.showTimelinePanel = true;
     this.showPortraitPanel = this.showDetailPanel && !this.portraitLayout && width >= 900 && height >= 540;
-    this.visibleTurnOrderCount = this.minimalMobileLayout ? 2 : this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
+    this.visibleTurnOrderCount = this.minimalMobileLayout ? 3 : this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
     this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
@@ -1797,11 +1793,12 @@ export class BattleScene extends Phaser.Scene {
     this.objectiveLabelText.setVisible(!this.minimalMobileLayout);
     this.objectiveText.setVisible(!this.minimalMobileLayout);
 
-    this.logLabelText.setVisible(this.showTimelinePanel);
-    this.logText.setVisible(this.showTimelinePanel);
+    this.logLabelText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
+    this.logText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
     this.turnOrderLabelText.setVisible(this.showTimelinePanel);
-    for (const [index, text] of this.turnOrderTexts.entries()) {
-      text.setVisible(this.showTimelinePanel && index < this.visibleTurnOrderCount);
+    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
+      const visible = this.showTimelinePanel && index < this.visibleTurnOrderCount;
+      avatar.setVisible(visible);
     }
 
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
@@ -1812,9 +1809,16 @@ export class BattleScene extends Phaser.Scene {
     );
     const logLabelY = this.uiPanels.bottomLeft.y + 14;
     const logBodyY = logLabelY + 20;
-    const orderLabelY = this.portraitLayout ? this.uiPanels.bottomLeft.y + 74 : this.compactLayout ? this.uiPanels.bottomLeft.y + 82 : this.uiPanels.bottomLeft.y + 88;
+    const orderLabelY = this.minimalMobileLayout
+      ? this.uiPanels.bottomLeft.y + 14
+      : this.portraitLayout
+        ? this.uiPanels.bottomLeft.y + 74
+        : this.compactLayout
+          ? this.uiPanels.bottomLeft.y + 82
+          : this.uiPanels.bottomLeft.y + 88;
     const turnOrderStartY = orderLabelY + 20;
-    const turnOrderGap = this.portraitLayout ? 22 : this.compactLayout ? 23 : 24;
+    const turnOrderGap = this.minimalMobileLayout ? 30 : this.portraitLayout ? 26 : this.compactLayout ? 28 : 30;
+    const avatarSize = this.minimalMobileLayout ? 24 : this.portraitLayout ? 20 : 22;
     const detailStatWidth = Math.max(72, Math.floor((detailTextWidth - 10) / 2));
     const detailStatGap = 10;
     const detailStatsY = this.uiPanels.topRight.y + (this.showPortraitPanel ? 104 : 110);
@@ -1849,11 +1853,14 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.bottomLeft.x + 16, orderLabelY)
       .setFontSize(this.portraitLayout ? 10 : 11);
 
-    for (const [index, text] of this.turnOrderTexts.entries()) {
-      text
-        .setPosition(this.uiPanels.bottomLeft.x + 44, turnOrderStartY + index * turnOrderGap)
-        .setFontSize(this.portraitLayout ? 12 : 13)
-        .setVisible(this.showTimelinePanel && index < this.visibleTurnOrderCount);
+    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
+      const visible = this.showTimelinePanel && index < this.visibleTurnOrderCount;
+      const y = turnOrderStartY + index * turnOrderGap;
+
+      avatar
+        .setPosition(this.uiPanels.bottomLeft.x + 30, y + 8)
+        .setDisplaySize(avatarSize, avatarSize)
+        .setVisible(visible);
     }
 
     this.activeBadge
@@ -4740,23 +4747,23 @@ export class BattleScene extends Phaser.Scene {
 
     const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
 
-    for (const [index, text] of this.turnOrderTexts.entries()) {
+    for (const [index, avatar] of this.turnOrderAvatars.entries()) {
       if (index >= this.visibleTurnOrderCount) {
-        text.setText('');
+        avatar.setVisible(false);
         continue;
       }
 
       const unit = queue[index];
 
       if (!unit) {
-        text.setText('');
+        avatar.setVisible(false);
         continue;
       }
 
-      text.setText(
-        `${String(index + 1).padStart(2, '0')}  ${unit.name}  •  ${unit.team === 'player' ? 'ALLY' : 'FOE'}`
-      );
-      text.setColor(unit.team === 'player' ? '#d6f4ee' : '#f4c3c3');
+      avatar
+        .setTexture(unit.spriteKey)
+        .clearTint()
+        .setVisible(true);
     }
 
     const focusUnit = this.getHoveredUnit() ?? this.getActiveUnit();
@@ -4828,9 +4835,7 @@ export class BattleScene extends Phaser.Scene {
         [
           'Player turns begin with movement.',
           'Higher tiles boost damage and reduce return fire.',
-          this.showHudControls
-            ? 'Drag to pan. Use the HUD buttons to zoom, rotate, and mute.'
-            : 'Right-drag or use WASD/arrow keys to pan. Scroll zooms. Q/E rotate the field. T cycles scene lighting.'
+          'Drag to pan the field. Scroll or pinch to zoom. Q/E rotate the field. T cycles scene lighting.'
         ].join('\n')
       );
       this.setDetailStatValues([
@@ -4919,17 +4924,17 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.showTimelinePanel) {
       for (const [index, unit] of queue.entries()) {
-        const text = this.turnOrderTexts[index];
+        const avatar = this.turnOrderAvatars[index];
 
-        if (!unit || !text.visible || !text.text) {
+        if (!unit || !avatar.visible) {
           continue;
         }
 
         const rowBounds = new Phaser.Geom.Rectangle(
           this.uiPanels.bottomLeft.x + 12,
-          text.y - 4,
+          avatar.y - 14,
           this.uiPanels.bottomLeft.width - 24,
-          text.height + 8
+          28
         );
         const activeRow = activeUnit?.id === unit.id;
         const fill = activeRow ? 0x7a5233 : unit.team === 'player' ? 0x17383c : 0x3c1824;
