@@ -89,6 +89,8 @@ For small in-game props, keep a high-resolution master if useful, but prefer a p
 
 The project is configured for GitHub Pages deployment from GitHub Actions.
 
+The workflow now runs for both `main` pushes and pull requests targeting `main`. Pull requests publish a Pages preview deployment, while `main` continues to publish the production site.
+
 Relevant files:
 
 - [`vite.config.ts`](/Users/rikardwissing/Projects/tactics/vite.config.ts)

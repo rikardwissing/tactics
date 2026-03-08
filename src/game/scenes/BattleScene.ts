@@ -389,8 +389,11 @@ export class BattleScene extends Phaser.Scene {
   private actionMenuRowHeight = 22;
   private submenuRowHeight = 22;
   private touchPointerId: number | null = null;
+  private touchSecondaryPointerId: number | null = null;
   private pendingTouchTap = false;
   private touchTapOrigin = new Phaser.Math.Vector2();
+  private pinchStartDistance = 0;
+  private pinchStartZoom = DEFAULT_BOARD_ZOOM;
   private resultOverlayShade?: Phaser.GameObjects.Rectangle;
   private resultOverlayTitle?: Phaser.GameObjects.Text;
   private resultOverlayBody?: Phaser.GameObjects.Text;
@@ -440,7 +443,10 @@ export class BattleScene extends Phaser.Scene {
     this.boardRotationStep = 0;
     this.boardPivot = this.getBaseBoardPivot();
     this.touchPointerId = null;
+    this.touchSecondaryPointerId = null;
     this.pendingTouchTap = false;
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = DEFAULT_BOARD_ZOOM;
     this.resultOverlayShade = undefined;
     this.resultOverlayTitle = undefined;
     this.resultOverlayBody = undefined;
@@ -621,12 +627,24 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    if (this.touchPointerId !== null && this.touchPointerId !== pointer.id) {
+      this.startPinchZoom(pointer.id);
+      return;
+    }
+
     this.touchPointerId = pointer.id;
     this.pendingTouchTap = true;
     this.touchTapOrigin.set(pointer.x, pointer.y);
   }
 
   private handleTouchPointerMove(pointer: Phaser.Input.Pointer): void {
+    if (this.touchSecondaryPointerId !== null) {
+      if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
+        this.updatePinchZoom();
+      }
+      return;
+    }
+
     if (pointer.id !== this.touchPointerId) {
       return;
     }
@@ -660,6 +678,20 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async handleTouchPointerUp(pointer: Phaser.Input.Pointer): Promise<void> {
+    if (this.touchSecondaryPointerId !== null) {
+      if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
+        const remainingPointerId =
+          pointer.id === this.touchPointerId ? this.touchSecondaryPointerId : this.touchPointerId;
+        this.touchPointerId =
+          remainingPointerId !== null && this.isTouchPointerDown(remainingPointerId) ? remainingPointerId : null;
+        this.touchSecondaryPointerId = null;
+        this.pendingTouchTap = false;
+        this.isPanning = false;
+        this.pinchStartDistance = 0;
+      }
+      return;
+    }
+
     if (pointer.id !== this.touchPointerId) {
       return;
     }
@@ -685,8 +717,76 @@ export class BattleScene extends Phaser.Scene {
     this.time.removeAllEvents();
     this.isPanning = false;
     this.touchPointerId = null;
+    this.touchSecondaryPointerId = null;
     this.pendingTouchTap = false;
+    this.pinchStartDistance = 0;
+    this.pinchStartZoom = DEFAULT_BOARD_ZOOM;
     this.restarting = false;
+  }
+
+  private startPinchZoom(secondaryPointerId: number): void {
+    if (this.touchPointerId === null) {
+      return;
+    }
+
+    this.touchSecondaryPointerId = secondaryPointerId;
+    this.pendingTouchTap = false;
+    this.isPanning = false;
+    this.pinchStartZoom = this.getWorldCamera().zoom;
+    this.pinchStartDistance = this.getTouchDistance(this.touchPointerId, this.touchSecondaryPointerId);
+  }
+
+  private updatePinchZoom(): void {
+    if (this.touchPointerId === null || this.touchSecondaryPointerId === null) {
+      return;
+    }
+
+    const touchDistance = this.getTouchDistance(this.touchPointerId, this.touchSecondaryPointerId);
+    if (touchDistance < 8) {
+      return;
+    }
+
+    if (this.pinchStartDistance < 8) {
+      this.pinchStartDistance = touchDistance;
+      this.pinchStartZoom = this.getWorldCamera().zoom;
+      return;
+    }
+
+    const primaryPointer = this.getTouchPointerById(this.touchPointerId);
+    const secondaryPointer = this.getTouchPointerById(this.touchSecondaryPointerId);
+    if (!primaryPointer || !secondaryPointer) {
+      return;
+    }
+
+    const minimumZoom = this.getMinimumBoardZoom();
+    const nextZoom = Phaser.Math.Clamp(
+      this.pinchStartZoom * (touchDistance / this.pinchStartDistance),
+      minimumZoom,
+      MAX_BOARD_ZOOM
+    );
+    const centerX = (primaryPointer.x + secondaryPointer.x) / 2;
+    const centerY = (primaryPointer.y + secondaryPointer.y) / 2;
+    this.applyBoardZoom(nextZoom, centerX, centerY);
+  }
+
+  private getTouchDistance(pointerIdA: number, pointerIdB: number): number {
+    const pointerA = this.getTouchPointerById(pointerIdA);
+    const pointerB = this.getTouchPointerById(pointerIdB);
+    if (!pointerA || !pointerB) {
+      return 0;
+    }
+
+    return Phaser.Math.Distance.Between(pointerA.x, pointerA.y, pointerB.x, pointerB.y);
+  }
+
+  private getTouchPointerById(pointerId: number): Phaser.Input.Pointer | null {
+    const pointer = this.input.manager.pointers.find((candidate: Phaser.Input.Pointer) => candidate.id === pointerId && candidate.wasTouch);
+    return pointer ?? null;
+  }
+
+  private isTouchPointerDown(pointerId: number): boolean {
+    const pointer = this.getTouchPointerById(pointerId);
+    return pointer?.isDown ?? false;
   }
 
   update(time: number, delta: number): void {
