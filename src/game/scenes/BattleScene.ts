@@ -1783,8 +1783,8 @@ export class BattleScene extends Phaser.Scene {
     this.objectiveLabelText.setVisible(!this.minimalMobileLayout);
     this.objectiveText.setVisible(!this.minimalMobileLayout);
 
-    this.logLabelText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
-    this.logText.setVisible(this.showTimelinePanel && !this.minimalMobileLayout);
+    this.logLabelText.setVisible(false);
+    this.logText.setVisible(false);
     this.turnOrderPanel.setVisible(this.showTimelinePanel);
 
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
@@ -1793,18 +1793,13 @@ export class BattleScene extends Phaser.Scene {
       132,
       this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
     );
-    const logLabelY = this.uiPanels.bottomLeft.y + 14;
-    const logBodyY = logLabelY + 20;
-    const orderLabelY = this.minimalMobileLayout
-      ? this.uiPanels.bottomLeft.y + 14
-      : this.portraitLayout
-        ? this.uiPanels.bottomLeft.y + 74
-        : this.compactLayout
-          ? this.uiPanels.bottomLeft.y + 82
-          : this.uiPanels.bottomLeft.y + 88;
-    const turnOrderStartY = orderLabelY + 20;
-    const turnOrderGap = this.minimalMobileLayout ? 30 : this.portraitLayout ? 26 : this.compactLayout ? 28 : 30;
-    const avatarSize = this.minimalMobileLayout ? 24 : this.portraitLayout ? 20 : 22;
+    const avatarSize = this.minimalMobileLayout ? 36 : this.portraitLayout ? 34 : this.compactLayout ? 38 : 40;
+    const turnOrderGap = avatarSize + (this.minimalMobileLayout ? 12 : 14);
+    const turnOrderStartY = Math.max(
+      margin,
+      Math.round(height * 0.5 - (Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap + avatarSize) * 0.5)
+    );
+    const turnOrderX = width - margin - avatarSize;
     const detailStatWidth = Math.max(72, Math.floor((detailTextWidth - 10) / 2));
     const detailStatGap = 10;
     const detailStatsY = this.uiPanels.topRight.y + (this.showPortraitPanel ? 104 : 110);
@@ -1828,18 +1823,11 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + 16)
       .setFontSize(this.portraitLayout ? 12 : 13);
 
-    this.logLabelText
-      .setPosition(this.uiPanels.bottomLeft.x + 16, logLabelY)
-      .setFontSize(this.portraitLayout ? 10 : 11);
-    this.logText
-      .setPosition(this.uiPanels.bottomLeft.x + 16, logBodyY)
-      .setFontSize(this.portraitLayout ? 13 : 14)
-      .setWordWrapWidth(this.uiPanels.bottomLeft.width - 32, true);
     this.turnOrderPanel.setLayout({
-      x: this.uiPanels.bottomLeft.x + 16,
+      x: turnOrderX,
       startY: turnOrderStartY,
       gap: turnOrderGap,
-      avatarSize: avatarSize + 14
+      avatarSize
     });
 
     this.activeBadge
@@ -4872,7 +4860,6 @@ export class BattleScene extends Phaser.Scene {
 
     const panels = [
       { panel: this.uiPanels.topLeft, accent: 0x2f5b5e },
-      ...(this.showTimelinePanel ? [{ panel: this.uiPanels.bottomLeft, accent: 0x6a4a2d }] : []),
       ...(this.showDetailPanel ? [{ panel: this.uiPanels.topRight, accent: 0x6a2f47 }] : [])
     ];
 
