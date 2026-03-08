@@ -3,6 +3,14 @@
 ## Purpose
 This file lists the common project workflows for contributors and agents working in this repo.
 
+## Style Guardrails
+- Match the existing game: moody fantasy tactics, painterly pixel-art-inspired presentation, ecclesiastical ruin setting, warm firelight against cool stone and moss.
+- Favor restrained, dramatic, old-world fantasy over flashy JRPG spell spam or generic mobile-fantasy polish.
+- Units must stay readable on the battlefield at small scale, with clean silhouettes and strong color separation.
+- Terrain must look like part of the board surface.
+- Props and obstacles must feel anchored to the ground and occupy the tile convincingly.
+- UI and presentation should feel noble and worn: parchment, brass, crimson, ash, candlelight.
+
 ## 1. Add A Level
 - Create a new Tiled JSON file in [`src/game/levels/data`](src/game/levels/data).
 - Include the required Tiled map properties: `levelId`, `displayName`, `objective`.
@@ -30,6 +38,39 @@ This file lists the common project workflows for contributors and agents working
 - Keep prompts, masks, and scratch files under `tmp/`.
 - Keep generated outputs under `output/` until the selected final asset is approved.
 - Move only the approved final files into [`src/assets/game`](src/assets/game).
+- Prompt for the project style explicitly:
+- moody fantasy tactics
+- painterly pixel-art-inspired rendering
+- grounded isometric readability
+- ruined chapel / moss / stone / ember-lit atmosphere
+- no photorealism, no glossy 3D, no UI text, no extra subjects
+- Reject or revise outputs that look too generic, too bright, too floaty, or too cinematic for tactical play.
+- When generating a variant of an existing asset:
+- use the current approved runtime asset as the reference point
+- preserve silhouette, signature colors, emblem/trim language, and key shape language
+- change only the intended dimension: pose, upgrade trim, charge state, damage state, open/closed state, elemental inflection, or attack-frame emphasis
+- avoid redesign drift between variants; they should read as one asset family at a glance
+- keep framing, scale, and canvas treatment compatible with the existing asset set so swapping variants in code does not require special handling
+
+## 4a. Character And Item Variant Checklist
+- Character variants should preserve:
+- silhouette
+- armor/clothing structure
+- weapon shape
+- primary faction colors
+- face/hair identity where visible
+- Item variants should preserve:
+- base outline
+- icon motif
+- material language
+- family color coding
+- Good variant examples:
+- same knight in idle / attack / damaged poses
+- same potion bottle in normal / rare / blessed forms
+- same chest in closed / open states
+- Bad variant examples:
+- same named unit with a different armor design and different silhouette
+- same item family with totally different shape language between tiers
 
 ## 5. Adjust Map Rendering
 - Tile projection, depth sorting, highlights, props, cliffs, and lighting all live in [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
@@ -44,6 +85,7 @@ This file lists the common project workflows for contributors and agents working
 ## 7. Audio Work
 - Music and SFX are generated in code in [`src/game/audio/audioDirector.ts`](src/game/audio/audioDirector.ts).
 - If you add new event sounds, hook them up in the scene code where the event actually resolves.
+- Keep the score slow, grand, and martial. Avoid fast whimsical loops unless there is a deliberate scene-specific reason.
 
 ## 8. Validation
 - Run `npm run build` after any non-trivial change.
