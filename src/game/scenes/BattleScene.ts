@@ -379,6 +379,9 @@ export class BattleScene extends Phaser.Scene {
   private hudControls: HudControl[] = [];
   private showHudControls = false;
   private showPortraitPanel = true;
+  private showDetailPanel = true;
+  private showTimelinePanel = true;
+  private minimalMobileLayout = false;
   private compactLayout = false;
   private portraitLayout = false;
   private visibleTurnOrderCount = 6;
@@ -1604,30 +1607,39 @@ export class BattleScene extends Phaser.Scene {
 
   private updateUiLayout(width: number, height: number): void {
     const margin = Math.max(10, Math.round(Math.min(width, height) * 0.018));
+    const isTouchDevice = this.sys.game.device.input.touch;
 
     this.portraitLayout = width < height;
     this.compactLayout = width < 1180 || height < 720;
-    this.showHudControls = this.sys.game.device.input.touch || this.compactLayout;
-    this.showPortraitPanel = !this.portraitLayout && width >= 900 && height >= 540;
-    this.visibleTurnOrderCount = this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
-    this.visibleLogLines = this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
+    this.minimalMobileLayout = isTouchDevice && (this.portraitLayout || width < 980 || height < 620);
+    this.showHudControls = isTouchDevice ? !this.minimalMobileLayout : this.compactLayout;
+    this.showDetailPanel = !this.minimalMobileLayout;
+    this.showTimelinePanel = !this.minimalMobileLayout;
+    this.showPortraitPanel = this.showDetailPanel && !this.portraitLayout && width >= 900 && height >= 540;
+    this.visibleTurnOrderCount = this.minimalMobileLayout ? 2 : this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
+    this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
 
     if (this.portraitLayout) {
       const innerWidth = width - margin * 2;
-      const topHeight = height < 760 ? 100 : 108;
-      const detailHeight = height < 760 ? 120 : 132;
-      const bottomHeight = height < 760 ? 122 : 134;
-      const actionHeight = 196;
+      const topHeight = this.minimalMobileLayout ? 104 : height < 760 ? 100 : 108;
+      const detailHeight = this.showDetailPanel ? (height < 760 ? 120 : 132) : 0;
+      const bottomHeight = this.showTimelinePanel ? (height < 760 ? 122 : 134) : 70;
+      const actionHeight = this.minimalMobileLayout ? 172 : 196;
       const rootWidth = Phaser.Math.Clamp(innerWidth * 0.36, 158, 182);
       const actionY = Math.max(
-        margin + topHeight + detailHeight + 24,
+        margin + topHeight + detailHeight + 14,
         height - margin - bottomHeight - 10 - actionHeight
       );
 
       this.uiPanels.topLeft.setTo(margin, margin, innerWidth, topHeight);
-      this.uiPanels.topRight.setTo(margin, this.uiPanels.topLeft.bottom + 10, innerWidth, detailHeight);
+      this.uiPanels.topRight.setTo(
+        margin,
+        this.uiPanels.topLeft.bottom + (this.showDetailPanel ? 10 : 0),
+        innerWidth,
+        detailHeight
+      );
       this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, innerWidth, bottomHeight);
       this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
       this.uiPanels.portrait.setTo(0, 0, 0, 0);
@@ -1673,6 +1685,25 @@ export class BattleScene extends Phaser.Scene {
       this.actionMenuPanels.root.setTo(subX - actionRootWidth + 22, actionY, actionRootWidth, actionRootHeight);
     }
 
+    this.activeBadge.setVisible(this.showDetailPanel);
+    this.detailMetaText.setVisible(this.showDetailPanel);
+    this.detailTitleText.setVisible(this.showDetailPanel);
+    this.detailBodyText.setVisible(this.showDetailPanel);
+    this.portrait.setVisible(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible);
+    for (const text of this.detailStatTexts) {
+      text.setVisible(this.showDetailPanel && text.text.length > 0);
+    }
+
+    this.objectiveLabelText.setVisible(!this.minimalMobileLayout);
+    this.objectiveText.setVisible(!this.minimalMobileLayout);
+
+    this.logLabelText.setVisible(this.showTimelinePanel);
+    this.logText.setVisible(this.showTimelinePanel);
+    this.turnOrderLabelText.setVisible(this.showTimelinePanel);
+    for (const [index, text] of this.turnOrderTexts.entries()) {
+      text.setVisible(this.showTimelinePanel && index < this.visibleTurnOrderCount);
+    }
+
     this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
 
     const detailTextWidth = Math.max(
@@ -1692,7 +1723,7 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 12)
       .setFontSize(this.portraitLayout ? 10 : 11);
     this.headerText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 28)
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 22 : 28))
       .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27)
       .setWordWrapWidth(this.uiPanels.topLeft.width - 32, true);
     this.objectiveText
@@ -1700,9 +1731,9 @@ export class BattleScene extends Phaser.Scene {
       .setFontSize(this.portraitLayout ? 14 : this.compactLayout ? 15 : 16)
       .setWordWrapWidth(this.uiPanels.topLeft.width - 34, true);
     this.phaseText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - 34)
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - (this.minimalMobileLayout ? 26 : 34))
       .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
-      .setWordWrapWidth(this.uiPanels.topLeft.width - 120, true);
+      .setWordWrapWidth(this.uiPanels.topLeft.width - (this.minimalMobileLayout ? 24 : 120), true);
     this.autoBattleToggleText
       .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + 16)
       .setFontSize(this.portraitLayout ? 12 : 13);
@@ -1722,7 +1753,7 @@ export class BattleScene extends Phaser.Scene {
       text
         .setPosition(this.uiPanels.bottomLeft.x + 44, turnOrderStartY + index * turnOrderGap)
         .setFontSize(this.portraitLayout ? 12 : 13)
-        .setVisible(index < this.visibleTurnOrderCount);
+        .setVisible(this.showTimelinePanel && index < this.visibleTurnOrderCount);
     }
 
     this.activeBadge
@@ -1731,7 +1762,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.portrait
       .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY + 6)
-      .setVisible(this.showPortraitPanel && this.portrait.visible);
+      .setVisible(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible);
 
     this.detailMetaText
       .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 48)
@@ -2951,8 +2982,8 @@ export class BattleScene extends Phaser.Scene {
   private isPointerOverUi(x: number, y: number): boolean {
     const staticPanels = [
       this.uiPanels.topLeft,
-      this.uiPanels.bottomLeft,
-      this.uiPanels.topRight,
+      ...(this.showTimelinePanel ? [this.uiPanels.bottomLeft] : []),
+      ...(this.showDetailPanel ? [this.uiPanels.topRight] : []),
       ...(this.showPortraitPanel ? [this.uiPanels.portrait] : [])
     ];
 
@@ -4756,8 +4787,8 @@ export class BattleScene extends Phaser.Scene {
 
     const panels = [
       { panel: this.uiPanels.topLeft, accent: 0x2f5b5e },
-      { panel: this.uiPanels.bottomLeft, accent: 0x6a4a2d },
-      { panel: this.uiPanels.topRight, accent: 0x6a2f47 }
+      ...(this.showTimelinePanel ? [{ panel: this.uiPanels.bottomLeft, accent: 0x6a4a2d }] : []),
+      ...(this.showDetailPanel ? [{ panel: this.uiPanels.topRight, accent: 0x6a2f47 }] : [])
     ];
 
     for (const { panel, accent } of panels) {
@@ -4767,7 +4798,6 @@ export class BattleScene extends Phaser.Scene {
     const activeUnit = this.getActiveUnit();
     const focusUnit = this.getHoveredUnit() ?? activeUnit;
     const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
-    const bottomDividerY = this.turnOrderLabelText.y - 10;
     const autoTagBounds = this.autoBattleToggleText.getBounds();
     Phaser.Geom.Rectangle.Inflate(autoTagBounds, 14, 6);
 
@@ -4776,37 +4806,42 @@ export class BattleScene extends Phaser.Scene {
     this.uiGraphics.lineStyle(1, this.autoBattleEnabled ? 0xf3d690 : 0x8f7250, 0.56);
     this.uiGraphics.strokeRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
 
-    this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.16);
-    this.uiGraphics.lineBetween(
-      this.uiPanels.bottomLeft.x + 16,
-      bottomDividerY,
-      this.uiPanels.bottomLeft.right - 16,
-      bottomDividerY
-    );
-
-    for (const [index, unit] of queue.entries()) {
-      const text = this.turnOrderTexts[index];
-
-      if (!unit || !text.visible || !text.text) {
-        continue;
-      }
-
-      const rowBounds = new Phaser.Geom.Rectangle(
-        this.uiPanels.bottomLeft.x + 12,
-        text.y - 4,
-        this.uiPanels.bottomLeft.width - 24,
-        text.height + 8
+    if (this.showTimelinePanel) {
+      const bottomDividerY = this.turnOrderLabelText.y - 10;
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.16);
+      this.uiGraphics.lineBetween(
+        this.uiPanels.bottomLeft.x + 16,
+        bottomDividerY,
+        this.uiPanels.bottomLeft.right - 16,
+        bottomDividerY
       );
-      const activeRow = activeUnit?.id === unit.id;
-      const fill = activeRow ? 0x7a5233 : unit.team === 'player' ? 0x17383c : 0x3c1824;
-      const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7bd4d1 : 0xe28b9f;
+    }
 
-      this.uiGraphics.fillStyle(fill, activeRow ? 0.92 : 0.68);
-      this.uiGraphics.fillRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
-      this.uiGraphics.lineStyle(1, activeRow ? 0xf1d089 : dot, activeRow ? 0.46 : 0.22);
-      this.uiGraphics.strokeRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
-      this.uiGraphics.fillStyle(dot, 0.95);
-      this.uiGraphics.fillCircle(rowBounds.x + 18, rowBounds.centerY, activeRow ? 6 : 5);
+    if (this.showTimelinePanel) {
+      for (const [index, unit] of queue.entries()) {
+        const text = this.turnOrderTexts[index];
+
+        if (!unit || !text.visible || !text.text) {
+          continue;
+        }
+
+        const rowBounds = new Phaser.Geom.Rectangle(
+          this.uiPanels.bottomLeft.x + 12,
+          text.y - 4,
+          this.uiPanels.bottomLeft.width - 24,
+          text.height + 8
+        );
+        const activeRow = activeUnit?.id === unit.id;
+        const fill = activeRow ? 0x7a5233 : unit.team === 'player' ? 0x17383c : 0x3c1824;
+        const dot = activeRow ? 0xf3d690 : unit.team === 'player' ? 0x7bd4d1 : 0xe28b9f;
+
+        this.uiGraphics.fillStyle(fill, activeRow ? 0.92 : 0.68);
+        this.uiGraphics.fillRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
+        this.uiGraphics.lineStyle(1, activeRow ? 0xf1d089 : dot, activeRow ? 0.46 : 0.22);
+        this.uiGraphics.strokeRoundedRect(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height, 12);
+        this.uiGraphics.fillStyle(dot, 0.95);
+        this.uiGraphics.fillCircle(rowBounds.x + 18, rowBounds.centerY, activeRow ? 6 : 5);
+      }
     }
 
     if (this.actionMenuAlpha > 0.01) {
@@ -4843,34 +4878,38 @@ export class BattleScene extends Phaser.Scene {
       );
     }
 
-    const badgeBounds = this.activeBadge.getBounds();
-    Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
-    const badgeFill = focusUnit
-      ? focusUnit.team === 'player'
-        ? 0x1d4644
-        : 0x5a2434
-      : this.hoverTile
-        ? 0x56462c
-        : 0x2f3044;
-    this.uiGraphics.fillStyle(badgeFill, 0.94);
-    this.uiGraphics.fillRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
-    this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.38);
-    this.uiGraphics.strokeRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
-
-    for (const text of this.detailStatTexts) {
-      if (!text.text) {
-        continue;
-      }
-
-      const chip = text.getBounds();
-      const chipWidth = Math.max(74, chip.width + 16);
-      this.uiGraphics.fillStyle(0x22151a, 0.86);
-      this.uiGraphics.fillRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
-      this.uiGraphics.strokeRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+    if (this.showDetailPanel) {
+      const badgeBounds = this.activeBadge.getBounds();
+      Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
+      const badgeFill = focusUnit
+        ? focusUnit.team === 'player'
+          ? 0x1d4644
+          : 0x5a2434
+        : this.hoverTile
+          ? 0x56462c
+          : 0x2f3044;
+      this.uiGraphics.fillStyle(badgeFill, 0.94);
+      this.uiGraphics.fillRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
+      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.38);
+      this.uiGraphics.strokeRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
     }
 
-    if (focusUnit) {
+    if (this.showDetailPanel) {
+      for (const text of this.detailStatTexts) {
+        if (!text.text) {
+          continue;
+        }
+
+        const chip = text.getBounds();
+        const chipWidth = Math.max(74, chip.width + 16);
+        this.uiGraphics.fillStyle(0x22151a, 0.86);
+        this.uiGraphics.fillRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+        this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
+        this.uiGraphics.strokeRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+      }
+    }
+
+    if (this.showDetailPanel && focusUnit) {
       const barX = this.uiPanels.topRight.x + 16;
       const barY = this.detailMetaText.y + 22;
       const barWidth = Math.max(
@@ -4919,7 +4958,7 @@ export class BattleScene extends Phaser.Scene {
   private setDetailStatValues(values: string[]): void {
     for (const [index, text] of this.detailStatTexts.entries()) {
       const value = values[index] ?? '';
-      text.setText(value).setVisible(value.length > 0);
+      text.setText(value).setVisible(this.showDetailPanel && value.length > 0);
     }
   }
 
