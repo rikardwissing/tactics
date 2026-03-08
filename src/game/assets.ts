@@ -1,0 +1,53 @@
+const titleBackdrop = new URL('../../output/imagegen/title-backdrop.png', import.meta.url).href;
+const holyKnight = new URL('../../output/imagegen/holy-knight.png', import.meta.url).href;
+const wildArcher = new URL('../../output/imagegen/wild-archer.png', import.meta.url).href;
+const emberMage = new URL('../../output/imagegen/ember-mage.png', import.meta.url).href;
+const boneWarden = new URL('../../output/imagegen/bone-warden.png', import.meta.url).href;
+const graveRanger = new URL('../../output/imagegen/grave-ranger.png', import.meta.url).href;
+const ashPriest = new URL('../../output/imagegen/ash-priest.png', import.meta.url).href;
+const radiantSlash = new URL('../../output/imagegen/radiant-slash.png', import.meta.url).href;
+const skystingArrow = new URL('../../output/imagegen/skysting-arrow.png', import.meta.url).href;
+const cinderBurst = new URL('../../output/imagegen/cinder-burst.png', import.meta.url).href;
+const graveCleave = new URL('../../output/imagegen/grave-cleave.png', import.meta.url).href;
+const blackfeatherShot = new URL('../../output/imagegen/blackfeather-shot.png', import.meta.url).href;
+const ashHex = new URL('../../output/imagegen/ash-hex.png', import.meta.url).href;
+const chapelChestClosed = new URL('../../output/imagegen/chapel-chest-closed.png', import.meta.url).href;
+const chapelChestOpen = new URL('../../output/imagegen/chapel-chest-open.png', import.meta.url).href;
+const terrainGrassA = new URL('../../output/imagegen/terrain-grass-a.png', import.meta.url).href;
+const terrainGrassB = new URL('../../output/imagegen/terrain-grass-b.png', import.meta.url).href;
+const terrainMossA = new URL('../../output/imagegen/terrain-moss-a.png', import.meta.url).href;
+const terrainMossB = new URL('../../output/imagegen/terrain-moss-b.png', import.meta.url).href;
+const terrainStoneA = new URL('../../output/imagegen/terrain-stone-a.png', import.meta.url).href;
+const terrainStoneB = new URL('../../output/imagegen/terrain-stone-b.png', import.meta.url).href;
+const terrainSanctumA = new URL('../../output/imagegen/terrain-sanctum-a.png', import.meta.url).href;
+const obstacleRubbleBarricade = new URL('../../output/imagegen/obstacle-rubble-barricade.png', import.meta.url).href;
+const lightTorch = new URL('../../output/imagegen/light-torch.png', import.meta.url).href;
+const sanctumBrazier = new URL('../../output/imagegen/sanctum-brazier.png', import.meta.url).href;
+
+export const IMAGE_ASSETS = [
+  { key: 'title-backdrop', url: titleBackdrop },
+  { key: 'holy-knight', url: holyKnight },
+  { key: 'wild-archer', url: wildArcher },
+  { key: 'ember-mage', url: emberMage },
+  { key: 'bone-warden', url: boneWarden },
+  { key: 'grave-ranger', url: graveRanger },
+  { key: 'ash-priest', url: ashPriest },
+  { key: 'radiant-slash', url: radiantSlash },
+  { key: 'skysting-arrow', url: skystingArrow },
+  { key: 'cinder-burst', url: cinderBurst },
+  { key: 'grave-cleave', url: graveCleave },
+  { key: 'blackfeather-shot', url: blackfeatherShot },
+  { key: 'ash-hex', url: ashHex },
+  { key: 'chapel-chest-closed', url: chapelChestClosed },
+  { key: 'chapel-chest-open', url: chapelChestOpen },
+  { key: 'terrain-grass-a', url: terrainGrassA },
+  { key: 'terrain-grass-b', url: terrainGrassB },
+  { key: 'terrain-moss-a', url: terrainMossA },
+  { key: 'terrain-moss-b', url: terrainMossB },
+  { key: 'terrain-stone-a', url: terrainStoneA },
+  { key: 'terrain-stone-b', url: terrainStoneB },
+  { key: 'terrain-sanctum-a', url: terrainSanctumA },
+  { key: 'obstacle-rubble-barricade', url: obstacleRubbleBarricade },
+  { key: 'light-torch', url: lightTorch },
+  { key: 'sanctum-brazier', url: sanctumBrazier }
+] as const;
