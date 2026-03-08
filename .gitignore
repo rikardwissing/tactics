@@ -5,14 +5,7 @@ dist/
 .vite/
 
 tmp/
-output/sora/
-output/imagegen/raw-effects/
-output/imagegen/*contact-sheet*.png
-output/imagegen/[0-9][0-9][0-9]-*.png
-output/imagegen/*-frame2*.png
-output/imagegen/*-source*.png
-output/imagegen/obstacle-fallen-statue.png
-output/imagegen/obstacle-thorn-briar.png
+output/
 
 .env
 .env.*
