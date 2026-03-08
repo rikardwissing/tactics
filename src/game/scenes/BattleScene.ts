@@ -3769,6 +3769,8 @@ export class BattleScene extends Phaser.Scene {
     const actor = pickNextActor(this.units);
     this.activeUnitId = actor.id;
     this.moveNodes = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
+    const actorFocusPoint = this.getUnitWorldPoint(actor);
+    await this.panCameraToPoint(actorFocusPoint.x, actorFocusPoint.y, 280);
     this.playTurnStartAnimation(actor);
     audioDirector.playTurnStart(actor.team);
 
