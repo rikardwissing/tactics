@@ -8,12 +8,24 @@ interface TurnOrderRow {
   teamMark: Phaser.GameObjects.Text;
   offsetText: Phaser.GameObjects.Text;
   badgeText: Phaser.GameObjects.Text;
-  nameText: Phaser.GameObjects.Text;
-  hpText: Phaser.GameObjects.Text;
-  hpBarBack: Phaser.GameObjects.Rectangle;
-  hpBarFill: Phaser.GameObjects.Rectangle;
   unitId: string | null;
   visible: boolean;
+  pressed: boolean;
+}
+
+interface RowLayout {
+  backingX: number;
+  backingY: number;
+  borderX: number;
+  borderY: number;
+  avatarX: number;
+  avatarY: number;
+  teamMarkX: number;
+  teamMarkY: number;
+  badgeX: number;
+  badgeY: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 const PLAYER_TINT = 0xb7d5ff;
@@ -25,14 +37,14 @@ const PANEL_LATER_BG = 0x140c12;
 const BORDER_IDLE = 0x4c3630;
 const BORDER_ACTIVE = 0xd5ba7a;
 const BORDER_NEXT = 0xab8e61;
-
-const HP_GOOD = '#9dd6a0';
-const HP_LOW = '#d8a273';
-const HP_CRITICAL = '#d77f7a';
+const PANEL_OVERFLOW_BG = 0x10090e;
+const BORDER_OVERFLOW = 0x6d5850;
 
 export class TurnOrderPanel {
   private readonly rows: TurnOrderRow[];
-  private rowWidth = 124;
+  private readonly rowLayouts: RowLayout[];
+  private rowWidth = 90;
+  private previousActiveUnitId: string | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -40,6 +52,21 @@ export class TurnOrderPanel {
     private readonly origin: Phaser.Math.Vector2 = new Phaser.Math.Vector2(0, 0),
     private readonly onSelectUnit?: (unitId: string) => void
   ) {
+    this.rowLayouts = Array.from({ length: maxEntries }, () => ({
+      backingX: origin.x,
+      backingY: origin.y,
+      borderX: origin.x,
+      borderY: origin.y,
+      avatarX: origin.x,
+      avatarY: origin.y,
+      teamMarkX: origin.x,
+      teamMarkY: origin.y,
+      badgeX: origin.x,
+      badgeY: origin.y,
+      offsetX: origin.x,
+      offsetY: origin.y
+    }));
+
     this.rows = Array.from({ length: maxEntries }, () => {
       const backing = scene.add
         .rectangle(origin.x, origin.y, this.rowWidth, 40, PANEL_BG, 0.94)
@@ -82,23 +109,6 @@ export class TurnOrderPanel {
         letterSpacing: 1
       }).setOrigin(0, 0.5).setVisible(false);
 
-      const nameText = scene.add.text(origin.x, origin.y, '', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '11px',
-        fontStyle: 'bold',
-        color: '#efe0bf'
-      }).setOrigin(0, 0.5).setVisible(false);
-
-      const hpText = scene.add.text(origin.x, origin.y, '', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '9px',
-        fontStyle: 'bold',
-        color: '#ccb792'
-      }).setOrigin(0, 0.5).setVisible(false);
-
-      const hpBarBack = scene.add.rectangle(origin.x, origin.y, 42, 4, 0x1c1116, 1).setOrigin(0, 0.5).setVisible(false);
-      const hpBarFill = scene.add.rectangle(origin.x, origin.y, 42, 4, 0x8ebb84, 1).setOrigin(0, 0.5).setVisible(false);
-
       const row: TurnOrderRow = {
         backing,
         border,
@@ -106,12 +116,9 @@ export class TurnOrderPanel {
         teamMark,
         offsetText,
         badgeText,
-        nameText,
-        hpText,
-        hpBarBack,
-        hpBarFill,
         unitId: null,
-        visible: false
+        visible: false,
+        pressed: false
       };
 
       const onSelect = () => {
@@ -126,21 +133,46 @@ export class TurnOrderPanel {
           return;
         }
 
-        row.backing.setAlpha(hovered ? 1 : 0.94);
-        row.nameText.setColor(hovered ? '#fff0cc' : '#efe0bf');
+        this.applyRowInteractionState(row, hovered, row.pressed);
+      };
+
+      const onPress = (pressed: boolean) => {
+        row.pressed = pressed;
+
+        if (!row.visible) {
+          return;
+        }
+
+        this.applyRowInteractionState(row, true, row.pressed);
       };
 
       row.backing
         .setInteractive({ useHandCursor: true })
-        .on('pointerdown', onSelect)
-        .on('pointerover', () => onHover(true))
-        .on('pointerout', () => onHover(false));
+        .on('pointerdown', () => {
+          onPress(true);
+          onSelect();
+        })
+        .on('pointerup', () => onPress(false))
+        .on('pointerupoutside', () => onPress(false))
+        .on('pointerout', () => {
+          onPress(false);
+          onHover(false);
+        })
+        .on('pointerover', () => onHover(true));
 
       row.avatar
         .setInteractive({ useHandCursor: true })
-        .on('pointerdown', onSelect)
-        .on('pointerover', () => onHover(true))
-        .on('pointerout', () => onHover(false));
+        .on('pointerdown', () => {
+          onPress(true);
+          onSelect();
+        })
+        .on('pointerup', () => onPress(false))
+        .on('pointerupoutside', () => onPress(false))
+        .on('pointerout', () => {
+          onPress(false);
+          onHover(false);
+        })
+        .on('pointerover', () => onHover(true));
 
       return row;
     });
@@ -153,11 +185,7 @@ export class TurnOrderPanel {
       row.avatar,
       row.teamMark,
       row.offsetText,
-      row.badgeText,
-      row.nameText,
-      row.hpText,
-      row.hpBarBack,
-      row.hpBarFill
+      row.badgeText
     ]);
   }
 
@@ -173,13 +201,12 @@ export class TurnOrderPanel {
     gap: number;
     avatarSize: number;
   }): void {
-    this.rowWidth = Math.max(180, config.avatarSize + 152);
-    const rowHeight = config.avatarSize + 14;
+    this.rowWidth = Math.max(88, config.avatarSize + 34);
+    const rowHeight = config.avatarSize + 8;
 
     for (const [index, row] of this.rows.entries()) {
       const y = config.startY + index * config.gap;
       const leftX = config.x - (this.rowWidth - config.avatarSize);
-      const textX = config.x - config.avatarSize - 8;
 
       row.backing
         .setPosition(leftX, y - 4)
@@ -192,24 +219,68 @@ export class TurnOrderPanel {
       row.avatar
         .setPosition(config.x, y)
         .setDisplaySize(config.avatarSize, config.avatarSize);
-      row.teamMark.setPosition(leftX + 12, y + config.avatarSize * 0.5);
-      row.badgeText.setPosition(leftX + 23, y + 10);
-      row.offsetText.setPosition(leftX + this.rowWidth - 6, y + 10);
-      row.nameText.setPosition(textX, y + config.avatarSize * 0.42);
-      row.hpText.setPosition(textX, y + config.avatarSize * 0.72);
-      row.hpBarBack.setPosition(textX, y + config.avatarSize * 0.94);
-      row.hpBarFill.setPosition(textX, y + config.avatarSize * 0.94);
+      row.teamMark.setPosition(leftX + 10, y + config.avatarSize * 0.5);
+      row.badgeText.setPosition(leftX + 20, y + config.avatarSize * 0.3);
+      row.offsetText.setPosition(leftX + this.rowWidth - 6, y + config.avatarSize * 0.3);
+
+      this.rowLayouts[index] = {
+        backingX: leftX,
+        backingY: y - 4,
+        borderX: leftX,
+        borderY: y - 4,
+        avatarX: config.x,
+        avatarY: y,
+        teamMarkX: leftX + 10,
+        teamMarkY: y + config.avatarSize * 0.5,
+        badgeX: leftX + 20,
+        badgeY: y + config.avatarSize * 0.3,
+        offsetX: leftX + this.rowWidth - 6,
+        offsetY: y + config.avatarSize * 0.3
+      };
     }
   }
 
   setQueue(units: BattleUnit[], activeUnitId: string | null, visibleCount: number, visiblePanel: boolean): void {
     const activeIndex = units.findIndex((unit) => unit.id === activeUnitId);
+    const hasOverflow = units.length > visibleCount;
+    const entryCount = hasOverflow ? Math.max(0, visibleCount - 1) : visibleCount;
+    const previousRowByUnitId = new Map<string, number>();
+    let previousOverflowIndex: number | undefined;
 
     for (const [index, row] of this.rows.entries()) {
+      if (row.unitId) {
+        previousRowByUnitId.set(row.unitId, index);
+      }
+
+      if (row.visible && row.unitId === null && row.badgeText.text === 'MORE') {
+        previousOverflowIndex = index;
+      }
+    }
+
+    for (const [index, row] of this.rows.entries()) {
+      const isOverflowRow = hasOverflow && index === visibleCount - 1;
       const unit = units[index];
-      row.visible = visiblePanel && index < visibleCount && !!unit;
-      row.unitId = unit?.id ?? null;
+      row.visible = visiblePanel && index < visibleCount && (isOverflowRow || !!unit);
+      row.unitId = isOverflowRow ? null : unit?.id ?? null;
+      row.pressed = false;
       this.applyVisibility(row, row.visible);
+
+      if (!row.visible) {
+        continue;
+      }
+
+      if (isOverflowRow) {
+        const overflowCount = Math.max(1, units.length - entryCount);
+        row.backing.setFillStyle(PANEL_OVERFLOW_BG, 0.94);
+        row.border.setStrokeStyle(2, BORDER_OVERFLOW, 0.82);
+        row.badgeText.setText('MORE').setColor('#c9b18f');
+        row.offsetText.setText(`+${overflowCount}`);
+        row.teamMark.setText('•').setColor('#a58f7a');
+        row.avatar.setVisible(false).clearTint().setAlpha(0.7);
+        this.animateRowToLayout(row, index, previousOverflowIndex);
+        this.applyRowInteractionState(row, false, false);
+        continue;
+      }
 
       if (!unit) {
         continue;
@@ -221,27 +292,162 @@ export class TurnOrderPanel {
       const badge = isActive ? 'NOW' : isNext ? 'NEXT' : 'LATER';
       const bgColor = isActive ? PANEL_ACTIVE_BG : isNext ? PANEL_NEXT_BG : PANEL_LATER_BG;
       const borderColor = isActive ? BORDER_ACTIVE : isNext ? BORDER_NEXT : BORDER_IDLE;
-      const hpRatio = Phaser.Math.Clamp(unit.hp / Math.max(1, unit.maxHp), 0, 1);
-      const hpColor = hpRatio <= 0.3 ? HP_CRITICAL : hpRatio <= 0.6 ? HP_LOW : HP_GOOD;
-
       row.backing.setFillStyle(bgColor, isActive ? 0.98 : 0.94);
       row.border.setStrokeStyle(isActive ? 3 : 2, borderColor, isActive ? 1 : 0.86);
 
       row.badgeText.setText(badge).setColor(isActive ? '#f8e6bd' : '#cfb58f');
       row.offsetText.setText(isActive ? '0' : `+${index + 1}`);
       row.teamMark.setText(unit.team === 'player' ? '▲' : '◆').setColor(unit.team === 'player' ? '#a7d0ff' : '#f0b2b2');
-      row.nameText.setText(this.truncateLabel(unit.name, 13));
-      row.hpText.setText(`HP ${unit.hp}/${unit.maxHp}`).setColor(hpColor);
-      row.hpBarFill.setFillStyle(Phaser.Display.Color.HexStringToColor(hpColor).color, 1);
-      row.hpBarFill.setDisplaySize(42 * hpRatio, 4);
 
       row.avatar
+        .setVisible(true)
         .setTexture(unit.spriteKey)
         .setAlpha(isActive ? 1 : isNext ? 0.95 : 0.85)
         .setTint(unit.team === 'player' ? PLAYER_TINT : ENEMY_TINT);
 
       this.applyFaceCrop(row.avatar);
+      const previousIndex = previousRowByUnitId.get(unit.id);
+      this.animateRowToLayout(row, index, previousIndex);
+      this.animateEntryTransition(row, previousIndex);
+      this.animateStateTransition(row, isActive, activeUnitId);
+      this.applyRowInteractionState(row, false, false);
     }
+
+    this.previousActiveUnitId = activeUnitId;
+  }
+
+  private animateRowToLayout(row: TurnOrderRow, targetIndex: number, previousIndex?: number): void {
+    const target = this.rowLayouts[targetIndex];
+    if (!target) {
+      return;
+    }
+
+    const reducedMotion = this.prefersReducedMotion();
+    const duration = reducedMotion ? 1 : 170;
+    const delay = reducedMotion ? 0 : Math.min(60, targetIndex * 12);
+
+    if (previousIndex !== undefined && previousIndex !== targetIndex) {
+      const previous = this.rowLayouts[previousIndex];
+      if (previous) {
+        row.backing.setPosition(target.backingX, previous.backingY);
+        row.border.setPosition(target.borderX, previous.borderY);
+        row.avatar.setPosition(target.avatarX, previous.avatarY);
+        row.teamMark.setPosition(target.teamMarkX, previous.teamMarkY);
+        row.badgeText.setPosition(target.badgeX, previous.badgeY);
+        row.offsetText.setPosition(target.offsetX, previous.offsetY);
+      }
+    }
+
+    const targets = [
+      { object: row.backing, y: target.backingY },
+      { object: row.border, y: target.borderY },
+      { object: row.avatar, y: target.avatarY },
+      { object: row.teamMark, y: target.teamMarkY },
+      { object: row.badgeText, y: target.badgeY },
+      { object: row.offsetText, y: target.offsetY }
+    ];
+
+    for (const targetEntry of targets) {
+      this.scene.tweens.killTweensOf(targetEntry.object);
+      this.scene.tweens.add({
+        targets: targetEntry.object,
+        y: targetEntry.y,
+        duration,
+        delay,
+        ease: 'Sine.easeOut'
+      });
+    }
+  }
+
+  private animateEntryTransition(row: TurnOrderRow, previousIndex: number | undefined): void {
+    if (previousIndex !== undefined) {
+      return;
+    }
+
+    const reducedMotion = this.prefersReducedMotion();
+    const duration = reducedMotion ? 1 : 160;
+    const targets = [row.backing, row.border, row.teamMark, row.badgeText, row.offsetText, row.avatar];
+
+    for (const target of targets) {
+      this.scene.tweens.killTweensOf(target);
+    }
+
+    const targetBackingAlpha = row.backing.alpha;
+    const targetBorderAlpha = row.border.alpha;
+    const targetTeamMarkAlpha = row.teamMark.alpha;
+    const targetBadgeAlpha = row.badgeText.alpha;
+    const targetOffsetAlpha = row.offsetText.alpha;
+    const targetAvatarAlpha = row.avatar.alpha;
+
+    row.backing.setAlpha(0);
+    row.border.setAlpha(0);
+    row.teamMark.setAlpha(0);
+    row.badgeText.setAlpha(0);
+    row.offsetText.setAlpha(0);
+    row.avatar.setAlpha(0);
+
+    this.scene.tweens.add({ targets: row.backing, alpha: targetBackingAlpha, duration, ease: 'Sine.easeOut' });
+    this.scene.tweens.add({ targets: row.border, alpha: targetBorderAlpha, duration, ease: 'Sine.easeOut' });
+    this.scene.tweens.add({ targets: row.teamMark, alpha: targetTeamMarkAlpha, duration, ease: 'Sine.easeOut' });
+    this.scene.tweens.add({ targets: row.badgeText, alpha: targetBadgeAlpha, duration, ease: 'Sine.easeOut' });
+    this.scene.tweens.add({ targets: row.offsetText, alpha: targetOffsetAlpha, duration, ease: 'Sine.easeOut' });
+    this.scene.tweens.add({ targets: row.avatar, alpha: targetAvatarAlpha, duration, ease: 'Sine.easeOut' });
+  }
+
+  private animateStateTransition(row: TurnOrderRow, isActive: boolean, activeUnitId: string | null): void {
+    const reducedMotion = this.prefersReducedMotion();
+    const duration = reducedMotion ? 1 : 140;
+
+    if (isActive && activeUnitId !== this.previousActiveUnitId) {
+      this.scene.tweens.killTweensOf(row.border);
+      this.scene.tweens.add({
+        targets: row.border,
+        alpha: { from: 0.65, to: 1 },
+        duration,
+        yoyo: !reducedMotion,
+        ease: 'Sine.easeInOut'
+      });
+      return;
+    }
+
+    if (row.unitId && row.unitId === this.previousActiveUnitId && !isActive) {
+      this.scene.tweens.killTweensOf(row.backing);
+      this.scene.tweens.add({
+        targets: row.backing,
+        alpha: { from: 1, to: 0.94 },
+        duration,
+        ease: 'Sine.easeOut'
+      });
+    }
+  }
+
+  private applyRowInteractionState(row: TurnOrderRow, hovered: boolean, pressed: boolean): void {
+    const tone = row.badgeText.text;
+    const isActive = tone === 'NOW';
+    const isNext = tone === 'NEXT';
+    const isOverflow = tone === 'MORE';
+
+    const baseBackingAlpha = isActive ? 0.98 : 0.94;
+    const hoverBackingAlpha = isActive ? 1 : isNext ? 0.98 : isOverflow ? 0.97 : 0.96;
+    const pressBackingAlpha = isActive ? 1 : 0.99;
+    const baseBorderAlpha = isActive ? 1 : isNext ? 0.86 : 0.82;
+    const hoverBorderAlpha = Math.min(1, baseBorderAlpha + (isOverflow ? 0.08 : 0.14));
+
+    const baseBadgeColor = isActive ? '#f8e6bd' : isOverflow ? '#c9b18f' : '#cfb58f';
+    const hoverBadgeColor = isActive ? '#fff4d9' : '#f6e4bd';
+    const pressBadgeColor = '#fff0cc';
+
+    row.backing.setAlpha(pressed ? pressBackingAlpha : hovered ? hoverBackingAlpha : baseBackingAlpha);
+    row.border.setAlpha(hovered || pressed ? hoverBorderAlpha : baseBorderAlpha);
+    row.badgeText.setColor(pressed ? pressBadgeColor : hovered ? hoverBadgeColor : baseBadgeColor);
+  }
+
+  private prefersReducedMotion(): boolean {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
   private applyVisibility(row: TurnOrderRow, visible: boolean): void {
@@ -251,10 +457,6 @@ export class TurnOrderPanel {
     row.teamMark.setVisible(visible);
     row.offsetText.setVisible(visible);
     row.badgeText.setVisible(visible);
-    row.nameText.setVisible(visible);
-    row.hpText.setVisible(visible);
-    row.hpBarBack.setVisible(visible);
-    row.hpBarFill.setVisible(visible);
   }
 
   private applyFaceCrop(avatar: Phaser.GameObjects.Image): void {
@@ -272,14 +474,6 @@ export class TurnOrderPanel {
     const cropY = height * 0.04;
 
     avatar.setCrop(cropX, cropY, cropWidth, cropHeight);
-  }
-
-  private truncateLabel(value: string, length: number): string {
-    if (value.length <= length) {
-      return value;
-    }
-
-    return `${value.slice(0, Math.max(0, length - 1)).trimEnd()}…`;
   }
 
   getUnitIdAt(pointerX: number, pointerY: number): string | null {

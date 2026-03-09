@@ -384,7 +384,7 @@ export class BattleScene extends Phaser.Scene {
   private minimalMobileLayout = false;
   private compactLayout = false;
   private portraitLayout = false;
-  private visibleTurnOrderCount = 6;
+  private visibleTurnOrderCount = 7;
   private visibleLogLines = 3;
   private actionMenuRowHeight = 22;
   private submenuRowHeight = 22;
@@ -1494,7 +1494,7 @@ export class BattleScene extends Phaser.Scene {
     });
     this.autoBattleToggleText.setOrigin(1, 0);
 
-    this.turnOrderPanel = new TurnOrderPanel(this, 6, undefined, (unitId) => {
+    this.turnOrderPanel = new TurnOrderPanel(this, 7, undefined, (unitId) => {
       void this.panToUnitFromTurnOrder(unitId);
     });
 
@@ -1702,7 +1702,7 @@ export class BattleScene extends Phaser.Scene {
     this.showDetailPanel = !this.minimalMobileLayout;
     this.showTimelinePanel = true;
     this.showPortraitPanel = this.showDetailPanel && !this.portraitLayout && width >= 900 && height >= 540;
-    this.visibleTurnOrderCount = this.minimalMobileLayout ? 3 : this.portraitLayout ? 4 : this.compactLayout ? 5 : 6;
+    this.visibleTurnOrderCount = this.minimalMobileLayout ? 4 : this.portraitLayout ? 5 : this.compactLayout ? 6 : 7;
     this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
@@ -4731,7 +4731,7 @@ export class BattleScene extends Phaser.Scene {
       .setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`)
       .setColor(this.autoBattleEnabled ? '#fff1bc' : '#bca982');
 
-    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount);
+    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount + 1);
     this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, this.showTimelinePanel);
 
     const focusUnit = this.getHoveredUnit() ?? this.getActiveUnit();
