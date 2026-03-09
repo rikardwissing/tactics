@@ -1709,7 +1709,7 @@ export class BattleScene extends Phaser.Scene {
 
     if (this.portraitLayout) {
       const innerWidth = width - margin * 2;
-      const topHeight = this.minimalMobileLayout ? 104 : height < 760 ? 100 : 108;
+      const topHeight = this.minimalMobileLayout ? 62 : height < 760 ? 66 : 70;
       const detailHeight = this.showDetailPanel ? (height < 760 ? 120 : 132) : 0;
       const bottomHeight = this.showTimelinePanel ? (height < 760 ? 122 : 134) : 70;
       const actionHeight = this.minimalMobileLayout ? 172 : 196;
@@ -1739,7 +1739,7 @@ export class BattleScene extends Phaser.Scene {
       );
     } else {
       const leftWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.31 : 0.27), 260, BASE_UI_PANELS.topLeft.width);
-      const topHeight = this.compactLayout ? 116 : BASE_UI_PANELS.topLeft.height;
+      const topHeight = this.compactLayout ? 72 : 78;
       const bottomHeight = this.compactLayout ? 166 : BASE_UI_PANELS.bottomLeft.height;
       const rightWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.3 : 0.28), 258, BASE_UI_PANELS.topRight.width);
       const rightHeight = this.compactLayout ? 190 : BASE_UI_PANELS.topRight.height;
@@ -1780,8 +1780,9 @@ export class BattleScene extends Phaser.Scene {
       text.setVisible(this.showDetailPanel && text.text.length > 0);
     }
 
-    this.objectiveLabelText.setVisible(!this.minimalMobileLayout);
-    this.objectiveText.setVisible(!this.minimalMobileLayout);
+    this.objectiveLabelText.setVisible(false);
+    this.objectiveText.setVisible(false);
+    this.phaseText.setVisible(false);
 
     this.logLabelText.setVisible(false);
     this.logText.setVisible(false);
@@ -1808,19 +1809,15 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 12)
       .setFontSize(this.portraitLayout ? 10 : 11);
     this.headerText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 22 : 28))
+      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 18 : 20))
       .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27)
-      .setWordWrapWidth(this.uiPanels.topLeft.width - 32, true);
+      .setWordWrapWidth(this.uiPanels.topLeft.width - 144, true);
     this.objectiveText
       .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.portraitLayout ? 54 : 60))
       .setFontSize(this.portraitLayout ? 14 : this.compactLayout ? 15 : 16)
       .setWordWrapWidth(this.uiPanels.topLeft.width - 34, true);
-    this.phaseText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.bottom - (this.minimalMobileLayout ? 26 : 34))
-      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
-      .setWordWrapWidth(this.uiPanels.topLeft.width - (this.minimalMobileLayout ? 24 : 120), true);
     this.autoBattleToggleText
-      .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + 16)
+      .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 14 : 15))
       .setFontSize(this.portraitLayout ? 12 : 13);
 
     this.turnOrderPanel.setLayout({
@@ -4796,16 +4793,10 @@ export class BattleScene extends Phaser.Scene {
       ]);
     } else {
       this.portrait.setVisible(false);
-      this.activeBadge.setText('FIELD MANUAL').setColor('#f7edc4');
-      this.detailMetaText.setText('Current battlefield doctrine');
-      this.detailTitleText.setText('Battlefield Brief');
-      this.detailBodyText.setText(
-        [
-          'Player turns begin with movement.',
-          'Higher tiles boost damage and reduce return fire.',
-          'Drag to pan the field. Scroll or pinch to zoom. Q/E rotate the field. T cycles scene lighting.'
-        ].join('\n')
-      );
+      this.activeBadge.setText('BATTLE STATUS').setColor('#f7edc4');
+      this.detailMetaText.setText('Engagement overview');
+      this.detailTitleText.setText(this.level.name);
+      this.detailBodyText.setText('Select a unit or tile for tactical details.');
       this.setDetailStatValues([
         `ALLIES ${this.units.filter((unit) => unit.team === 'player' && unit.alive).length}`,
         `FOES ${this.units.filter((unit) => unit.team === 'enemy' && unit.alive).length}`,
