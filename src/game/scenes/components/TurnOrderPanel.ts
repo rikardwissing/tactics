@@ -43,7 +43,7 @@ const BORDER_OVERFLOW = 0x6d5850;
 export class TurnOrderPanel {
   private readonly rows: TurnOrderRow[];
   private readonly rowLayouts: RowLayout[];
-  private rowWidth = 90;
+  private rowWidth = 40;
   private previousActiveUnitId: string | null = null;
 
   constructor(
@@ -201,41 +201,41 @@ export class TurnOrderPanel {
     gap: number;
     avatarSize: number;
   }): void {
-    this.rowWidth = Math.max(88, config.avatarSize + 34);
-    const rowHeight = config.avatarSize + 8;
+    this.rowWidth = config.avatarSize;
+    const rowHeight = config.avatarSize;
 
     for (const [index, row] of this.rows.entries()) {
       const y = config.startY + index * config.gap;
-      const leftX = config.x - (this.rowWidth - config.avatarSize);
+      const leftX = config.x;
 
       row.backing
-        .setPosition(leftX, y - 4)
+        .setPosition(leftX, y)
         .setSize(this.rowWidth, rowHeight)
         .setDisplaySize(this.rowWidth, rowHeight);
       row.border
-        .setPosition(leftX, y - 4)
+        .setPosition(leftX, y)
         .setSize(this.rowWidth, rowHeight)
         .setDisplaySize(this.rowWidth, rowHeight);
       row.avatar
         .setPosition(config.x, y)
         .setDisplaySize(config.avatarSize, config.avatarSize);
-      row.teamMark.setPosition(leftX + 10, y + config.avatarSize * 0.5);
-      row.badgeText.setPosition(leftX + 20, y + config.avatarSize * 0.3);
-      row.offsetText.setPosition(leftX + this.rowWidth - 6, y + config.avatarSize * 0.3);
+      row.teamMark.setPosition(leftX + 10, y + config.avatarSize - 9);
+      row.badgeText.setPosition(leftX + 4, y + 7);
+      row.offsetText.setPosition(leftX + this.rowWidth - 4, y + 7);
 
       this.rowLayouts[index] = {
         backingX: leftX,
-        backingY: y - 4,
+        backingY: y,
         borderX: leftX,
-        borderY: y - 4,
+        borderY: y,
         avatarX: config.x,
         avatarY: y,
         teamMarkX: leftX + 10,
-        teamMarkY: y + config.avatarSize * 0.5,
-        badgeX: leftX + 20,
-        badgeY: y + config.avatarSize * 0.3,
-        offsetX: leftX + this.rowWidth - 6,
-        offsetY: y + config.avatarSize * 0.3
+        teamMarkY: y + config.avatarSize - 9,
+        badgeX: leftX + 4,
+        badgeY: y + 7,
+        offsetX: leftX + this.rowWidth - 4,
+        offsetY: y + 7
       };
     }
   }
@@ -468,10 +468,10 @@ export class TurnOrderPanel {
 
     const width = frame.width;
     const height = frame.height;
-    const cropWidth = width * 0.7;
-    const cropHeight = height * 0.52;
+    const cropWidth = width * 0.5;
+    const cropHeight = height * 0.4;
     const cropX = (width - cropWidth) / 2;
-    const cropY = height * 0.04;
+    const cropY = height * 0.03;
 
     avatar.setCrop(cropX, cropY, cropWidth, cropHeight);
   }

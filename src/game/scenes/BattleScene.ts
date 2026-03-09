@@ -1702,7 +1702,7 @@ export class BattleScene extends Phaser.Scene {
     this.showDetailPanel = !this.minimalMobileLayout;
     this.showTimelinePanel = true;
     this.showPortraitPanel = this.showDetailPanel && !this.portraitLayout && width >= 900 && height >= 540;
-    this.visibleTurnOrderCount = this.minimalMobileLayout ? 4 : this.portraitLayout ? 5 : this.compactLayout ? 6 : 7;
+    this.visibleTurnOrderCount = 7;
     this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
