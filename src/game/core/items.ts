@@ -21,7 +21,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
   'mending-salve': {
     id: 'mending-salve',
     name: 'Mending Salve',
-    description: 'Restore 28 HP to the acting unit.',
+    description: 'Restore 28 HP to an adjacent ally or self.',
     effect: {
       kind: 'heal',
       amount: 28
@@ -30,7 +30,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
   'quick-tonic': {
     id: 'quick-tonic',
     name: 'Quick Tonic',
-    description: 'Grant 35 CT to the acting unit for a faster next turn.',
+    description: 'Grant 35 CT to an adjacent ally or self for a faster next turn.',
     effect: {
       kind: 'ct',
       amount: 35

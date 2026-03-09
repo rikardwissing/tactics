@@ -486,6 +486,31 @@
       "name": "objective",
       "type": "string",
       "value": "Drive the Ashen Host from the ridge before they encircle the altar."
+    },
+    {
+      "name": "shortObjective",
+      "type": "string",
+      "value": "Break the ridge encirclement."
+    },
+    {
+      "name": "titlePrefix",
+      "type": "string",
+      "value": "Mission I"
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "value": "Vesper Ridge"
+    },
+    {
+      "name": "encounterType",
+      "type": "string",
+      "value": "Vesper Skirmish"
+    },
+    {
+      "name": "titleFlavor",
+      "type": "string",
+      "value": "Reclaim the altar ridge before the gravebound line closes."
     }
   ],
   "renderorder": "right-down",

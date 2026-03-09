@@ -16,6 +16,7 @@ type Phase =
   | 'player-move'
   | 'player-action'
   | 'player-items'
+  | 'player-item-action'
   | 'enemy'
   | 'animating'
   | 'complete';
@@ -77,6 +78,7 @@ interface SubmenuEntry {
   enabled: boolean;
   abilityId?: string;
   itemId?: ItemId;
+  action?: 'confirm-ability' | 'confirm-item';
 }
 
 type PanKeys = {
@@ -96,7 +98,7 @@ const CHEST_DISPLAY_WIDTH = 47;
 const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
 
 const BASE_UI_PANELS = {
-  topLeft: new Phaser.Geom.Rectangle(20, 18, 336, 132),
+  topLeft: new Phaser.Geom.Rectangle(20, 18, 392, 164),
   bottomLeft: new Phaser.Geom.Rectangle(20, 514, 336, 186),
   topRight: new Phaser.Geom.Rectangle(904, 18, 356, 218),
   bottomRight: new Phaser.Geom.Rectangle(904, 514, 356, 186),
@@ -188,6 +190,7 @@ const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
 };
 
 type TimeOfDayId = 'day' | 'dusk' | 'night' | 'dawn';
+type DetailPortraitKind = 'unit' | 'prop' | 'chest' | 'terrain';
 
 const TIME_OF_DAY_ORDER: readonly TimeOfDayId[] = ['day', 'dusk', 'night', 'dawn'];
 
@@ -255,6 +258,39 @@ const WORLD_EDGE_BASE_LEVEL = 1;
 const UNIT_GROUND_OFFSET_Y = 6;
 const UNIT_FOOTPRINT_OFFSET_Y = -4;
 const SOFT_LIGHT_TEXTURE_KEY = 'soft-light';
+const MAP_TITLE_INTRO_DURATION = 320;
+const MAP_TITLE_INTRO_HOLD = 880;
+const MAP_TITLE_OUTRO_DURATION = 360;
+const UI_PLAQUE_HEADER_HEIGHT = 40;
+const UI_PLAQUE_RADIUS = 22;
+const UI_INSET_RADIUS = 12;
+
+interface UiPlaqueShellOptions {
+  accentColor: number;
+  alpha?: number;
+  headerHeight?: number;
+  radius?: number;
+  headerAlpha?: number;
+  sideRuleAlpha?: number;
+  shineAlpha?: number;
+  dividerAlpha?: number;
+}
+
+interface UiInsetBoxOptions {
+  fillColor?: number;
+  fillAlpha?: number;
+  strokeColor?: number;
+  strokeAlpha?: number;
+  radius?: number;
+}
+
+interface UiPillOptions {
+  fillColor: number;
+  strokeColor: number;
+  fillAlpha?: number;
+  strokeAlpha?: number;
+  radius?: number;
+}
 
 export class BattleScene extends Phaser.Scene {
   private level: LevelDefinition = CURRENT_LEVEL;
@@ -278,11 +314,16 @@ export class BattleScene extends Phaser.Scene {
   private uiGraphics!: Phaser.GameObjects.Graphics;
   private submenuUiGraphics!: Phaser.GameObjects.Graphics;
   private turnOrderPanel!: TurnOrderPanel;
-  private headerText!: Phaser.GameObjects.Text;
-  private objectiveLabelText!: Phaser.GameObjects.Text;
-  private objectiveText!: Phaser.GameObjects.Text;
+  private mapPlaqueEyebrowText!: Phaser.GameObjects.Text;
+  private mapPlaqueTitleText!: Phaser.GameObjects.Text;
+  private mapPlaqueMetaText!: Phaser.GameObjects.Text;
+  private mapObjectiveTagText!: Phaser.GameObjects.Text;
+  private mapObjectiveText!: Phaser.GameObjects.Text;
+  private mapIntroEyebrowText!: Phaser.GameObjects.Text;
+  private mapIntroTitleText!: Phaser.GameObjects.Text;
+  private mapIntroMetaText!: Phaser.GameObjects.Text;
+  private mapIntroFlavorText!: Phaser.GameObjects.Text;
   private logLabelText!: Phaser.GameObjects.Text;
-  private phaseText!: Phaser.GameObjects.Text;
   private autoBattleToggleText!: Phaser.GameObjects.Text;
   private detailMetaText!: Phaser.GameObjects.Text;
   private detailTitleText!: Phaser.GameObjects.Text;
@@ -295,11 +336,16 @@ export class BattleScene extends Phaser.Scene {
   private submenuTitleText!: Phaser.GameObjects.Text;
   private menuBodyText!: Phaser.GameObjects.Text;
   private menuHintText!: Phaser.GameObjects.Text;
+  private detailSubmenuUiGraphics!: Phaser.GameObjects.Graphics;
+  private detailSubmenuTitleText!: Phaser.GameObjects.Text;
+  private detailSubmenuBodyText!: Phaser.GameObjects.Text;
   private actionMenuTexts: Phaser.GameObjects.Text[] = [];
   private submenuTexts: Phaser.GameObjects.Text[] = [];
   private activeUnitId: string | null = null;
   private selectedAbilityId: string | null = null;
+  private selectedItemId: ItemId | null = null;
   private hoverTile: TileData | null = null;
+  private hoveredTurnOrderUnitId: string | null = null;
   private moveNodes = new Map<string, ReachNode>();
   private phase: Phase = 'intro';
   private busy = false;
@@ -323,13 +369,33 @@ export class BattleScene extends Phaser.Scene {
   private actionMenuAlpha = 0;
   private actionMenuVisible = false;
   private actionMenuTween?: Phaser.Tweens.Tween;
+  private detailSubmenuPanel = new Phaser.Geom.Rectangle(
+    BASE_ACTION_MENU_PANELS.sub.right + 12,
+    BASE_ACTION_MENU_PANELS.sub.y,
+    228,
+    BASE_ACTION_MENU_PANELS.sub.height
+  );
   private submenuPanelX = BASE_ACTION_MENU_PANELS.sub.x - 24;
   private submenuPanelAlpha = 0;
   private submenuOpen = false;
   private submenuTween?: Phaser.Tweens.Tween;
+  private detailSubmenuPanelX = BASE_ACTION_MENU_PANELS.sub.right - 14;
+  private detailSubmenuPanelAlpha = 0;
+  private detailSubmenuOpen = false;
+  private detailSubmenuTween?: Phaser.Tweens.Tween;
   private autoBattleEnabled = false;
+  private autoBattleRunToken = 0;
+  private activeAutoBattleRunToken: number | null = null;
   private timeOfDay: TimeOfDayId = 'dusk';
   private restarting = false;
+  private mapIntroAlpha = 0;
+  private mapIntroOffsetY = 18;
+  private mapPlaqueAlpha = 1;
+  private mapPlaqueOffsetX = 0;
+  private mapIntroBounds = new Phaser.Geom.Rectangle();
+  private mapObjectiveBoxBounds = new Phaser.Geom.Rectangle();
+  private detailBodyBoxBounds = new Phaser.Geom.Rectangle();
+  private detailHealthBarBounds = new Phaser.Geom.Rectangle();
   private uiPanels = {
     topLeft: new Phaser.Geom.Rectangle(
       BASE_UI_PANELS.topLeft.x,
@@ -384,7 +450,7 @@ export class BattleScene extends Phaser.Scene {
   private minimalMobileLayout = false;
   private compactLayout = false;
   private portraitLayout = false;
-  private visibleTurnOrderCount = 7;
+  private visibleTurnOrderCount = 6;
   private visibleLogLines = 3;
   private actionMenuRowHeight = 22;
   private submenuRowHeight = 22;
@@ -427,6 +493,7 @@ export class BattleScene extends Phaser.Scene {
     this.highlightOverlays = [];
     this.activeUnitId = null;
     this.selectedAbilityId = null;
+    this.selectedItemId = null;
     this.hoverTile = null;
     this.moveNodes.clear();
     this.phase = 'intro';
@@ -450,6 +517,10 @@ export class BattleScene extends Phaser.Scene {
     this.resultOverlayShade = undefined;
     this.resultOverlayTitle = undefined;
     this.resultOverlayBody = undefined;
+    this.mapIntroAlpha = 0;
+    this.mapIntroOffsetY = 18;
+    this.mapPlaqueAlpha = 1;
+    this.mapPlaqueOffsetX = 0;
 
     this.input.addPointer(2);
 
@@ -462,11 +533,13 @@ export class BattleScene extends Phaser.Scene {
     this.highlightGraphics = this.add.graphics();
     this.uiGraphics = this.add.graphics();
     this.submenuUiGraphics = this.add.graphics();
+    this.detailSubmenuUiGraphics = this.add.graphics();
     this.boardGraphics.setDepth(40);
     this.lightShadowGraphics.setDepth(45);
     this.highlightGraphics.setDepth(90);
     this.uiGraphics.setDepth(860).setScrollFactor(0);
     this.submenuUiGraphics.setDepth(900).setScrollFactor(0);
+    this.detailSubmenuUiGraphics.setDepth(905).setScrollFactor(0);
     this.ambientOverlay = this.add
       .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x102746, 0)
       .setDepth(44)
@@ -490,8 +563,9 @@ export class BattleScene extends Phaser.Scene {
     this.pushLog('Dawn Company engages the Ashen Host on the ruined ridge.');
     this.pushLog('Take the crest and cut down the enemy casters first.');
     this.refreshUi();
+    this.startMapTitleSequence();
 
-    this.time.delayedCall(750, () => {
+    this.time.delayedCall(MAP_TITLE_INTRO_DURATION + MAP_TITLE_INTRO_HOLD + MAP_TITLE_OUTRO_DURATION + 120, () => {
       this.beginNextTurn();
     });
   }
@@ -510,6 +584,7 @@ export class BattleScene extends Phaser.Scene {
       }
 
       if (this.isPanning) {
+        this.setHoveredTurnOrderUnitId(null);
         const camera = this.getWorldCamera();
         this.setBoardScroll(
           this.panCameraOrigin.x - (pointer.x - this.panPointerOrigin.x) / camera.zoom,
@@ -517,6 +592,8 @@ export class BattleScene extends Phaser.Scene {
         );
         return;
       }
+
+      this.setHoveredTurnOrderUnitId(this.turnOrderPanel.getUnitIdAt(pointer.x, pointer.y));
 
       if (this.isPointerOverUi(pointer.x, pointer.y)) {
         if (this.hoverTile) {
@@ -622,6 +699,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handleTouchPointerDown(pointer: Phaser.Input.Pointer): void {
+    this.setHoveredTurnOrderUnitId(null);
+
     if (this.isPointerOverUi(pointer.x, pointer.y)) {
       void this.handlePointerDown(pointer);
       return;
@@ -638,6 +717,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handleTouchPointerMove(pointer: Phaser.Input.Pointer): void {
+    this.setHoveredTurnOrderUnitId(null);
+
     if (this.touchSecondaryPointerId !== null) {
       if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
         this.updatePinchZoom();
@@ -678,6 +759,8 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async handleTouchPointerUp(pointer: Phaser.Input.Pointer): Promise<void> {
+    this.setHoveredTurnOrderUnitId(null);
+
     if (this.touchSecondaryPointerId !== null) {
       if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
         const remainingPointerId =
@@ -837,11 +920,17 @@ export class BattleScene extends Phaser.Scene {
     return [
       this.uiGraphics,
       this.submenuUiGraphics,
-      this.objectiveLabelText,
-      this.headerText,
-      this.objectiveText,
+      this.detailSubmenuUiGraphics,
+      this.mapPlaqueEyebrowText,
+      this.mapPlaqueTitleText,
+      this.mapPlaqueMetaText,
+      this.mapObjectiveTagText,
+      this.mapObjectiveText,
+      this.mapIntroEyebrowText,
+      this.mapIntroTitleText,
+      this.mapIntroMetaText,
+      this.mapIntroFlavorText,
       this.logLabelText,
-      this.phaseText,
       this.autoBattleToggleText,
       this.detailMetaText,
       this.detailTitleText,
@@ -854,6 +943,8 @@ export class BattleScene extends Phaser.Scene {
       this.submenuTitleText,
       this.menuBodyText,
       this.menuHintText,
+      this.detailSubmenuTitleText,
+      this.detailSubmenuBodyText,
       ...this.hudControls.map((control) => control.container),
       ...this.turnOrderPanel.getDisplayObjects(),
       ...this.actionMenuTexts,
@@ -1449,7 +1540,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createUi(): void {
-    this.objectiveLabelText = this.add.text(0, 0, '', {
+    this.mapPlaqueEyebrowText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '11px',
       fontStyle: 'bold',
@@ -1457,19 +1548,66 @@ export class BattleScene extends Phaser.Scene {
       letterSpacing: 2
     });
 
-    this.headerText = this.add.text(0, 0, this.level.name, {
+    this.mapPlaqueTitleText = this.add.text(0, 0, this.level.name, {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '27px',
+      fontSize: '25px',
       fontStyle: 'bold',
       color: '#fff3da'
     });
 
-    this.objectiveText = this.add.text(0, 0, this.level.objective, {
+    this.mapPlaqueMetaText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '13px',
+      color: '#d6c4a0',
+      letterSpacing: 0.6
+    });
+
+    this.mapObjectiveTagText = this.add.text(0, 0, 'OBJECTIVE', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#ebd5a0',
+      letterSpacing: 1.4
+    });
+
+    this.mapObjectiveText = this.add.text(0, 0, this.level.objective, {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '13px',
+      color: '#f2e4c2',
+      lineSpacing: 3
+    });
+
+    this.mapIntroEyebrowText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: '#e3c98a',
+      letterSpacing: 4
+    }).setOrigin(0.5, 0);
+
+    this.mapIntroTitleText = this.add.text(0, 0, this.level.name, {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '42px',
+      fontStyle: 'bold',
+      color: '#fff2d6',
+      align: 'center'
+    }).setOrigin(0.5, 0);
+
+    this.mapIntroMetaText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '16px',
-      color: '#e3d3b1',
-      lineSpacing: 4
-    });
+      color: '#d8c29a',
+      align: 'center',
+      letterSpacing: 1
+    }).setOrigin(0.5, 0);
+
+    this.mapIntroFlavorText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '18px',
+      color: '#f1dfb7',
+      align: 'center',
+      lineSpacing: 6
+    }).setOrigin(0.5, 0);
 
     this.logLabelText = this.add.text(0, 0, 'BATTLE LOG', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -1479,12 +1617,6 @@ export class BattleScene extends Phaser.Scene {
       letterSpacing: 2
     });
 
-    this.phaseText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '16px',
-      color: '#f3ddb0'
-    });
-
     this.autoBattleToggleText = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
       fontSize: '13px',
@@ -1492,11 +1624,19 @@ export class BattleScene extends Phaser.Scene {
       color: '#f7ebc8',
       letterSpacing: 0.5
     });
-    this.autoBattleToggleText.setOrigin(1, 0);
+    this.autoBattleToggleText.setOrigin(1, 0.5);
 
-    this.turnOrderPanel = new TurnOrderPanel(this, 7, undefined, (unitId) => {
-      void this.panToUnitFromTurnOrder(unitId);
-    });
+    this.turnOrderPanel = new TurnOrderPanel(
+      this,
+      6,
+      undefined,
+      (unitId) => {
+        void this.panToUnitFromTurnOrder(unitId);
+      },
+      (unitId) => {
+        this.setHoveredTurnOrderUnitId(unitId);
+      }
+    );
 
     this.activeBadge = this.add.text(0, 0, '', {
       fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -1505,6 +1645,7 @@ export class BattleScene extends Phaser.Scene {
       color: '#fff3da',
       letterSpacing: 1
     });
+    this.activeBadge.setOrigin(0, 0.5);
 
     this.portrait = this.add
       .image(0, 0, 'holy-knight')
@@ -1591,14 +1732,33 @@ export class BattleScene extends Phaser.Scene {
       color: '#d6c196'
     });
 
+    this.detailSubmenuTitleText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '20px',
+      fontStyle: 'bold',
+      color: '#fff3da'
+    });
+
+    this.detailSubmenuBodyText = this.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '12px',
+      color: '#d9c7a8',
+      lineSpacing: 4
+    });
+
     this.createHudControls();
 
     const uiElements = [
-      this.objectiveLabelText,
-      this.headerText,
-      this.objectiveText,
+      this.mapPlaqueEyebrowText,
+      this.mapPlaqueTitleText,
+      this.mapPlaqueMetaText,
+      this.mapObjectiveTagText,
+      this.mapObjectiveText,
+      this.mapIntroEyebrowText,
+      this.mapIntroTitleText,
+      this.mapIntroMetaText,
+      this.mapIntroFlavorText,
       this.logLabelText,
-      this.phaseText,
       this.autoBattleToggleText,
       this.activeBadge,
       this.portrait,
@@ -1621,6 +1781,8 @@ export class BattleScene extends Phaser.Scene {
       this.submenuTitleText,
       this.menuBodyText,
       this.menuHintText,
+      this.detailSubmenuTitleText,
+      this.detailSubmenuBodyText,
       ...this.submenuTexts
     ];
 
@@ -1702,22 +1864,24 @@ export class BattleScene extends Phaser.Scene {
     this.showDetailPanel = !this.minimalMobileLayout;
     this.showTimelinePanel = true;
     this.showPortraitPanel = this.showDetailPanel && !this.portraitLayout && width >= 900 && height >= 540;
-    this.visibleTurnOrderCount = 7;
+    this.visibleTurnOrderCount = 6;
     this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
+    const avatarSize = this.minimalMobileLayout ? 36 : this.portraitLayout ? 34 : this.compactLayout ? 38 : 40;
+    const turnOrderGap = avatarSize + (this.minimalMobileLayout ? 12 : 14);
+    const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
 
     if (this.portraitLayout) {
       const innerWidth = width - margin * 2;
-      const topHeight = this.minimalMobileLayout ? 62 : height < 760 ? 66 : 70;
-      const detailHeight = this.showDetailPanel ? (height < 760 ? 120 : 132) : 0;
-      const bottomHeight = this.showTimelinePanel ? (height < 760 ? 122 : 134) : 70;
-      const actionHeight = this.minimalMobileLayout ? 172 : 196;
-      const rootWidth = Phaser.Math.Clamp(innerWidth * 0.36, 158, 182);
-      const actionY = Math.max(
-        margin + topHeight + detailHeight + 14,
-        height - margin - bottomHeight - 10 - actionHeight
-      );
+      const topHeight = this.getTargetMapPlaqueHeight(innerWidth, height);
+      const detailHeight = this.showDetailPanel ? this.getTargetDetailPanelHeight(innerWidth, height) : 0;
+      const timelinePanelWidth = avatarSize + 28;
+      const bottomHeight = this.showTimelinePanel ? Math.max(height < 760 ? 122 : 134, turnOrderHeight + 24) : 70;
+      const actionHeight = Math.max(180, this.minimalMobileLayout ? 172 : 196);
+      const gapBetweenPanels = 12;
+      const rootWidth = Phaser.Math.Clamp(innerWidth * 0.28, 158, 182);
+      const subWidth = Math.max(220, innerWidth - timelinePanelWidth - rootWidth - gapBetweenPanels * 2);
 
       this.uiPanels.topLeft.setTo(margin, margin, innerWidth, topHeight);
       this.uiPanels.topRight.setTo(
@@ -1726,23 +1890,22 @@ export class BattleScene extends Phaser.Scene {
         innerWidth,
         detailHeight
       );
-      this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, innerWidth, bottomHeight);
+      this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, timelinePanelWidth, bottomHeight);
       this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
       this.uiPanels.portrait.setTo(0, 0, 0, 0);
-
-      this.actionMenuPanels.root.setTo(margin, actionY, rootWidth, 180);
-      this.actionMenuPanels.sub.setTo(
-        margin + rootWidth - 14,
-        actionY,
-        innerWidth - rootWidth + 14,
-        actionHeight
+      this.layoutMenuChain(
+        this.uiPanels.bottomLeft.right + gapBetweenPanels,
+        this.uiPanels.bottomLeft.bottom,
+        rootWidth,
+        actionHeight,
+        [subWidth + 14, Phaser.Math.Clamp(innerWidth * 0.32, 188, 240)]
       );
     } else {
-      const leftWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.31 : 0.27), 260, BASE_UI_PANELS.topLeft.width);
-      const topHeight = this.compactLayout ? 72 : 78;
-      const bottomHeight = this.compactLayout ? 166 : BASE_UI_PANELS.bottomLeft.height;
+      const leftWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.34 : 0.31), 300, BASE_UI_PANELS.topLeft.width);
+      const topHeight = this.getTargetMapPlaqueHeight(leftWidth, height);
+      const timelinePanelWidth = avatarSize + 28;
+      const bottomHeight = Math.max(this.compactLayout ? 166 : BASE_UI_PANELS.bottomLeft.height, turnOrderHeight + 24);
       const rightWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.3 : 0.28), 258, BASE_UI_PANELS.topRight.width);
-      const rightHeight = this.compactLayout ? 190 : BASE_UI_PANELS.topRight.height;
       const actionRootWidth = this.compactLayout ? 168 : BASE_ACTION_MENU_PANELS.root.width;
       const actionRootHeight = this.compactLayout ? 176 : BASE_ACTION_MENU_PANELS.root.height;
       const actionSubWidth = Phaser.Math.Clamp(
@@ -1750,14 +1913,18 @@ export class BattleScene extends Phaser.Scene {
         248,
         BASE_ACTION_MENU_PANELS.sub.width
       );
-      const actionSubHeight = this.compactLayout ? 206 : BASE_ACTION_MENU_PANELS.sub.height;
-      const subX = width - margin - actionSubWidth;
-      const actionY = height - margin - actionSubHeight;
+      const actionPanelHeight = Math.max(
+        actionRootHeight,
+        this.compactLayout ? 206 : BASE_ACTION_MENU_PANELS.sub.height
+      );
+      const bottomY = height - margin - bottomHeight;
+      const gapBetweenPanels = 14;
       const portraitWidth = this.showPortraitPanel ? (this.compactLayout ? 116 : BASE_UI_PANELS.portrait.width) : 0;
       const portraitHeight = this.showPortraitPanel ? (this.compactLayout ? 120 : BASE_UI_PANELS.portrait.height) : 0;
+      const rightHeight = this.getTargetDetailPanelHeight(rightWidth, height, portraitWidth, portraitHeight);
 
       this.uiPanels.topLeft.setTo(margin, margin, leftWidth, topHeight);
-      this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, leftWidth, bottomHeight);
+      this.uiPanels.bottomLeft.setTo(margin, bottomY, timelinePanelWidth, bottomHeight);
       this.uiPanels.topRight.setTo(width - margin - rightWidth, margin, rightWidth, rightHeight);
       this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
       this.uiPanels.portrait.setTo(
@@ -1767,9 +1934,21 @@ export class BattleScene extends Phaser.Scene {
         portraitHeight
       );
 
-      this.actionMenuPanels.sub.setTo(subX, actionY, actionSubWidth, actionSubHeight);
-      this.actionMenuPanels.root.setTo(subX - actionRootWidth + 22, actionY, actionRootWidth, actionRootHeight);
+      const rootX = this.uiPanels.bottomLeft.right + gapBetweenPanels;
+      this.layoutMenuChain(
+        rootX,
+        this.uiPanels.bottomLeft.bottom,
+        actionRootWidth,
+        actionPanelHeight,
+        [
+          actionSubWidth,
+          Phaser.Math.Clamp(width * (this.compactLayout ? 0.18 : 0.19), 188, 242)
+        ]
+      );
     }
+
+    this.submenuPanelX = this.getMenuPanelSlideX(this.actionMenuPanels.sub, this.submenuPanelAlpha);
+    this.detailSubmenuPanelX = this.getMenuPanelSlideX(this.detailSubmenuPanel, this.detailSubmenuPanelAlpha);
 
     this.activeBadge.setVisible(this.showDetailPanel);
     this.detailMetaText.setVisible(this.showDetailPanel);
@@ -1780,83 +1959,27 @@ export class BattleScene extends Phaser.Scene {
       text.setVisible(this.showDetailPanel && text.text.length > 0);
     }
 
-    this.objectiveLabelText.setVisible(false);
-    this.objectiveText.setVisible(false);
-    this.phaseText.setVisible(false);
-
     this.logLabelText.setVisible(false);
     this.logText.setVisible(false);
     this.turnOrderPanel.setVisible(this.showTimelinePanel);
 
-    this.submenuPanelX = this.actionMenuPanels.sub.x - 26 + 26 * this.submenuPanelAlpha;
+    const turnOrderStartY = this.uiPanels.bottomLeft.bottom - turnOrderHeight - 12;
+    const turnOrderX = this.uiPanels.bottomLeft.x + Math.round((this.uiPanels.bottomLeft.width - avatarSize) * 0.5);
 
-    const detailTextWidth = Math.max(
-      132,
-      this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
-    );
-    const avatarSize = this.minimalMobileLayout ? 36 : this.portraitLayout ? 34 : this.compactLayout ? 38 : 40;
-    const turnOrderGap = avatarSize + (this.minimalMobileLayout ? 12 : 14);
-    const turnOrderStartY = Math.max(
-      margin,
-      Math.round(height * 0.5 - (Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap + avatarSize) * 0.5)
-    );
-    const turnOrderX = width - margin - avatarSize;
-    const detailStatWidth = Math.max(72, Math.floor((detailTextWidth - 10) / 2));
-    const detailStatGap = 10;
-    const detailStatsY = this.uiPanels.topRight.y + (this.showPortraitPanel ? 104 : 110);
-
-    this.objectiveLabelText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + 12)
-      .setFontSize(this.portraitLayout ? 10 : 11);
-    this.headerText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 18 : 20))
-      .setFontSize(this.portraitLayout ? 20 : this.compactLayout ? 24 : 27)
-      .setWordWrapWidth(this.uiPanels.topLeft.width - 144, true);
-    this.objectiveText
-      .setPosition(this.uiPanels.topLeft.x + 16, this.uiPanels.topLeft.y + (this.portraitLayout ? 54 : 60))
-      .setFontSize(this.portraitLayout ? 14 : this.compactLayout ? 15 : 16)
-      .setWordWrapWidth(this.uiPanels.topLeft.width - 34, true);
-    this.autoBattleToggleText
-      .setPosition(this.uiPanels.topLeft.right - 16, this.uiPanels.topLeft.y + (this.minimalMobileLayout ? 14 : 15))
-      .setFontSize(this.portraitLayout ? 12 : 13);
+    this.layoutMapTitleSection(width, height);
+    this.layoutDetailPanelSection();
 
     this.turnOrderPanel.setLayout({
       x: turnOrderX,
       startY: turnOrderStartY,
       gap: turnOrderGap,
-      avatarSize
+      avatarSize,
+      reverse: true
     });
-
-    this.activeBadge
-      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 14)
-      .setFontSize(this.portraitLayout ? 12 : 13);
 
     this.portrait
       .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY + 6)
       .setVisible(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible);
-
-    this.detailMetaText
-      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 48)
-      .setFontSize(this.portraitLayout ? 12 : 13)
-      .setWordWrapWidth(detailTextWidth, true);
-    this.detailTitleText
-      .setPosition(this.uiPanels.topRight.x + 16, this.uiPanels.topRight.y + 66)
-      .setFontSize(this.portraitLayout ? 21 : this.compactLayout ? 23 : 25)
-      .setWordWrapWidth(detailTextWidth, true);
-    for (const [index, text] of this.detailStatTexts.entries()) {
-      const column = index % 2;
-      const row = Math.floor(index / 2);
-      text
-        .setPosition(
-          this.uiPanels.topRight.x + 28 + column * (detailStatWidth + detailStatGap),
-          detailStatsY + row * 28
-        )
-        .setFontSize(this.portraitLayout ? 10 : 11);
-    }
-    this.detailBodyText
-      .setPosition(this.uiPanels.topRight.x + 16, detailStatsY + 58)
-      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
-      .setWordWrapWidth(detailTextWidth + (this.showPortraitPanel ? 0 : 6), true);
 
     this.menuTitleText
       .setPosition(this.actionMenuPanels.root.x + 14, this.actionMenuPanels.root.y + 12)
@@ -1875,6 +1998,10 @@ export class BattleScene extends Phaser.Scene {
       .setFontSize(this.portraitLayout ? 11 : 12)
       .setWordWrapWidth(this.actionMenuPanels.sub.width - 28, true);
     this.menuHintText.setFontSize(this.portraitLayout ? 11 : 12);
+    this.detailSubmenuTitleText.setFontSize(this.portraitLayout ? 18 : 20);
+    this.detailSubmenuBodyText
+      .setFontSize(this.portraitLayout ? 11 : 12)
+      .setWordWrapWidth(this.detailSubmenuPanel.width - 28, true);
     for (const text of this.submenuTexts) {
       text.setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15);
     }
@@ -1882,6 +2009,516 @@ export class BattleScene extends Phaser.Scene {
     this.layoutHudControls(margin, width, height);
     this.layoutSubmenuUi();
     this.layoutResultOverlay();
+  }
+
+  private layoutMenuChain(
+    rootX: number,
+    bottom: number,
+    rootWidth: number,
+    panelHeight: number,
+    submenuWidths: number[],
+    overlap = 22,
+    gap = 12
+  ): void {
+    const rootY = bottom - panelHeight;
+    this.actionMenuPanels.root.setTo(rootX, rootY, rootWidth, panelHeight);
+
+    let cursorX = this.actionMenuPanels.root.right - overlap;
+
+    const [submenuWidth = this.actionMenuPanels.sub.width, detailWidth = this.detailSubmenuPanel.width] = submenuWidths;
+    this.actionMenuPanels.sub.setTo(cursorX, rootY, submenuWidth, panelHeight);
+    cursorX = this.actionMenuPanels.sub.right + gap;
+    this.detailSubmenuPanel.setTo(cursorX, rootY, detailWidth, panelHeight);
+  }
+
+  private getMenuPanelSlideX(panel: Phaser.Geom.Rectangle, alpha: number): number {
+    return panel.x - 26 + 26 * alpha;
+  }
+
+  private getMapPlaqueRequiredHeight(panelWidth: number): number {
+    const plaqueTextWidth = Math.max(154, panelWidth - (this.minimalMobileLayout ? 30 : 138));
+    const plaqueEyebrowWidth = Math.max(120, panelWidth - (this.minimalMobileLayout ? 120 : 152));
+    const objectiveBoxWidth = panelWidth - (this.minimalMobileLayout ? 28 : 36);
+    const objectiveTextWidth = Math.max(60, objectiveBoxWidth - 24);
+    const plaqueTitleBaseSize = this.portraitLayout ? 22 : this.compactLayout ? 24 : 26;
+    const plaqueContentGap = this.portraitLayout ? 8 : 10;
+
+    this.mapPlaqueEyebrowText.setFontSize(this.portraitLayout ? 10 : 11);
+    this.fitTextToSingleLine(this.mapPlaqueEyebrowText, this.portraitLayout ? 10 : 11, 8, plaqueEyebrowWidth);
+
+    this.mapPlaqueTitleText.setFontSize(plaqueTitleBaseSize);
+    this.fitTextToSingleLine(
+      this.mapPlaqueTitleText,
+      plaqueTitleBaseSize,
+      this.portraitLayout ? 15 : 18,
+      plaqueTextWidth
+    );
+
+    this.mapPlaqueMetaText
+      .setFontSize(this.portraitLayout ? 12 : 13)
+      .setWordWrapWidth(Math.max(80, panelWidth - 36), true);
+
+    this.mapObjectiveTagText.setFontSize(this.portraitLayout ? 9 : 10);
+    this.mapObjectiveText
+      .setFontSize(this.portraitLayout ? 11 : 12)
+      .setWordWrapWidth(objectiveTextWidth, true);
+
+    const headerHeight = UI_PLAQUE_HEADER_HEIGHT;
+    const mainBlockHeight =
+      this.mapPlaqueTitleText.height +
+      plaqueContentGap +
+      this.mapPlaqueMetaText.height;
+    const objectiveBlockHeight = Math.max(
+      this.portraitLayout ? 46 : 50,
+      12 + this.mapObjectiveTagText.height + 4 + this.mapObjectiveText.height + 10
+    );
+    const bodyGap = this.portraitLayout ? 10 : 12;
+    const bottomPadding = this.portraitLayout ? 16 : 18;
+
+    return Math.ceil(headerHeight + 16 + mainBlockHeight + bodyGap + objectiveBlockHeight + bottomPadding);
+  }
+
+  private getTargetMapPlaqueHeight(panelWidth: number, height: number): number {
+    const baseHeight = this.portraitLayout
+      ? this.minimalMobileLayout
+        ? 132
+        : height < 760
+          ? 148
+          : 156
+      : this.compactLayout
+        ? 152
+        : 160;
+
+    return Math.max(baseHeight, this.getMapPlaqueRequiredHeight(panelWidth));
+  }
+
+  private getDetailPanelRequiredHeight(
+    panelWidth: number,
+    portraitWidth = this.showPortraitPanel ? this.uiPanels.portrait.width : 0,
+    portraitHeight = this.showPortraitPanel ? this.uiPanels.portrait.height : 0
+  ): number {
+    const textColumnWidth = Math.max(132, panelWidth - (portraitWidth > 0 ? portraitWidth + 42 : 32));
+    const bodyBoxWidth = Math.max(180, panelWidth - 32);
+    const titleBaseSize = this.portraitLayout ? 20 : this.compactLayout ? 22 : 24;
+    const statFontSize = this.portraitLayout ? 10 : 11;
+    const hasHealthBar = Boolean(this.getDetailFocusUnit());
+    const statRowGap = 8;
+
+    this.detailMetaText
+      .setFontSize(this.portraitLayout ? 12 : 13)
+      .setWordWrapWidth(textColumnWidth, true);
+    this.detailTitleText.setFontSize(titleBaseSize);
+    this.fitTextToSingleLine(
+      this.detailTitleText,
+      titleBaseSize,
+      this.portraitLayout ? 16 : 18,
+      textColumnWidth + (portraitWidth > 0 ? 0 : 8)
+    );
+    for (const text of this.detailStatTexts) {
+      text.setFontSize(statFontSize);
+    }
+    this.detailBodyText
+      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
+      .setWordWrapWidth(bodyBoxWidth - 24, true);
+
+    const statRowHeights: number[] = [];
+    for (const [index, text] of this.detailStatTexts.entries()) {
+      if (!text.text) {
+        continue;
+      }
+      const row = Math.floor(index / 2);
+      statRowHeights[row] = Math.max(statRowHeights[row] ?? 0, text.height + 8);
+    }
+    const statBlockHeight =
+      statRowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0) +
+      Math.max(0, statRowHeights.length - 1) * statRowGap;
+
+    let topTextHeight = this.detailMetaText.height + 4 + this.detailTitleText.height;
+    if (hasHealthBar) {
+      topTextHeight += 22;
+    }
+    if (statRowHeights.length > 0) {
+      topTextHeight += 10 + statBlockHeight;
+    }
+
+    const topSectionHeight = Math.max(topTextHeight, portraitHeight > 0 ? portraitHeight : 0);
+    const bodyBoxHeight = Math.max(this.portraitLayout ? 58 : 64, this.detailBodyText.height + 24);
+
+    return Math.ceil(
+      UI_PLAQUE_HEADER_HEIGHT +
+      (this.portraitLayout ? 14 : 16) +
+      topSectionHeight +
+      (this.portraitLayout ? 10 : 12) +
+      bodyBoxHeight +
+      (this.portraitLayout ? 14 : 16)
+    );
+  }
+
+  private getTargetDetailPanelHeight(
+    panelWidth: number,
+    height: number,
+    portraitWidth = this.showPortraitPanel ? this.uiPanels.portrait.width : 0,
+    portraitHeight = this.showPortraitPanel ? this.uiPanels.portrait.height : 0
+  ): number {
+    const baseHeight = this.portraitLayout
+      ? height < 760
+        ? 120
+        : 132
+      : this.compactLayout
+        ? 190
+        : BASE_UI_PANELS.topRight.height;
+
+    return Math.max(baseHeight, this.getDetailPanelRequiredHeight(panelWidth, portraitWidth, portraitHeight));
+  }
+
+  private layoutDetailPanelSection(): void {
+    if (!this.showDetailPanel) {
+      this.detailBodyBoxBounds.setTo(0, 0, 0, 0);
+      this.detailHealthBarBounds.setTo(0, 0, 0, 0);
+      return;
+    }
+
+    const panel = this.uiPanels.topRight;
+    const focusUnit = this.getDetailFocusUnit();
+    const hasHealthBar = Boolean(focusUnit);
+    const sideInset = 16;
+    const topInset = this.portraitLayout ? 14 : 16;
+    const sectionGap = this.portraitLayout ? 10 : 12;
+    const bottomInset = this.portraitLayout ? 14 : 16;
+    const portraitWidth = this.showPortraitPanel ? this.uiPanels.portrait.width : 0;
+    const portraitHeight = this.showPortraitPanel ? this.uiPanels.portrait.height : 0;
+    const textColumnWidth = Math.max(132, panel.width - (portraitWidth > 0 ? portraitWidth + 42 : 32));
+    const bodyBoxWidth = Math.max(180, panel.width - 32);
+    const titleBaseSize = this.portraitLayout ? 20 : this.compactLayout ? 22 : 24;
+    const statFontSize = this.portraitLayout ? 10 : 11;
+    const statRowGap = 8;
+    const statColumnGap = 10;
+    const statColumnWidth = Math.max(72, Math.floor((textColumnWidth - statColumnGap) / 2));
+
+    this.activeBadge
+      .setPosition(panel.x + 20, panel.y + UI_PLAQUE_HEADER_HEIGHT * 0.5 + 2)
+      .setFontSize(this.portraitLayout ? 12 : 13);
+
+    this.detailMetaText
+      .setPosition(panel.x + sideInset, 0)
+      .setFontSize(this.portraitLayout ? 12 : 13)
+      .setWordWrapWidth(textColumnWidth, true);
+    this.detailTitleText
+      .setPosition(panel.x + sideInset, 0)
+      .setFontSize(titleBaseSize);
+    this.fitTextToSingleLine(
+      this.detailTitleText,
+      titleBaseSize,
+      this.portraitLayout ? 16 : 18,
+      textColumnWidth + (portraitWidth > 0 ? 0 : 8)
+    );
+    for (const text of this.detailStatTexts) {
+      text.setFontSize(statFontSize);
+    }
+    this.detailBodyText
+      .setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15)
+      .setWordWrapWidth(bodyBoxWidth - 24, true);
+
+    const statRowHeights: number[] = [];
+    for (const [index, text] of this.detailStatTexts.entries()) {
+      if (!text.text) {
+        continue;
+      }
+      const row = Math.floor(index / 2);
+      statRowHeights[row] = Math.max(statRowHeights[row] ?? 0, text.height + 8);
+    }
+    const statBlockHeight =
+      statRowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0) +
+      Math.max(0, statRowHeights.length - 1) * statRowGap;
+
+    let topTextHeight = this.detailMetaText.height + 4 + this.detailTitleText.height;
+    if (hasHealthBar) {
+      topTextHeight += 22;
+    }
+    if (statRowHeights.length > 0) {
+      topTextHeight += 10 + statBlockHeight;
+    }
+
+    const topSectionHeight = Math.max(topTextHeight, portraitHeight > 0 ? portraitHeight : 0);
+    const bodyBoxHeight = Math.max(this.portraitLayout ? 58 : 64, this.detailBodyText.height + 24);
+    const bodyTop = panel.y + UI_PLAQUE_HEADER_HEIGHT + topInset;
+    const bodyBottom = panel.bottom - bottomInset;
+    const availableBodyHeight = Math.max(0, bodyBottom - bodyTop);
+    const totalBodyHeight = topSectionHeight + sectionGap + bodyBoxHeight;
+    const bodyStartY = bodyTop + Math.max(0, (availableBodyHeight - totalBodyHeight) * 0.5);
+    const textBlockY = bodyStartY + Math.max(0, (topSectionHeight - topTextHeight) * 0.5);
+    const metaY = Math.round(textBlockY);
+    const titleY = Math.round(metaY + this.detailMetaText.height + 4);
+    let cursorY = titleY + this.detailTitleText.height;
+
+    this.detailMetaText.setY(metaY);
+    this.detailTitleText.setY(titleY);
+
+    if (hasHealthBar) {
+      this.detailHealthBarBounds.setTo(panel.x + sideInset, Math.round(cursorY + 10), textColumnWidth, 12);
+      cursorY = this.detailHealthBarBounds.bottom;
+    } else {
+      this.detailHealthBarBounds.setTo(0, 0, 0, 0);
+    }
+
+    if (statRowHeights.length > 0) {
+      cursorY += 10;
+      const rowTopPositions: number[] = [];
+      let rowY = cursorY;
+      for (const [row, rowHeight] of statRowHeights.entries()) {
+        rowTopPositions[row] = rowY;
+        rowY += rowHeight + statRowGap;
+      }
+
+      for (const [index, text] of this.detailStatTexts.entries()) {
+        if (!text.text) {
+          continue;
+        }
+        const column = index % 2;
+        const row = Math.floor(index / 2);
+        const rowHeight = statRowHeights[row] ?? 0;
+        text.setPosition(
+          panel.x + sideInset + 12 + column * (statColumnWidth + statColumnGap),
+          Math.round((rowTopPositions[row] ?? cursorY) + Math.max(0, (rowHeight - text.height) * 0.5) - 1)
+        );
+      }
+    }
+
+    if (this.showPortraitPanel) {
+      this.uiPanels.portrait.setTo(
+        panel.right - portraitWidth - 16,
+        Math.round(bodyStartY + Math.max(0, (topSectionHeight - portraitHeight) * 0.5)),
+        portraitWidth,
+        portraitHeight
+      );
+    }
+
+    this.detailBodyBoxBounds.setTo(
+      panel.x + sideInset,
+      Math.round(bodyStartY + topSectionHeight + sectionGap),
+      bodyBoxWidth,
+      bodyBoxHeight
+    );
+    this.detailBodyText.setPosition(
+      this.detailBodyBoxBounds.x + 12,
+      Math.round(this.detailBodyBoxBounds.y + Math.max(10, (this.detailBodyBoxBounds.height - this.detailBodyText.height) * 0.5))
+    );
+  }
+
+  private layoutMapTitleSection(width: number, height: number): void {
+    const plaqueVisible = this.mapPlaqueAlpha > 0.01;
+    const introVisible = this.mapIntroAlpha > 0.01;
+    const plaqueHeaderHeight = UI_PLAQUE_HEADER_HEIGHT;
+    const plaqueHeaderCenterY = this.uiPanels.topLeft.y + 22;
+    const plaqueInsetX = this.minimalMobileLayout ? 14 : 18;
+    const plaqueTextWidth = Math.max(154, this.uiPanels.topLeft.width - (this.minimalMobileLayout ? 30 : 138));
+    const plaqueEyebrowWidth = Math.max(120, this.uiPanels.topLeft.width - (this.minimalMobileLayout ? 120 : 152));
+    const plaqueTitleBaseSize = this.portraitLayout ? 22 : this.compactLayout ? 24 : 26;
+    const plaqueBodyTop = this.uiPanels.topLeft.y + plaqueHeaderHeight + 16;
+    const plaqueBodyBottom = this.uiPanels.topLeft.bottom - (this.portraitLayout ? 16 : 18);
+    const plaqueBodyHeight = Math.max(0, plaqueBodyBottom - plaqueBodyTop);
+    const plaqueContentGap = this.portraitLayout ? 8 : 10;
+    const objectiveBoxX = this.uiPanels.topLeft.x + plaqueInsetX + this.mapPlaqueOffsetX;
+    const objectiveBoxWidth = this.uiPanels.topLeft.width - (this.minimalMobileLayout ? 28 : 36);
+    const introWidth = Phaser.Math.Clamp(
+      width * (this.portraitLayout ? 0.84 : this.compactLayout ? 0.56 : 0.5),
+      280,
+      580
+    );
+    const introEyebrowBaseSize = this.portraitLayout ? 11 : 12;
+    const introTitleBaseSize = this.portraitLayout ? 28 : this.compactLayout ? 34 : 40;
+    const introHeight = this.portraitLayout
+      ? this.minimalMobileLayout
+        ? 164
+        : 176
+      : this.compactLayout
+        ? 172
+        : 184;
+    const introY = Math.max(24, Math.round(height * (this.portraitLayout ? 0.09 : 0.11)));
+
+    this.mapIntroBounds.setTo(
+      Math.round((width - introWidth) / 2),
+      introY,
+      introWidth,
+      introHeight
+    );
+    const introTop = this.mapIntroBounds.y + this.mapIntroOffsetY;
+
+    this.mapPlaqueEyebrowText
+      .setPosition(this.uiPanels.topLeft.x + plaqueInsetX + this.mapPlaqueOffsetX, this.uiPanels.topLeft.y + 15)
+      .setFontSize(this.portraitLayout ? 10 : 11)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible);
+    this.fitTextToSingleLine(this.mapPlaqueEyebrowText, this.portraitLayout ? 10 : 11, 8, plaqueEyebrowWidth);
+    this.mapPlaqueTitleText
+      .setPosition(this.uiPanels.topLeft.x + plaqueInsetX + this.mapPlaqueOffsetX, 0)
+      .setFontSize(plaqueTitleBaseSize)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible);
+    this.fitTextToSingleLine(this.mapPlaqueTitleText, plaqueTitleBaseSize, this.portraitLayout ? 15 : 18, plaqueTextWidth);
+    this.mapPlaqueMetaText
+      .setPosition(this.uiPanels.topLeft.x + plaqueInsetX + this.mapPlaqueOffsetX, 0)
+      .setFontSize(this.portraitLayout ? 12 : 13)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible)
+      .setWordWrapWidth(this.uiPanels.topLeft.width - 36, true);
+    this.mapObjectiveTagText
+      .setPosition(objectiveBoxX + 12, 0)
+      .setFontSize(this.portraitLayout ? 9 : 10)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible);
+    this.mapObjectiveText
+      .setPosition(objectiveBoxX + 12, 0)
+      .setFontSize(this.portraitLayout ? 11 : 12)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible)
+      .setWordWrapWidth(objectiveBoxWidth - 24, true);
+
+    const mainBlockHeight =
+      this.mapPlaqueTitleText.height +
+      plaqueContentGap +
+      this.mapPlaqueMetaText.height;
+    const objectiveBlockHeight = Math.max(
+      this.portraitLayout ? 46 : 50,
+      12 + this.mapObjectiveTagText.height + 4 + this.mapObjectiveText.height + 10
+    );
+    const totalBodyHeight = mainBlockHeight + (this.portraitLayout ? 10 : 12) + objectiveBlockHeight;
+    const bodyStartY = plaqueBodyTop + Math.max(0, (plaqueBodyHeight - totalBodyHeight) * 0.5);
+    const titleY = Math.round(bodyStartY);
+    const metaY = Math.round(titleY + this.mapPlaqueTitleText.height + plaqueContentGap);
+    const objectiveBoxY = Math.round(metaY + this.mapPlaqueMetaText.height + (this.portraitLayout ? 10 : 12));
+
+    this.mapPlaqueTitleText.setY(titleY);
+    this.mapPlaqueMetaText.setY(metaY);
+    this.mapObjectiveBoxBounds.setTo(
+      objectiveBoxX,
+      objectiveBoxY,
+      objectiveBoxWidth,
+      objectiveBlockHeight
+    );
+    this.mapObjectiveTagText
+      .setPosition(this.mapObjectiveBoxBounds.x + 12, this.mapObjectiveBoxBounds.y + 8);
+    this.mapObjectiveText
+      .setPosition(
+        this.mapObjectiveBoxBounds.x + 12,
+        this.mapObjectiveBoxBounds.y + 8 + this.mapObjectiveTagText.height + 4
+      );
+    this.autoBattleToggleText
+      .setPosition(this.uiPanels.topLeft.right - 22 + this.mapPlaqueOffsetX, plaqueHeaderCenterY)
+      .setFontSize(this.portraitLayout ? 12 : 13)
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(plaqueVisible);
+
+    this.mapIntroEyebrowText
+      .setPosition(this.mapIntroBounds.centerX, introTop + 18)
+      .setFontSize(introEyebrowBaseSize)
+      .setAlpha(this.mapIntroAlpha)
+      .setVisible(introVisible);
+    this.fitTextToSingleLine(this.mapIntroEyebrowText, introEyebrowBaseSize, 9, this.mapIntroBounds.width - 56);
+    this.mapIntroTitleText
+      .setPosition(this.mapIntroBounds.centerX, introTop + 40)
+      .setFontSize(introTitleBaseSize)
+      .setAlpha(this.mapIntroAlpha)
+      .setVisible(introVisible);
+    this.fitTextToSingleLine(
+      this.mapIntroTitleText,
+      introTitleBaseSize,
+      this.portraitLayout ? 20 : 24,
+      this.mapIntroBounds.width - 48
+    );
+    this.mapIntroMetaText
+      .setPosition(this.mapIntroBounds.centerX, introTop + (this.portraitLayout ? 92 : 102))
+      .setFontSize(this.portraitLayout ? 13 : 16)
+      .setAlpha(this.mapIntroAlpha)
+      .setVisible(introVisible)
+      .setWordWrapWidth(this.mapIntroBounds.width - 72, true);
+    this.mapIntroFlavorText
+      .setPosition(this.mapIntroBounds.centerX, introTop + (this.portraitLayout ? 122 : 132))
+      .setFontSize(this.portraitLayout ? 15 : this.compactLayout ? 16 : 18)
+      .setAlpha(this.mapIntroAlpha)
+      .setVisible(introVisible)
+      .setWordWrapWidth(this.mapIntroBounds.width - (this.portraitLayout ? 42 : 88), true);
+  }
+
+  private fitTextToSingleLine(
+    text: Phaser.GameObjects.Text,
+    baseFontSize: number,
+    minFontSize: number,
+    maxWidth: number
+  ): void {
+    text.setWordWrapWidth(0, false).setFontSize(baseFontSize);
+
+    let fontSize = baseFontSize;
+    while (fontSize > minFontSize && text.width > maxWidth) {
+      fontSize -= 1;
+      text.setFontSize(fontSize);
+    }
+  }
+
+  private startMapTitleSequence(): void {
+    this.mapIntroAlpha = 0;
+    this.mapIntroOffsetY = 18;
+    this.mapPlaqueAlpha = 0;
+    this.mapPlaqueOffsetX = -20;
+    this.applyMapTitlePresentation();
+
+    this.tweens.add({
+      targets: this,
+      mapIntroAlpha: 1,
+      mapIntroOffsetY: 0,
+      duration: MAP_TITLE_INTRO_DURATION,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => this.applyMapTitlePresentation(),
+      onComplete: () => {
+        this.time.delayedCall(MAP_TITLE_INTRO_HOLD, () => {
+          this.tweens.add({
+            targets: this,
+            mapIntroAlpha: 0,
+            mapIntroOffsetY: -14,
+            mapPlaqueAlpha: 1,
+            mapPlaqueOffsetX: 0,
+            duration: MAP_TITLE_OUTRO_DURATION,
+            ease: 'Cubic.easeInOut',
+            onUpdate: () => this.applyMapTitlePresentation(),
+            onComplete: () => {
+              this.mapIntroAlpha = 0;
+              this.mapIntroOffsetY = -14;
+              this.mapPlaqueAlpha = 1;
+              this.mapPlaqueOffsetX = 0;
+              this.applyMapTitlePresentation();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  private applyMapTitlePresentation(): void {
+    this.layoutMapTitleSection(this.scale.width, this.scale.height);
+    this.drawUiPanels();
+  }
+
+  private getMapPlaqueEyebrow(): string {
+    const parts = [this.level.titlePrefix, this.level.region]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toUpperCase());
+
+    return parts.length > 0 ? parts.join('  •  ') : 'FIELD ENGAGEMENT';
+  }
+
+  private getMapPlaqueMeta(timeOfDayLabel: string): string {
+    const parts = [timeOfDayLabel, this.level.encounterType].filter((value): value is string => Boolean(value));
+    return parts.join('  •  ');
+  }
+
+  private getMapIntroEyebrow(): string {
+    return (this.level.titlePrefix ?? this.level.encounterType ?? 'Battle Report').toUpperCase();
+  }
+
+  private getMapIntroMeta(timeOfDayLabel: string): string {
+    const parts = [this.level.region, timeOfDayLabel, this.level.encounterType]
+      .filter((value): value is string => Boolean(value));
+    return parts.join('  •  ');
   }
 
   private layoutHudControls(margin: number, width: number, height: number): void {
@@ -2333,6 +2970,23 @@ export class BattleScene extends Phaser.Scene {
             isEnemyTarget ? 0xffa3a3 : 0xb6ffd0,
             0.95
           );
+        }
+      }
+    }
+
+    if (this.phase === 'player-item-action') {
+      const selectedItemId = this.selectedItemId;
+
+      if (!selectedItemId) {
+        this.refreshMarkers();
+        return;
+      }
+
+      for (const target of this.getTargetableUnitsForItem(activeUnit, selectedItemId)) {
+        const tile = getTile(this.map, target.x, target.y);
+
+        if (tile) {
+          this.drawDiamond(tile, 0x4aa46f, 0.3, 3, 0xb6ffd0, 0.95);
         }
       }
     }
@@ -3055,7 +3709,15 @@ export class BattleScene extends Phaser.Scene {
       this.uiPanels.topLeft,
       ...(this.showTimelinePanel ? [this.uiPanels.bottomLeft] : []),
       ...(this.showDetailPanel ? [this.uiPanels.topRight] : []),
-      ...(this.showPortraitPanel ? [this.uiPanels.portrait] : [])
+      ...(this.showPortraitPanel ? [this.uiPanels.portrait] : []),
+      ...(this.mapIntroAlpha > 0.01
+        ? [new Phaser.Geom.Rectangle(
+            this.mapIntroBounds.x,
+            this.mapIntroBounds.y + this.mapIntroOffsetY,
+            this.mapIntroBounds.width,
+            this.mapIntroBounds.height
+          )]
+        : [])
     ];
 
     if (staticPanels.some((panel) => panel.contains(x, y))) {
@@ -3074,11 +3736,20 @@ export class BattleScene extends Phaser.Scene {
       return false;
     }
 
-    return this.getSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
+    if (this.getSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
       this.submenuPanelX,
       this.actionMenuPanels.sub.y,
       this.actionMenuPanels.sub.width,
       this.actionMenuPanels.sub.height
+    ).contains(x, y)) {
+      return true;
+    }
+
+    return this.getDetailSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
+      this.detailSubmenuPanelX,
+      this.detailSubmenuPanel.y,
+      this.detailSubmenuPanel.width,
+      this.detailSubmenuPanel.height
     ).contains(x, y);
   }
 
@@ -3122,7 +3793,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private isSubmenuPhase(phase = this.phase): boolean {
-    return phase === 'player-abilities' || phase === 'player-action' || phase === 'player-items';
+    return phase === 'player-abilities' || phase === 'player-action' || phase === 'player-items' || phase === 'player-item-action';
   }
 
   private isPlayerTurnPhase(phase = this.phase): boolean {
@@ -3131,7 +3802,8 @@ export class BattleScene extends Phaser.Scene {
       phase === 'player-abilities' ||
       phase === 'player-move' ||
       phase === 'player-action' ||
-      phase === 'player-items'
+      phase === 'player-items' ||
+      phase === 'player-item-action'
     );
   }
 
@@ -3140,8 +3812,26 @@ export class BattleScene extends Phaser.Scene {
     return !!activeUnit && activeUnit.team === 'player' && this.isPlayerTurnPhase();
   }
 
+  private getTargetableUnitsForItem(unit: BattleUnit, itemId: ItemId): BattleUnit[] {
+    return this.units.filter((target) => {
+      if (!target.alive) {
+        return false;
+      }
+
+      if (manhattanDistance(unit, target) > 1) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
   private getSubmenuVisibleAlpha(): number {
     return this.submenuPanelAlpha * this.actionMenuAlpha;
+  }
+
+  private getDetailSubmenuVisibleAlpha(): number {
+    return this.detailSubmenuPanelAlpha * this.actionMenuAlpha;
   }
 
   private applyActionMenuAlpha(): void {
@@ -3156,6 +3846,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.drawUiPanels();
     this.layoutSubmenuUi();
+    this.layoutDetailSubmenuUi();
   }
 
   private syncActionMenuState(): void {
@@ -3168,6 +3859,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.syncSubmenuState();
+    this.syncDetailSubmenuState();
   }
 
   private animateActionMenu(open: boolean): void {
@@ -3209,11 +3901,81 @@ export class BattleScene extends Phaser.Scene {
     this.layoutSubmenuUi();
   }
 
+  private shouldShowDetailSubmenu(): boolean {
+    return this.getDetailSubmenuContent() !== null;
+  }
+
+  private getDetailSubmenuContent(): { title: string; body: string } | null {
+    const activeUnit = this.getActiveUnit();
+
+    if (!activeUnit || activeUnit.team !== 'player') {
+      return null;
+    }
+
+    if (this.phase === 'player-move') {
+      return {
+        title: 'Move',
+        body: [
+          `Stride up to ${activeUnit.move} tiles across open ground.`,
+          this.turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the map.'
+        ].join('\n')
+      };
+    }
+
+    if (this.phase === 'player-action') {
+      const ability = this.getSelectedAbility();
+      if (!ability) {
+        return null;
+      }
+
+      return {
+        title: ability.name,
+        body: [
+          ability.description,
+          `Range ${ability.rangeMin}-${ability.rangeMax}  ${ability.target === 'ally' ? 'Allies' : 'Enemies'}`
+        ].join('\n')
+      };
+    }
+
+    if (this.phase === 'player-items' || this.phase === 'player-item-action') {
+      if (!this.selectedItemId) {
+        return null;
+      }
+
+      const item = getItemDefinition(this.selectedItemId);
+      const count = this.getUnitInventory(activeUnit)[this.selectedItemId] ?? 0;
+
+      return {
+        title: item.name,
+        body: [
+          item.description,
+          `Range 1  •  Stock ${count}`,
+          this.phase === 'player-item-action'
+            ? 'Select an adjacent ally or self on the map.'
+            : `HP ${activeUnit.hp}/${activeUnit.maxHp}  CT ${activeUnit.ct}`
+        ].join('\n')
+      };
+    }
+
+    return null;
+  }
+
+  private syncDetailSubmenuState(): void {
+    const shouldOpen = this.shouldShowDetailSubmenu();
+
+    if (shouldOpen !== this.detailSubmenuOpen) {
+      this.animateDetailSubmenu(shouldOpen);
+      return;
+    }
+
+    this.layoutDetailSubmenuUi();
+  }
+
   private animateSubmenu(open: boolean): void {
     this.submenuOpen = open;
     this.submenuTween?.stop();
 
-    const closedX = this.actionMenuPanels.sub.x - 26;
+    const closedX = this.getMenuPanelSlideX(this.actionMenuPanels.sub, 0);
     const targetX = open ? this.actionMenuPanels.sub.x : closedX;
     const targetAlpha = open ? 1 : 0;
 
@@ -3221,6 +3983,7 @@ export class BattleScene extends Phaser.Scene {
       this.submenuPanelX = closedX;
       this.submenuPanelAlpha = 0;
       this.layoutSubmenuUi();
+      this.layoutDetailSubmenuUi();
       return;
     }
 
@@ -3238,6 +4001,40 @@ export class BattleScene extends Phaser.Scene {
         }
 
         this.layoutSubmenuUi();
+        this.layoutDetailSubmenuUi();
+      }
+    });
+  }
+
+  private animateDetailSubmenu(open: boolean): void {
+    this.detailSubmenuOpen = open;
+    this.detailSubmenuTween?.stop();
+
+    const closedX = this.getMenuPanelSlideX(this.detailSubmenuPanel, 0);
+    const targetX = open ? this.detailSubmenuPanel.x : closedX;
+    const targetAlpha = open ? 1 : 0;
+
+    if (!open && this.detailSubmenuPanelAlpha <= 0.01) {
+      this.detailSubmenuPanelX = closedX;
+      this.detailSubmenuPanelAlpha = 0;
+      this.layoutDetailSubmenuUi();
+      return;
+    }
+
+    this.detailSubmenuTween = this.tweens.add({
+      targets: this,
+      detailSubmenuPanelX: targetX,
+      detailSubmenuPanelAlpha: targetAlpha,
+      duration: open ? 180 : 120,
+      ease: open ? 'Cubic.easeOut' : 'Quad.easeIn',
+      onUpdate: () => this.layoutDetailSubmenuUi(),
+      onComplete: () => {
+        if (!open) {
+          this.detailSubmenuPanelX = closedX;
+          this.detailSubmenuPanelAlpha = 0;
+        }
+
+        this.layoutDetailSubmenuUi();
       }
     });
   }
@@ -3269,10 +4066,17 @@ export class BattleScene extends Phaser.Scene {
       );
 
       const selectedAbility = this.getSelectedAbility();
+      const selectedItemId = this.selectedItemId;
 
       for (const [index, entry] of submenuEntries.entries()) {
         const bounds = this.getSubmenuEntryBounds(index);
-        const active = !!entry.abilityId && entry.abilityId === selectedAbility?.id;
+      const active =
+        ((this.phase === 'player-abilities' || this.phase === 'player-action') &&
+          !!entry.abilityId &&
+          entry.abilityId === selectedAbility?.id) ||
+        ((this.phase === 'player-items' || this.phase === 'player-item-action') &&
+          !!entry.itemId &&
+          entry.itemId === selectedItemId);
         const fill = active ? 0x69402d : entry.enabled ? 0x241519 : 0x171012;
         const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
         const dotColor = active ? 0xf1d089 : entry.enabled ? 0xd4b470 : 0x7a6a52;
@@ -3302,6 +4106,41 @@ export class BattleScene extends Phaser.Scene {
         .setAlpha(alpha)
         .setVisible(visible);
     }
+  }
+
+  private layoutDetailSubmenuUi(): void {
+    const alpha = this.getDetailSubmenuVisibleAlpha();
+    const visible = alpha > 0.01;
+    const detailContent = this.getDetailSubmenuContent();
+
+    this.detailSubmenuUiGraphics.clear();
+
+    if (visible) {
+      this.drawUiPanelShell(
+        this.detailSubmenuUiGraphics,
+        new Phaser.Geom.Rectangle(
+          this.detailSubmenuPanelX,
+          this.detailSubmenuPanel.y,
+          this.detailSubmenuPanel.width,
+          this.detailSubmenuPanel.height
+        ),
+        alpha,
+        40,
+        16,
+        0x345168
+      );
+    }
+
+    this.detailSubmenuTitleText
+      .setText(detailContent?.title ?? '')
+      .setPosition(this.detailSubmenuPanelX + 14, this.detailSubmenuPanel.y + 12)
+      .setAlpha(alpha)
+      .setVisible(visible);
+    this.detailSubmenuBodyText
+      .setText(detailContent?.body ?? '')
+      .setPosition(this.detailSubmenuPanelX + 18, this.detailSubmenuPanel.y + 52)
+      .setAlpha(alpha)
+      .setVisible(visible);
   }
 
   private getActionMenuEntryBounds(index: number): Phaser.Geom.Rectangle {
@@ -3374,10 +4213,10 @@ export class BattleScene extends Phaser.Scene {
       }));
     }
 
-    if (this.phase === 'player-items') {
+    if (this.phase === 'player-items' || this.phase === 'player-item-action') {
       return getInventoryEntries(this.getUnitInventory(activeUnit)).map((entry) => ({
         label: `${getItemDefinition(entry.itemId).name} x${entry.count}`,
-        enabled: true,
+        enabled: this.getTargetableUnitsForItem(activeUnit, entry.itemId).length > 0,
         itemId: entry.itemId
       }));
     }
@@ -3456,6 +4295,15 @@ export class BattleScene extends Phaser.Scene {
       return this.isSubmenuPhase();
     }
 
+    if (this.getDetailSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
+      this.detailSubmenuPanelX,
+      this.detailSubmenuPanel.y,
+      this.detailSubmenuPanel.width,
+      this.detailSubmenuPanel.height
+    ).contains(x, y)) {
+      return true;
+    }
+
     if (this.actionMenuAlpha > 0.01 && this.actionMenuPanels.root.contains(x, y)) {
       for (const [index, entry] of entries.entries()) {
         if (this.getActionMenuEntryBounds(index).contains(x, y)) {
@@ -3482,6 +4330,7 @@ export class BattleScene extends Phaser.Scene {
       case 'move':
         audioDirector.playUiConfirm();
         this.selectedAbilityId = null;
+        this.selectedItemId = null;
         this.phase = 'player-move';
         this.pushLog(`Choose a tile for ${activeUnit.name}.`);
         this.drawHighlights();
@@ -3491,6 +4340,7 @@ export class BattleScene extends Phaser.Scene {
         audioDirector.playUiConfirm();
         this.phase = 'player-abilities';
         this.selectedAbilityId = null;
+        this.selectedItemId = null;
         this.pushLog(`Choose an ability for ${activeUnit.name}.`);
         this.drawHighlights();
         this.refreshUi();
@@ -3499,6 +4349,8 @@ export class BattleScene extends Phaser.Scene {
         audioDirector.playUiConfirm();
         this.phase = 'player-items';
         this.selectedAbilityId = null;
+        this.selectedItemId = null;
+        this.pushLog(`Choose an item for ${activeUnit.name}.`);
         this.drawHighlights();
         this.refreshUi();
         return;
@@ -3520,8 +4372,13 @@ export class BattleScene extends Phaser.Scene {
     }
 
     if (entry.itemId) {
+      const item = getItemDefinition(entry.itemId);
       audioDirector.playUiConfirm();
-      await this.useItem(entry.itemId);
+      this.selectedItemId = entry.itemId;
+      this.phase = 'player-item-action';
+      this.pushLog(`Choose a target for ${item.name}.`);
+      this.drawHighlights();
+      this.refreshUi();
       return;
     }
 
@@ -3533,6 +4390,7 @@ export class BattleScene extends Phaser.Scene {
       }
 
       this.selectedAbilityId = ability.id;
+      this.selectedItemId = null;
       audioDirector.playUiConfirm();
       this.phase = 'player-action';
       this.pushLog(`Choose a target for ${ability.name}.`);
@@ -3541,40 +4399,47 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  private async useItem(itemId: ItemId): Promise<void> {
+  private async useItem(itemId: ItemId, targetUnit?: BattleUnit): Promise<void> {
     const activeUnit = this.getActiveUnit();
     const item = getItemDefinition(itemId);
     const count = activeUnit ? this.getUnitInventory(activeUnit)[itemId] ?? 0 : 0;
+    const target = targetUnit ?? activeUnit;
 
-    if (!activeUnit || count <= 0) {
+    if (!activeUnit || !target || count <= 0) {
+      return;
+    }
+
+    const targetable = this.getTargetableUnitsForItem(activeUnit, itemId).some((unit) => unit.id === target.id);
+    if (!targetable) {
+      audioDirector.playUiCancel();
+      this.pushLog(`${item.name} cannot reach that target.`);
+      this.refreshUi();
       return;
     }
 
     switch (item.effect.kind) {
       case 'heal': {
-        if (activeUnit.hp >= activeUnit.maxHp) {
-          audioDirector.playUiCancel();
-          this.pushLog(`${activeUnit.name} is already at full health.`);
-          this.refreshUi();
-          return;
-        }
-
-        const recovered = Math.min(item.effect.amount, activeUnit.maxHp - activeUnit.hp);
-        activeUnit.hp += recovered;
+        const recovered = Math.min(item.effect.amount, target.maxHp - target.hp);
+        target.hp += recovered;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
-        this.positionUnit(activeUnit);
+        this.positionUnit(target);
         audioDirector.playHeal();
-        this.pushLog(`${activeUnit.name} uses ${item.name} and recovers ${recovered} HP.`);
+        this.pushLog(
+          recovered > 0
+            ? `${activeUnit.name} uses ${item.name} on ${target.name}, restoring ${recovered} HP.`
+            : `${activeUnit.name} uses ${item.name} on ${target.name}, but it has no effect.`
+        );
         await this.finishPlayerCommand(activeUnit, `${activeUnit.name} can still move this turn.`);
         return;
       }
       case 'ct':
-        activeUnit.ct += item.effect.amount;
+        target.ct += item.effect.amount;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
+        this.positionUnit(target);
         audioDirector.playUiConfirm();
-        this.pushLog(`${activeUnit.name} uses ${item.name} and gains ${item.effect.amount} CT.`);
+        this.pushLog(`${activeUnit.name} uses ${item.name} on ${target.name}, granting ${item.effect.amount} CT.`);
         await this.finishPlayerCommand(activeUnit, `${activeUnit.name} can still move this turn.`);
         return;
       default:
@@ -3588,19 +4453,19 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    if (this.busy) {
-      return;
-    }
-
-    if (this.handleHudControlPointer(pointer.x, pointer.y)) {
-      return;
-    }
-
     const autoBattleBounds = this.autoBattleToggleText.getBounds();
     Phaser.Geom.Rectangle.Inflate(autoBattleBounds, 12, 8);
 
     if (autoBattleBounds.contains(pointer.x, pointer.y)) {
       await this.toggleAutoBattle();
+      return;
+    }
+
+    if (this.busy) {
+      return;
+    }
+
+    if (this.handleHudControlPointer(pointer.x, pointer.y)) {
       return;
     }
 
@@ -3660,6 +4525,30 @@ export class BattleScene extends Phaser.Scene {
 
       await this.performAbility(activeUnit, target, selectedAbility);
     }
+
+    if (this.phase === 'player-item-action') {
+      const target = this.units.find(
+        (unit) => unit.alive && unit.x === tile.x && unit.y === tile.y
+      );
+
+      if (!target) {
+        return;
+      }
+
+      const activeUnit = this.getActiveUnit();
+      const selectedItemId = this.selectedItemId;
+
+      if (!activeUnit || !selectedItemId) {
+        return;
+      }
+
+      const targetable = this.getTargetableUnitsForItem(activeUnit, selectedItemId).some((unit) => unit.id === target.id);
+      if (!targetable) {
+        return;
+      }
+
+      await this.useItem(selectedItemId, target);
+    }
   }
 
   private async panToUnitFromTurnOrder(unitId: string): Promise<void> {
@@ -3695,6 +4584,15 @@ export class BattleScene extends Phaser.Scene {
       audioDirector.playUiCancel();
       this.phase = 'player-menu';
       this.selectedAbilityId = null;
+      this.selectedItemId = null;
+      this.drawHighlights();
+      this.refreshUi();
+      return;
+    }
+
+    if (this.phase === 'player-item-action') {
+      audioDirector.playUiCancel();
+      this.phase = 'player-items';
       this.drawHighlights();
       this.refreshUi();
       return;
@@ -3704,6 +4602,7 @@ export class BattleScene extends Phaser.Scene {
       audioDirector.playUiCancel();
       this.phase = 'player-menu';
       this.selectedAbilityId = null;
+      this.selectedItemId = null;
       this.drawHighlights();
       this.refreshUi();
       return;
@@ -3713,6 +4612,7 @@ export class BattleScene extends Phaser.Scene {
       audioDirector.playUiCancel();
       this.phase = 'player-menu';
       this.selectedAbilityId = null;
+      this.selectedItemId = null;
       this.drawHighlights();
       this.refreshUi();
       return;
@@ -3791,7 +4691,7 @@ export class BattleScene extends Phaser.Scene {
       if (this.autoBattleEnabled) {
         this.time.delayedCall(320, () => {
           if (this.phase === 'player-menu' && this.getActiveUnit()?.id === actor.id && !this.busy) {
-            void this.executeAutoBattleTurn(actor);
+            this.tryStartAutoBattle(actor);
           }
         });
       }
@@ -3911,26 +4811,69 @@ export class BattleScene extends Phaser.Scene {
     await this.endCurrentTurn();
   }
 
-  private async executeAutoBattleTurn(actor: BattleUnit): Promise<void> {
-    if (!actor.alive || actor.team !== 'player' || this.phase === 'complete') {
+  private canContinueAutoBattle(actor: BattleUnit, runToken: number): boolean {
+    return (
+      this.autoBattleEnabled &&
+      this.activeAutoBattleRunToken === runToken &&
+      this.autoBattleRunToken === runToken &&
+      actor.alive &&
+      actor.team === 'player' &&
+      this.phase !== 'complete' &&
+      this.getActiveUnit()?.id === actor.id &&
+      this.isPlayerTurnPhase()
+    );
+  }
+
+  private tryStartAutoBattle(actor: BattleUnit | null): void {
+    if (
+      !actor ||
+      actor.team !== 'player' ||
+      !this.autoBattleEnabled ||
+      this.phase !== 'player-menu' ||
+      this.busy ||
+      this.getActiveUnit()?.id !== actor.id ||
+      this.activeAutoBattleRunToken !== null
+    ) {
+      return;
+    }
+
+    const runToken = ++this.autoBattleRunToken;
+    this.activeAutoBattleRunToken = runToken;
+
+    void this.executeAutoBattleTurn(actor, runToken).finally(() => {
+      const wasCanceled = this.autoBattleRunToken !== runToken;
+
+      if (this.activeAutoBattleRunToken === runToken) {
+        this.activeAutoBattleRunToken = null;
+      }
+
+      if (!wasCanceled || !this.autoBattleEnabled) {
+        return;
+      }
+
+      const activeUnit = this.getActiveUnit();
+
+      if (activeUnit?.id === actor.id) {
+        this.tryStartAutoBattle(activeUnit);
+      }
+    });
+  }
+
+  private async executeAutoBattleTurn(actor: BattleUnit, runToken: number): Promise<void> {
+    if (!this.canContinueAutoBattle(actor, runToken)) {
       return;
     }
 
     let safety = 0;
 
-    while (
-      safety < 3 &&
-      actor.alive &&
-      this.getActiveUnit()?.id === actor.id &&
-      this.isPlayerTurnPhase()
-    ) {
+    while (safety < 3 && this.canContinueAutoBattle(actor, runToken)) {
       safety += 1;
 
       if (!this.turnActionUsed) {
         const plannedItem = this.chooseAutoBattleItem(actor);
 
         if (plannedItem) {
-          await this.useItem(plannedItem);
+          await this.useItem(plannedItem, actor);
           continue;
         }
 
@@ -3943,7 +4886,7 @@ export class BattleScene extends Phaser.Scene {
             if (moveTile) {
               await this.handlePlayerMove(moveTile);
 
-              if (this.getActiveUnit()?.id !== actor.id || !actor.alive) {
+              if (!this.canContinueAutoBattle(actor, runToken)) {
                 return;
               }
             }
@@ -3971,21 +4914,15 @@ export class BattleScene extends Phaser.Scene {
 
   private async toggleAutoBattle(): Promise<void> {
     this.autoBattleEnabled = !this.autoBattleEnabled;
+
+    if (!this.autoBattleEnabled) {
+      this.autoBattleRunToken += 1;
+    }
+
     audioDirector.playUiConfirm();
     this.pushLog(`Auto-Battle ${this.autoBattleEnabled ? 'enabled' : 'disabled'}.`);
     this.refreshUi();
-
-    const activeUnit = this.getActiveUnit();
-
-    if (
-      this.autoBattleEnabled &&
-      activeUnit &&
-      activeUnit.team === 'player' &&
-      this.phase === 'player-menu' &&
-      !this.busy
-    ) {
-      await this.executeAutoBattleTurn(activeUnit);
-    }
+    this.tryStartAutoBattle(this.getActiveUnit());
   }
 
   private chooseAutoBattleItem(actor: BattleUnit): ItemId | null {
@@ -4234,6 +5171,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.busy = false;
     this.selectedAbilityId = null;
+    this.selectedItemId = null;
 
     if (!this.turnMoveUsed) {
       this.moveNodes = getReachableNodes(this.map, activeUnit, this.units, this.getBlockedPropPoints());
@@ -4243,6 +5181,7 @@ export class BattleScene extends Phaser.Scene {
     this.pushLog(pendingMoveMessage);
     this.drawHighlights();
     this.refreshUi();
+    this.tryStartAutoBattle(activeUnit);
   }
 
   private async resolveStrike(
@@ -4721,26 +5660,35 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshUi(): void {
-    const timeOfDayLabel = TIME_OF_DAY_CONFIG[this.timeOfDay].label.toUpperCase();
-    this.objectiveLabelText.setText(`${timeOfDayLabel} SKIRMISH`);
-    this.phaseText.setText(this.describePhase());
+    const timeOfDayLabel = TIME_OF_DAY_CONFIG[this.timeOfDay].label;
+    this.mapPlaqueEyebrowText.setText(this.getMapPlaqueEyebrow());
+    this.mapPlaqueTitleText.setText(this.level.name);
+    this.mapPlaqueMetaText.setText(this.getMapPlaqueMeta(timeOfDayLabel));
+    this.mapObjectiveTagText.setText('OBJECTIVE');
+    this.mapObjectiveText.setText(this.level.shortObjective ?? this.level.objective);
+    this.mapIntroEyebrowText.setText(this.getMapIntroEyebrow());
+    this.mapIntroTitleText.setText(this.level.name);
+    this.mapIntroMetaText.setText(this.getMapIntroMeta(timeOfDayLabel));
+    this.mapIntroFlavorText.setText(this.level.titleFlavor ?? this.level.objective);
     this.autoBattleToggleText
       .setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`)
       .setColor(this.autoBattleEnabled ? '#fff1bc' : '#bca982');
 
-    const queue = projectTurnOrder(this.units, this.visibleTurnOrderCount + 1);
+    const activeUnit = this.getActiveUnit();
+    const queue = activeUnit
+      ? [activeUnit, ...projectTurnOrder(this.units, this.visibleTurnOrderCount - 1)]
+      : projectTurnOrder(this.units, this.visibleTurnOrderCount);
+    if (!this.showTimelinePanel) {
+      this.hoveredTurnOrderUnitId = null;
+    }
     this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, this.showTimelinePanel);
 
-    const focusUnit = this.getHoveredUnit() ?? this.getActiveUnit();
+    const focusUnit = this.getDetailFocusUnit();
     const hoveredChest = this.hoverTile ? this.getChestAt(this.hoverTile.x, this.hoverTile.y) : null;
     const hoveredProp = this.hoverTile ? this.getPropAt(this.hoverTile.x, this.hoverTile.y) : null;
 
     if (focusUnit) {
-      this.portrait.setTexture(focusUnit.spriteKey).setVisible(this.showPortraitPanel);
-      if (this.showPortraitPanel) {
-        this.portrait.displayHeight = Math.max(82, this.uiPanels.portrait.height - 28);
-        this.portrait.scaleX = this.portrait.scaleY;
-      }
+      this.showDetailPortrait(focusUnit.spriteKey, 'unit');
       this.activeBadge
         .setText(focusUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT')
         .setColor(focusUnit.team === 'player' ? '#ecfff6' : '#ffe0d7');
@@ -4761,7 +5709,13 @@ export class BattleScene extends Phaser.Scene {
         `RNG ${focusUnit.rangeMin}-${focusUnit.rangeMax}`
       ]);
     } else if (this.hoverTile) {
-      this.portrait.setVisible(false);
+      if (hoveredChest) {
+        this.showDetailPortrait('chapel-chest-closed', 'chest');
+      } else if (hoveredProp) {
+        this.showDetailPortrait(hoveredProp.assetId, 'prop');
+      } else {
+        this.showDetailPortrait(TERRAIN_TILE_ASSETS[this.hoverTile.terrain][0], 'terrain');
+      }
       this.activeBadge
         .setText(hoveredChest ? 'CHEST CACHE' : hoveredProp ? 'FIELD PROP' : 'TERRAIN TILE')
         .setColor(hoveredChest ? '#fff0ba' : hoveredProp ? '#ffd9b1' : '#f7edc4');
@@ -4805,11 +5759,25 @@ export class BattleScene extends Phaser.Scene {
       ]);
     }
 
+    const desiredTopHeight = this.getTargetMapPlaqueHeight(this.uiPanels.topLeft.width, this.scale.height);
+    const desiredDetailHeight = this.showDetailPanel
+      ? this.getTargetDetailPanelHeight(this.uiPanels.topRight.width, this.scale.height)
+      : 0;
+    if (
+      desiredTopHeight !== this.uiPanels.topLeft.height ||
+      (this.showDetailPanel && desiredDetailHeight !== this.uiPanels.topRight.height)
+    ) {
+      this.updateUiLayout(this.scale.width, this.scale.height);
+    }
+    this.layoutMapTitleSection(this.scale.width, this.scale.height);
+    this.layoutDetailPanelSection();
+
     this.logText.setText(this.logLines.slice(0, this.visibleLogLines).join('\n'));
 
     const menuEntries = this.getMenuEntries();
     const currentMenuAction = this.getCurrentMenuAction();
     const selectedAbility = this.getSelectedAbility();
+    const selectedItemId = this.selectedItemId;
 
     for (const [index, text] of this.actionMenuTexts.entries()) {
       const entry = menuEntries[index];
@@ -4834,7 +5802,13 @@ export class BattleScene extends Phaser.Scene {
         continue;
       }
 
-      const active = !!entry.abilityId && entry.abilityId === selectedAbility?.id;
+      const active =
+        ((this.phase === 'player-abilities' || this.phase === 'player-action') &&
+          !!entry.abilityId &&
+          entry.abilityId === selectedAbility?.id) ||
+        ((this.phase === 'player-items' || this.phase === 'player-item-action') &&
+          !!entry.itemId &&
+          entry.itemId === selectedItemId);
       text.setText(`${active ? '› ' : ''}${entry.label}`);
       text.setColor(!entry.enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba');
     }
@@ -4849,24 +5823,12 @@ export class BattleScene extends Phaser.Scene {
   private drawUiPanels(): void {
     this.uiGraphics.clear();
 
-    const panels = [
-      { panel: this.uiPanels.topLeft, accent: 0x2f5b5e },
-      ...(this.showDetailPanel ? [{ panel: this.uiPanels.topRight, accent: 0x6a2f47 }] : [])
-    ];
-
-    for (const { panel, accent } of panels) {
-      this.drawUiPanelShell(this.uiGraphics, panel, 1, 40, 20, accent);
-    }
+    this.drawMapTitlePlaque();
+    this.drawMapTitleIntro();
 
     const activeUnit = this.getActiveUnit();
-    const focusUnit = this.getHoveredUnit() ?? activeUnit;
-    const autoTagBounds = this.autoBattleToggleText.getBounds();
-    Phaser.Geom.Rectangle.Inflate(autoTagBounds, 14, 6);
-
-    this.uiGraphics.fillStyle(this.autoBattleEnabled ? 0x67502a : 0x27191a, 0.9);
-    this.uiGraphics.fillRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
-    this.uiGraphics.lineStyle(1, this.autoBattleEnabled ? 0xf3d690 : 0x8f7250, 0.56);
-    this.uiGraphics.strokeRoundedRect(autoTagBounds.x, autoTagBounds.y, autoTagBounds.width, autoTagBounds.height, 14);
+    const focusUnit = this.getDetailFocusUnit();
+    this.drawDetailPlaque(focusUnit);
 
     if (this.actionMenuAlpha > 0.01) {
       this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 44, 18, 0x6d5430);
@@ -4902,53 +5864,221 @@ export class BattleScene extends Phaser.Scene {
       );
     }
 
-    if (this.showDetailPanel) {
-      const badgeBounds = this.activeBadge.getBounds();
-      Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
-      const badgeFill = focusUnit
-        ? focusUnit.team === 'player'
-          ? 0x1d4644
-          : 0x5a2434
-        : this.hoverTile
-          ? 0x56462c
-          : 0x2f3044;
-      this.uiGraphics.fillStyle(badgeFill, 0.94);
-      this.uiGraphics.fillRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.38);
-      this.uiGraphics.strokeRoundedRect(badgeBounds.x, badgeBounds.y, badgeBounds.width, badgeBounds.height, 12);
+  }
+
+  private drawMapTitlePlaque(): void {
+    if (this.mapPlaqueAlpha <= 0.01) {
+      return;
     }
 
-    if (this.showDetailPanel) {
-      for (const text of this.detailStatTexts) {
-        if (!text.text) {
-          continue;
-        }
+    const panel = new Phaser.Geom.Rectangle(
+      this.uiPanels.topLeft.x + this.mapPlaqueOffsetX,
+      this.uiPanels.topLeft.y,
+      this.uiPanels.topLeft.width,
+      this.uiPanels.topLeft.height
+    );
+    const alpha = this.mapPlaqueAlpha;
+    const autoTagBounds = this.autoBattleToggleText.getBounds();
+    this.drawUiPlaqueShell(this.uiGraphics, panel, {
+      accentColor: 0x5a2432,
+      alpha,
+      headerHeight: UI_PLAQUE_HEADER_HEIGHT,
+      radius: UI_PLAQUE_RADIUS,
+      headerAlpha: 0.78,
+      sideRuleAlpha: 0.16,
+      dividerAlpha: 0.46
+    });
+    this.drawUiInsetBox(this.uiGraphics, this.mapObjectiveBoxBounds, {
+      fillAlpha: 0.92 * alpha,
+      strokeAlpha: 0.28 * alpha,
+      radius: UI_INSET_RADIUS
+    });
 
-        const chip = text.getBounds();
-        const chipWidth = Math.max(74, chip.width + 16);
-        this.uiGraphics.fillStyle(0x22151a, 0.86);
-        this.uiGraphics.fillRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
-        this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
-        this.uiGraphics.strokeRoundedRect(chip.x - 8, chip.y - 4, chipWidth, chip.height + 8, 10);
+    Phaser.Geom.Rectangle.Inflate(autoTagBounds, 14, 6);
+    this.drawUiPill(this.uiGraphics, autoTagBounds, {
+      fillColor: this.autoBattleEnabled ? 0x67502a : 0x27191a,
+      strokeColor: this.autoBattleEnabled ? 0xf3d690 : 0x8f7250,
+      fillAlpha: 0.9 * alpha,
+      strokeAlpha: 0.56 * alpha,
+      radius: 14
+    });
+  }
+
+  private drawMapTitleIntro(): void {
+    if (this.mapIntroAlpha <= 0.01) {
+      return;
+    }
+
+    const panel = new Phaser.Geom.Rectangle(
+      this.mapIntroBounds.x,
+      this.mapIntroBounds.y + this.mapIntroOffsetY,
+      this.mapIntroBounds.width,
+      this.mapIntroBounds.height
+    );
+    const alpha = this.mapIntroAlpha;
+
+    this.uiGraphics.fillStyle(0x040203, 0.32 * alpha);
+    this.uiGraphics.fillRoundedRect(panel.x + 4, panel.y + 8, panel.width, panel.height, 28);
+    this.uiGraphics.fillStyle(0x0a0c11, 0.95 * alpha);
+    this.uiGraphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, 28);
+    this.uiGraphics.fillStyle(0x1a141b, 0.96 * alpha);
+    this.uiGraphics.fillRoundedRect(panel.x + 3, panel.y + 3, panel.width - 6, panel.height - 6, 24);
+    this.uiGraphics.fillStyle(0x4e222d, 0.68 * alpha);
+    this.uiGraphics.fillRoundedRect(panel.x + 3, panel.y + 3, panel.width - 6, 28, 24);
+    this.uiGraphics.fillStyle(0xf4ddb0, 0.08 * alpha);
+    this.uiGraphics.fillRoundedRect(panel.x + 28, panel.y + 12, panel.width - 56, 6, 3);
+    this.uiGraphics.lineStyle(2, 0xe2c27f, 0.5 * alpha);
+    this.uiGraphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, 28);
+    this.uiGraphics.lineStyle(1, 0x7d5141, 0.42 * alpha);
+    this.uiGraphics.strokeRoundedRect(panel.x + 3, panel.y + 3, panel.width - 6, panel.height - 6, 24);
+    this.uiGraphics.lineStyle(1, 0xe2c27f, 0.24 * alpha);
+    this.uiGraphics.lineBetween(panel.x + 42, panel.y + 64, panel.right - 42, panel.y + 64);
+    this.uiGraphics.lineBetween(panel.x + 42, panel.bottom - 28, panel.right - 42, panel.bottom - 28);
+  }
+
+  private drawDetailPlaque(focusUnit: BattleUnit | null): void {
+    if (!this.showDetailPanel) {
+      return;
+    }
+
+    this.drawUiPlaqueShell(this.uiGraphics, this.uiPanels.topRight, {
+      accentColor: 0x6a2f47,
+      headerHeight: UI_PLAQUE_HEADER_HEIGHT,
+      radius: UI_PLAQUE_RADIUS,
+      headerAlpha: 0.62,
+      sideRuleAlpha: 0.18,
+      dividerAlpha: 0.32
+    });
+
+    if (this.detailBodyBoxBounds.width > 0 && this.detailBodyBoxBounds.height > 0) {
+      this.drawUiInsetBox(this.uiGraphics, this.detailBodyBoxBounds, {
+        fillAlpha: 0.9,
+        strokeAlpha: 0.24,
+        radius: UI_INSET_RADIUS
+      });
+    }
+
+    const badgeBounds = this.activeBadge.getBounds();
+    Phaser.Geom.Rectangle.Inflate(badgeBounds, 12, 6);
+    const badgeFill = focusUnit
+      ? focusUnit.team === 'player'
+        ? 0x1d4644
+        : 0x5a2434
+      : this.hoverTile
+        ? 0x56462c
+        : 0x2f3044;
+    this.drawUiPill(this.uiGraphics, badgeBounds, {
+      fillColor: badgeFill,
+      strokeColor: 0xd5ba7a,
+      fillAlpha: 0.94,
+      strokeAlpha: 0.38,
+      radius: 12
+    });
+
+    for (const text of this.detailStatTexts) {
+      if (!text.text) {
+        continue;
       }
-    }
 
-    if (this.showDetailPanel && focusUnit) {
-      const barX = this.uiPanels.topRight.x + 16;
-      const barY = this.detailMetaText.y + 22;
-      const barWidth = Math.max(
-        116,
-        this.uiPanels.topRight.width - (this.showPortraitPanel ? this.uiPanels.portrait.width + 42 : 32)
+      const chip = text.getBounds();
+      const chipBounds = new Phaser.Geom.Rectangle(
+        chip.x - 8,
+        chip.y - 4,
+        Math.max(74, chip.width + 16),
+        chip.height + 8
       );
-      const barFill = focusUnit.team === 'player' ? 0x61d7c7 : 0xe8898f;
-
-      this.uiGraphics.fillStyle(0x1a0d10, 0.92);
-      this.uiGraphics.fillRoundedRect(barX, barY, barWidth, 12, 6);
-      this.uiGraphics.fillStyle(barFill, 0.95);
-      this.uiGraphics.fillRoundedRect(barX + 2, barY + 2, Math.max(6, (barWidth - 4) * (focusUnit.hp / focusUnit.maxHp)), 8, 4);
-      this.uiGraphics.lineStyle(1, 0xd5ba7a, 0.2);
-      this.uiGraphics.strokeRoundedRect(barX, barY, barWidth, 12, 6);
+      this.drawUiInsetBox(this.uiGraphics, chipBounds, {
+        fillAlpha: 0.86,
+        strokeAlpha: 0.2,
+        radius: 10
+      });
     }
+
+    if (focusUnit && this.detailHealthBarBounds.width > 0) {
+      const barFill = focusUnit.team === 'player' ? 0x61d7c7 : 0xe8898f;
+      this.drawUiInsetBox(this.uiGraphics, this.detailHealthBarBounds, {
+        fillColor: 0x1a0d10,
+        fillAlpha: 0.92,
+        strokeAlpha: 0.2,
+        radius: 6
+      });
+      this.uiGraphics.fillStyle(barFill, 0.95);
+      this.uiGraphics.fillRoundedRect(
+        this.detailHealthBarBounds.x + 2,
+        this.detailHealthBarBounds.y + 2,
+        Math.max(6, (this.detailHealthBarBounds.width - 4) * (focusUnit.hp / focusUnit.maxHp)),
+        this.detailHealthBarBounds.height - 4,
+        4
+      );
+    }
+  }
+
+  private drawUiPlaqueShell(
+    graphics: Phaser.GameObjects.Graphics,
+    panel: Phaser.Geom.Rectangle,
+    {
+      accentColor,
+      alpha = 1,
+      headerHeight = UI_PLAQUE_HEADER_HEIGHT,
+      radius = UI_PLAQUE_RADIUS,
+      headerAlpha = 0.54,
+      sideRuleAlpha = 0.24,
+      shineAlpha = 0.08,
+      dividerAlpha = 0.24
+    }: UiPlaqueShellOptions
+  ): void {
+    graphics.fillStyle(0x040203, 0.32 * alpha);
+    graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
+    graphics.fillStyle(0x0b1018, 0.96 * alpha);
+    graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.fillStyle(0x17131d, 0.96 * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.fillStyle(accentColor, headerAlpha * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
+    graphics.fillStyle(accentColor, sideRuleAlpha * alpha);
+    graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
+    graphics.fillStyle(0xf4ddb0, shineAlpha * alpha);
+    graphics.fillRoundedRect(panel.x + 18, panel.y + 9, panel.width - 36, 6, 3);
+    graphics.lineStyle(2, 0xd5ba7a, 0.42 * alpha);
+    graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.lineStyle(1, accentColor, 0.34 * alpha);
+    graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.lineStyle(1, accentColor, dividerAlpha * alpha);
+    graphics.lineBetween(panel.x + 18, panel.y + headerHeight, panel.right - 18, panel.y + headerHeight);
+  }
+
+  private drawUiInsetBox(
+    graphics: Phaser.GameObjects.Graphics,
+    bounds: Phaser.Geom.Rectangle,
+    {
+      fillColor = 0x22151a,
+      fillAlpha = 0.86,
+      strokeColor = 0xd5ba7a,
+      strokeAlpha = 0.2,
+      radius = UI_INSET_RADIUS
+    }: UiInsetBoxOptions = {}
+  ): void {
+    graphics.fillStyle(fillColor, fillAlpha);
+    graphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    graphics.lineStyle(1, strokeColor, strokeAlpha);
+    graphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, radius);
+  }
+
+  private drawUiPill(
+    graphics: Phaser.GameObjects.Graphics,
+    bounds: Phaser.Geom.Rectangle,
+    {
+      fillColor,
+      strokeColor,
+      fillAlpha = 0.92,
+      strokeAlpha = 0.4,
+      radius = 12
+    }: UiPillOptions
+  ): void {
+    graphics.fillStyle(fillColor, fillAlpha);
+    graphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, radius);
+    graphics.lineStyle(1, strokeColor, strokeAlpha);
+    graphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, radius);
   }
 
   private drawUiPanelShell(
@@ -5014,42 +6144,13 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  private describePhase(): string {
-    const active = this.getActiveUnit();
-    const selectedAbility = this.getSelectedAbility();
-
-    switch (this.phase) {
-      case 'intro':
-        return 'The companies close in on the ridge.';
-      case 'player-menu':
-        return active ? `${active.name}: choose a command.` : 'Awaiting command.';
-      case 'player-abilities':
-        return active ? `${active.name}: choose an ability.` : 'Choose an ability.';
-      case 'player-move':
-        return active ? `${active.name}: choose a tile to reposition.` : 'Choose a unit path.';
-      case 'player-action':
-        return active && selectedAbility
-          ? `${active.name}: choose a ${selectedAbility.target === 'ally' ? 'target ally' : 'target enemy'} for ${selectedAbility.name}.`
-          : 'Select a target.';
-      case 'player-items':
-        return active ? `${active.name}: choose an item.` : 'Select an item.';
-      case 'enemy':
-        return active ? `${active.name} studies the field.` : 'Enemy turn.';
-      case 'animating':
-        return 'Steel rings through the chapel ruins.';
-      case 'complete':
-        return 'The skirmish has ended.';
-      default:
-        return '';
-    }
-  }
-
   private getCurrentMenuAction(): MenuAction | null {
     switch (this.phase) {
       case 'player-abilities':
       case 'player-action':
         return 'abilities';
       case 'player-items':
+      case 'player-item-action':
         return 'items';
       case 'player-move':
         return 'move';
@@ -5066,9 +6167,11 @@ export class BattleScene extends Phaser.Scene {
   private getSubmenuTitle(): string {
     switch (this.phase) {
       case 'player-abilities':
+        return 'Abilities';
       case 'player-action':
         return 'Abilities';
       case 'player-items':
+      case 'player-item-action':
         return 'Items';
       default:
         return '';
@@ -5079,29 +6182,18 @@ export class BattleScene extends Phaser.Scene {
     const activeUnit = this.getActiveUnit();
     const inventoryEntries = activeUnit ? getInventoryEntries(this.getUnitInventory(activeUnit)) : [];
     const inventoryCount = inventoryEntries.reduce((total, entry) => total + entry.count, 0);
-    const selectedAbility = this.getSelectedAbility();
-    const abilityPreview =
-      selectedAbility ??
-      (this.phase === 'player-abilities' && activeUnit ? activeUnit.abilities[0] : null);
     const carriedItemsText =
       inventoryEntries.length > 0
         ? inventoryEntries.map((entry) => `${getItemDefinition(entry.itemId).name} x${entry.count}`).join(', ')
         : 'No carried items.';
 
-    if ((this.phase === 'player-abilities' || this.phase === 'player-action') && abilityPreview) {
-      return [
-        abilityPreview.description,
-        `Range ${abilityPreview.rangeMin}-${abilityPreview.rangeMax}  ${abilityPreview.target === 'ally' ? 'Allies' : 'Enemies'}`
-      ].join('\n');
-    }
-
-    if (this.phase === 'player-items' && activeUnit) {
-      return inventoryEntries.length > 0
-        ? [
-            getItemDefinition(inventoryEntries[0].itemId).description,
-            `HP ${activeUnit.hp}/${activeUnit.maxHp}  CT ${activeUnit.ct}`
-          ].join('\n')
-        : 'No carried items.';
+    if (
+      this.phase === 'player-abilities' ||
+      this.phase === 'player-items' ||
+      this.phase === 'player-action' ||
+      this.phase === 'player-item-action'
+    ) {
+      return '';
     }
 
     if (activeUnit && activeUnit.team === 'player') {
@@ -5123,12 +6215,13 @@ export class BattleScene extends Phaser.Scene {
   private getMenuHintText(): string {
     switch (this.phase) {
       case 'player-abilities':
-        return this.showHudControls ? 'Tap an ability.' : 'Space closes.';
       case 'player-items':
-      case 'player-move':
-        return this.showHudControls ? 'Tap a command or the field.' : 'Space returns.';
+      case 'player-item-action':
+        return '';
       case 'player-action':
-        return this.showHudControls ? 'Tap a target.' : 'Space backs out.';
+        return '';
+      case 'player-move':
+        return this.showHudControls ? 'Tap a command or the field.' : 'Click a tile.';
       case 'player-menu':
         return this.showHudControls ? 'Tap a command.' : 'Click a command.';
       default:
@@ -5137,6 +6230,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getHoveredUnit(): BattleUnit | null {
+    if (this.hoveredTurnOrderUnitId) {
+      return this.units.find((unit) => unit.alive && unit.id === this.hoveredTurnOrderUnitId) ?? null;
+    }
+
     if (!this.hoverTile) {
       return null;
     }
@@ -5148,12 +6245,79 @@ export class BattleScene extends Phaser.Scene {
     );
   }
 
+  private getDetailFocusUnit(): BattleUnit | null {
+    const hoveredUnit = this.getHoveredUnit();
+    if (hoveredUnit) {
+      return hoveredUnit;
+    }
+
+    if (this.hoverTile) {
+      return null;
+    }
+
+    return this.getActiveUnit();
+  }
+
+  private showDetailPortrait(textureKey: string, kind: DetailPortraitKind): void {
+    this.portrait.setTexture(textureKey);
+
+    const frame = this.portrait.frame;
+    if (!frame) {
+      this.portrait.setVisible(false);
+      return;
+    }
+
+    const panelWidth = this.uiPanels.portrait.width;
+    const panelHeight = this.uiPanels.portrait.height;
+    const maxWidth = Math.max(24, panelWidth - 24);
+    const maxHeight = Math.max(24, panelHeight - 24);
+    const frameWidth = Math.max(1, frame.width);
+    const frameHeight = Math.max(1, frame.height);
+
+    let widthScale = maxWidth / frameWidth;
+    let heightScale = maxHeight / frameHeight;
+
+    switch (kind) {
+      case 'unit':
+        heightScale = Math.max(82, panelHeight - 28) / frameHeight;
+        widthScale = heightScale;
+        break;
+      case 'prop':
+        widthScale *= 0.88;
+        heightScale *= 0.88;
+        break;
+      case 'chest':
+        widthScale *= 0.84;
+        heightScale *= 0.84;
+        break;
+      case 'terrain':
+        widthScale *= 0.92;
+        heightScale *= 0.72;
+        break;
+    }
+
+    const scale = Math.max(0.01, Math.min(widthScale, heightScale));
+    this.portrait
+      .setOrigin(0.5, 0.5)
+      .setScale(scale)
+      .setVisible(this.showPortraitPanel);
+  }
+
   private getActiveUnit(): BattleUnit | null {
     if (!this.activeUnitId) {
       return null;
     }
 
     return this.units.find((unit) => unit.id === this.activeUnitId && unit.alive) ?? null;
+  }
+
+  private setHoveredTurnOrderUnitId(unitId: string | null): void {
+    if (this.hoveredTurnOrderUnitId === unitId) {
+      return;
+    }
+
+    this.hoveredTurnOrderUnitId = unitId;
+    this.refreshUi();
   }
 
   private pushLog(message: string): void {

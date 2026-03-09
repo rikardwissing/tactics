@@ -31,6 +31,11 @@ export interface LevelDefinition {
   id: string;
   name: string;
   objective: string;
+  shortObjective?: string;
+  titlePrefix?: string;
+  region?: string;
+  encounterType?: string;
+  titleFlavor?: string;
   heights: readonly (readonly number[])[];
   terrain: readonly (readonly TerrainType[])[];
   placements: readonly UnitPlacement[];

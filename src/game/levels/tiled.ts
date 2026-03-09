@@ -167,6 +167,11 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
   const levelId = getProperty(map.properties, 'levelId');
   const displayName = getProperty(map.properties, 'displayName');
   const objective = getProperty(map.properties, 'objective');
+  const shortObjective = getProperty(map.properties, 'shortObjective');
+  const titlePrefix = getProperty(map.properties, 'titlePrefix');
+  const region = getProperty(map.properties, 'region');
+  const encounterType = getProperty(map.properties, 'encounterType');
+  const titleFlavor = getProperty(map.properties, 'titleFlavor');
 
   if (typeof levelId !== 'string' || typeof displayName !== 'string' || typeof objective !== 'string') {
     throw new Error('Tiled map properties must include string values for levelId, displayName, and objective.');
@@ -176,6 +181,11 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
     id: levelId,
     name: displayName,
     objective,
+    shortObjective: typeof shortObjective === 'string' ? shortObjective : undefined,
+    titlePrefix: typeof titlePrefix === 'string' ? titlePrefix : undefined,
+    region: typeof region === 'string' ? region : undefined,
+    encounterType: typeof encounterType === 'string' ? encounterType : undefined,
+    titleFlavor: typeof titleFlavor === 'string' ? titleFlavor : undefined,
     heights,
     terrain,
     placements,
