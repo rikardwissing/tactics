@@ -7,6 +7,7 @@ import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } fr
 import { AttackStyle, BattleUnit, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
 import { createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
+import { ActionMenuPanelDescriptor, BattleActionMenuStack } from './components/BattleActionMenuStack';
 import { TurnOrderPanel } from './components/TurnOrderPanel';
 
 type Phase =
@@ -312,7 +313,7 @@ export class BattleScene extends Phaser.Scene {
   private wallGraphics: Phaser.GameObjects.Graphics[] = [];
   private highlightOverlays: Phaser.GameObjects.Graphics[] = [];
   private uiGraphics!: Phaser.GameObjects.Graphics;
-  private submenuUiGraphics!: Phaser.GameObjects.Graphics;
+  private actionMenuStack!: BattleActionMenuStack;
   private turnOrderPanel!: TurnOrderPanel;
   private mapPlaqueEyebrowText!: Phaser.GameObjects.Text;
   private mapPlaqueTitleText!: Phaser.GameObjects.Text;
@@ -332,15 +333,6 @@ export class BattleScene extends Phaser.Scene {
   private logText!: Phaser.GameObjects.Text;
   private activeBadge!: Phaser.GameObjects.Text;
   private portrait!: Phaser.GameObjects.Image;
-  private menuTitleText!: Phaser.GameObjects.Text;
-  private submenuTitleText!: Phaser.GameObjects.Text;
-  private menuBodyText!: Phaser.GameObjects.Text;
-  private menuHintText!: Phaser.GameObjects.Text;
-  private detailSubmenuUiGraphics!: Phaser.GameObjects.Graphics;
-  private detailSubmenuTitleText!: Phaser.GameObjects.Text;
-  private detailSubmenuBodyText!: Phaser.GameObjects.Text;
-  private actionMenuTexts: Phaser.GameObjects.Text[] = [];
-  private submenuTexts: Phaser.GameObjects.Text[] = [];
   private activeUnitId: string | null = null;
   private selectedAbilityId: string | null = null;
   private selectedItemId: ItemId | null = null;
@@ -366,23 +358,6 @@ export class BattleScene extends Phaser.Scene {
   private unitInventories = new Map<string, Partial<Record<ItemId, number>>>();
   private turnMoveUsed = false;
   private turnActionUsed = false;
-  private actionMenuAlpha = 0;
-  private actionMenuVisible = false;
-  private actionMenuTween?: Phaser.Tweens.Tween;
-  private detailSubmenuPanel = new Phaser.Geom.Rectangle(
-    BASE_ACTION_MENU_PANELS.sub.right + 12,
-    BASE_ACTION_MENU_PANELS.sub.y,
-    228,
-    BASE_ACTION_MENU_PANELS.sub.height
-  );
-  private submenuPanelX = BASE_ACTION_MENU_PANELS.sub.x - 24;
-  private submenuPanelAlpha = 0;
-  private submenuOpen = false;
-  private submenuTween?: Phaser.Tweens.Tween;
-  private detailSubmenuPanelX = BASE_ACTION_MENU_PANELS.sub.right - 14;
-  private detailSubmenuPanelAlpha = 0;
-  private detailSubmenuOpen = false;
-  private detailSubmenuTween?: Phaser.Tweens.Tween;
   private autoBattleEnabled = false;
   private autoBattleRunToken = 0;
   private activeAutoBattleRunToken: number | null = null;
@@ -428,20 +403,6 @@ export class BattleScene extends Phaser.Scene {
       BASE_UI_PANELS.portrait.height
     )
   };
-  private actionMenuPanels = {
-    root: new Phaser.Geom.Rectangle(
-      BASE_ACTION_MENU_PANELS.root.x,
-      BASE_ACTION_MENU_PANELS.root.y,
-      BASE_ACTION_MENU_PANELS.root.width,
-      BASE_ACTION_MENU_PANELS.root.height
-    ),
-    sub: new Phaser.Geom.Rectangle(
-      BASE_ACTION_MENU_PANELS.sub.x,
-      BASE_ACTION_MENU_PANELS.sub.y,
-      BASE_ACTION_MENU_PANELS.sub.width,
-      BASE_ACTION_MENU_PANELS.sub.height
-    )
-  };
   private hudControls: HudControl[] = [];
   private showHudControls = false;
   private showPortraitPanel = true;
@@ -453,7 +414,6 @@ export class BattleScene extends Phaser.Scene {
   private visibleTurnOrderCount = 6;
   private visibleLogLines = 3;
   private actionMenuRowHeight = 22;
-  private submenuRowHeight = 22;
   private touchPointerId: number | null = null;
   private touchSecondaryPointerId: number | null = null;
   private pendingTouchTap = false;
@@ -532,14 +492,15 @@ export class BattleScene extends Phaser.Scene {
     this.lightShadowGraphics = this.add.graphics();
     this.highlightGraphics = this.add.graphics();
     this.uiGraphics = this.add.graphics();
-    this.submenuUiGraphics = this.add.graphics();
-    this.detailSubmenuUiGraphics = this.add.graphics();
+    this.actionMenuStack = new BattleActionMenuStack(this, {
+      onCreateObject: (object) => {
+        this.getWorldCamera().ignore(object);
+      }
+    });
     this.boardGraphics.setDepth(40);
     this.lightShadowGraphics.setDepth(45);
     this.highlightGraphics.setDepth(90);
     this.uiGraphics.setDepth(860).setScrollFactor(0);
-    this.submenuUiGraphics.setDepth(900).setScrollFactor(0);
-    this.detailSubmenuUiGraphics.setDepth(905).setScrollFactor(0);
     this.ambientOverlay = this.add
       .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x102746, 0)
       .setDepth(44)
@@ -794,8 +755,7 @@ export class BattleScene extends Phaser.Scene {
     this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.input.removeAllListeners();
     this.input.keyboard?.removeAllListeners();
-    this.actionMenuTween?.stop();
-    this.submenuTween?.stop();
+    this.actionMenuStack.destroy();
     this.tweens.killAll();
     this.time.removeAllEvents();
     this.isPanning = false;
@@ -919,8 +879,7 @@ export class BattleScene extends Phaser.Scene {
   private getUiObjects(): Phaser.GameObjects.GameObject[] {
     return [
       this.uiGraphics,
-      this.submenuUiGraphics,
-      this.detailSubmenuUiGraphics,
+      ...this.actionMenuStack.getDisplayObjects(),
       this.mapPlaqueEyebrowText,
       this.mapPlaqueTitleText,
       this.mapPlaqueMetaText,
@@ -939,16 +898,8 @@ export class BattleScene extends Phaser.Scene {
       this.logText,
       this.activeBadge,
       this.portrait,
-      this.menuTitleText,
-      this.submenuTitleText,
-      this.menuBodyText,
-      this.menuHintText,
-      this.detailSubmenuTitleText,
-      this.detailSubmenuBodyText,
       ...this.hudControls.map((control) => control.container),
-      ...this.turnOrderPanel.getDisplayObjects(),
-      ...this.actionMenuTexts,
-      ...this.submenuTexts
+      ...this.turnOrderPanel.getDisplayObjects()
     ];
   }
 
@@ -1689,63 +1640,6 @@ export class BattleScene extends Phaser.Scene {
       lineSpacing: 5
     });
 
-    this.menuTitleText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '20px',
-      fontStyle: 'bold',
-      color: '#fff3da'
-    });
-
-    this.actionMenuTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(0, 0, '', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '14px',
-        color: '#f5e9cf'
-      })
-    );
-
-    this.submenuTitleText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '20px',
-      fontStyle: 'bold',
-      color: '#fff3da'
-    });
-
-    this.submenuTexts = Array.from({ length: 6 }, (_, index) =>
-      this.add.text(0, 0, '', {
-        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-        fontSize: '15px',
-        color: '#f5e9cf'
-      })
-    );
-
-    this.menuBodyText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '12px',
-      color: '#d9c7a8',
-      lineSpacing: 4
-    });
-
-    this.menuHintText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '12px',
-      color: '#d6c196'
-    });
-
-    this.detailSubmenuTitleText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '20px',
-      fontStyle: 'bold',
-      color: '#fff3da'
-    });
-
-    this.detailSubmenuBodyText = this.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '12px',
-      color: '#d9c7a8',
-      lineSpacing: 4
-    });
-
     this.createHudControls();
 
     const uiElements = [
@@ -1767,30 +1661,13 @@ export class BattleScene extends Phaser.Scene {
       ...this.detailStatTexts,
       this.detailBodyText,
       this.logText,
-      this.menuTitleText,
       ...this.hudControls.map((control) => control.container),
-      ...this.actionMenuTexts,
       ...this.turnOrderPanel.getDisplayObjects()
     ];
 
     for (const [index, element] of uiElements.entries()) {
       element.setDepth(870 + index).setScrollFactor(0);
     }
-
-    const submenuElements = [
-      this.submenuTitleText,
-      this.menuBodyText,
-      this.menuHintText,
-      this.detailSubmenuTitleText,
-      this.detailSubmenuBodyText,
-      ...this.submenuTexts
-    ];
-
-    for (const [index, element] of submenuElements.entries()) {
-      element.setDepth(910 + index).setScrollFactor(0);
-    }
-
-    this.applyActionMenuAlpha();
     this.updateUiLayout(this.scale.width, this.scale.height);
   }
 
@@ -1867,10 +1744,13 @@ export class BattleScene extends Phaser.Scene {
     this.visibleTurnOrderCount = 6;
     this.visibleLogLines = this.minimalMobileLayout ? 1 : this.portraitLayout ? 2 : this.compactLayout ? 2 : 3;
     this.actionMenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
-    this.submenuRowHeight = this.portraitLayout ? 28 : this.compactLayout ? 26 : 28;
     const avatarSize = this.minimalMobileLayout ? 36 : this.portraitLayout ? 34 : this.compactLayout ? 38 : 40;
     const turnOrderGap = avatarSize + (this.minimalMobileLayout ? 12 : 14);
     const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
+    let actionMenuRootX = BASE_ACTION_MENU_PANELS.root.x;
+    let actionMenuBottom = BASE_ACTION_MENU_PANELS.root.bottom;
+    let actionMenuRootWidth = BASE_ACTION_MENU_PANELS.root.width;
+    let actionMenuPanelHeight = BASE_ACTION_MENU_PANELS.sub.height;
 
     if (this.portraitLayout) {
       const innerWidth = width - margin * 2;
@@ -1893,13 +1773,10 @@ export class BattleScene extends Phaser.Scene {
       this.uiPanels.bottomLeft.setTo(margin, height - margin - bottomHeight, timelinePanelWidth, bottomHeight);
       this.uiPanels.bottomRight.setTo(0, 0, 0, 0);
       this.uiPanels.portrait.setTo(0, 0, 0, 0);
-      this.layoutMenuChain(
-        this.uiPanels.bottomLeft.right + gapBetweenPanels,
-        this.uiPanels.bottomLeft.bottom,
-        rootWidth,
-        actionHeight,
-        [subWidth + 14, Phaser.Math.Clamp(innerWidth * 0.32, 188, 240)]
-      );
+      actionMenuRootX = this.uiPanels.bottomLeft.right + gapBetweenPanels;
+      actionMenuBottom = this.uiPanels.bottomLeft.bottom;
+      actionMenuRootWidth = rootWidth;
+      actionMenuPanelHeight = actionHeight;
     } else {
       const leftWidth = Phaser.Math.Clamp(width * (this.compactLayout ? 0.34 : 0.31), 300, BASE_UI_PANELS.topLeft.width);
       const topHeight = this.getTargetMapPlaqueHeight(leftWidth, height);
@@ -1934,21 +1811,28 @@ export class BattleScene extends Phaser.Scene {
         portraitHeight
       );
 
-      const rootX = this.uiPanels.bottomLeft.right + gapBetweenPanels;
-      this.layoutMenuChain(
-        rootX,
-        this.uiPanels.bottomLeft.bottom,
-        actionRootWidth,
-        actionPanelHeight,
-        [
-          actionSubWidth,
-          Phaser.Math.Clamp(width * (this.compactLayout ? 0.18 : 0.19), 188, 242)
-        ]
-      );
+      actionMenuRootX = this.uiPanels.bottomLeft.right + gapBetweenPanels;
+      actionMenuBottom = this.uiPanels.bottomLeft.bottom;
+      actionMenuRootWidth = actionRootWidth;
+      actionMenuPanelHeight = actionPanelHeight;
     }
 
-    this.submenuPanelX = this.getMenuPanelSlideX(this.actionMenuPanels.sub, this.submenuPanelAlpha);
-    this.detailSubmenuPanelX = this.getMenuPanelSlideX(this.detailSubmenuPanel, this.detailSubmenuPanelAlpha);
+    this.actionMenuStack.setLayout({
+      rootX: actionMenuRootX,
+      bottom: actionMenuBottom,
+      rootWidth: actionMenuRootWidth,
+      panelHeight: actionMenuPanelHeight,
+      panelWidths: {
+        list: actionMenuRootWidth,
+        detail: actionMenuRootWidth
+      }
+    });
+    this.actionMenuStack.setTypography({
+      titleFontSize: this.portraitLayout ? 18 : 20,
+      entryFontSize: this.portraitLayout ? 13 : this.compactLayout ? 14 : 15,
+      bodyFontSize: this.portraitLayout ? 11 : 12,
+      rowHeight: this.actionMenuRowHeight
+    });
 
     this.activeBadge.setVisible(this.showDetailPanel);
     this.detailMetaText.setVisible(this.showDetailPanel);
@@ -1981,58 +1865,9 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY + 6)
       .setVisible(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible);
 
-    this.menuTitleText
-      .setPosition(this.actionMenuPanels.root.x + 14, this.actionMenuPanels.root.y + 12)
-      .setFontSize(this.portraitLayout ? 18 : 20);
-    for (const [index, text] of this.actionMenuTexts.entries()) {
-      text
-        .setPosition(
-          this.actionMenuPanels.root.x + 42,
-          this.actionMenuPanels.root.y + 50 + index * this.actionMenuRowHeight
-        )
-        .setFontSize(this.portraitLayout ? 13 : 14);
-    }
-
-    this.submenuTitleText.setFontSize(this.portraitLayout ? 18 : 20);
-    this.menuBodyText
-      .setFontSize(this.portraitLayout ? 11 : 12)
-      .setWordWrapWidth(this.actionMenuPanels.sub.width - 28, true);
-    this.menuHintText.setFontSize(this.portraitLayout ? 11 : 12);
-    this.detailSubmenuTitleText.setFontSize(this.portraitLayout ? 18 : 20);
-    this.detailSubmenuBodyText
-      .setFontSize(this.portraitLayout ? 11 : 12)
-      .setWordWrapWidth(this.detailSubmenuPanel.width - 28, true);
-    for (const text of this.submenuTexts) {
-      text.setFontSize(this.portraitLayout ? 13 : this.compactLayout ? 14 : 15);
-    }
-
     this.layoutHudControls(margin, width, height);
-    this.layoutSubmenuUi();
+    this.actionMenuStack.layoutText();
     this.layoutResultOverlay();
-  }
-
-  private layoutMenuChain(
-    rootX: number,
-    bottom: number,
-    rootWidth: number,
-    panelHeight: number,
-    submenuWidths: number[],
-    overlap = 22,
-    gap = 12
-  ): void {
-    const rootY = bottom - panelHeight;
-    this.actionMenuPanels.root.setTo(rootX, rootY, rootWidth, panelHeight);
-
-    let cursorX = this.actionMenuPanels.root.right - overlap;
-
-    const [submenuWidth = this.actionMenuPanels.sub.width, detailWidth = this.detailSubmenuPanel.width] = submenuWidths;
-    this.actionMenuPanels.sub.setTo(cursorX, rootY, submenuWidth, panelHeight);
-    cursorX = this.actionMenuPanels.sub.right + gap;
-    this.detailSubmenuPanel.setTo(cursorX, rootY, detailWidth, panelHeight);
-  }
-
-  private getMenuPanelSlideX(panel: Phaser.Geom.Rectangle, alpha: number): number {
-    return panel.x - 26 + 26 * alpha;
   }
 
   private getMapPlaqueRequiredHeight(panelWidth: number): number {
@@ -2523,7 +2358,7 @@ export class BattleScene extends Phaser.Scene {
 
   private layoutHudControls(margin: number, width: number, height: number): void {
     const availableTop = this.uiPanels.topRight.bottom + 16;
-    const availableBottom = Math.min(this.actionMenuPanels.root.y, this.uiPanels.bottomLeft.y) - 16;
+    const availableBottom = Math.min(this.actionMenuStack.getRootTop(), this.uiPanels.bottomLeft.y) - 16;
     const span = Math.max(180, availableBottom - availableTop);
     const scale = this.portraitLayout ? 0.84 : this.compactLayout ? 0.86 : 0.8;
     const gap = 10;
@@ -3728,29 +3563,7 @@ export class BattleScene extends Phaser.Scene {
       return true;
     }
 
-    if (this.actionMenuAlpha > 0.01 && this.actionMenuPanels.root.contains(x, y)) {
-      return true;
-    }
-
-    if (!this.isSubmenuPhase() && this.getSubmenuVisibleAlpha() <= 0.01) {
-      return false;
-    }
-
-    if (this.getSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
-      this.submenuPanelX,
-      this.actionMenuPanels.sub.y,
-      this.actionMenuPanels.sub.width,
-      this.actionMenuPanels.sub.height
-    ).contains(x, y)) {
-      return true;
-    }
-
-    return this.getDetailSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
-      this.detailSubmenuPanelX,
-      this.detailSubmenuPanel.y,
-      this.detailSubmenuPanel.width,
-      this.detailSubmenuPanel.height
-    ).contains(x, y);
+    return this.actionMenuStack.containsPoint(x, y);
   }
 
   private getMenuEntries(): MenuEntry[] {
@@ -3792,10 +3605,6 @@ export class BattleScene extends Phaser.Scene {
       .map((prop) => ({ x: prop.x, y: prop.y }));
   }
 
-  private isSubmenuPhase(phase = this.phase): boolean {
-    return phase === 'player-abilities' || phase === 'player-action' || phase === 'player-items' || phase === 'player-item-action';
-  }
-
   private isPlayerTurnPhase(phase = this.phase): boolean {
     return (
       phase === 'player-menu' ||
@@ -3826,339 +3635,128 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private getSubmenuVisibleAlpha(): number {
-    return this.submenuPanelAlpha * this.actionMenuAlpha;
-  }
-
-  private getDetailSubmenuVisibleAlpha(): number {
-    return this.detailSubmenuPanelAlpha * this.actionMenuAlpha;
-  }
-
-  private applyActionMenuAlpha(): void {
-    const alpha = this.actionMenuAlpha;
-    const visible = alpha > 0.01;
-
-    this.menuTitleText.setAlpha(alpha).setVisible(visible);
-
-    for (const text of this.actionMenuTexts) {
-      text.setAlpha(alpha).setVisible(visible);
-    }
-
-    this.drawUiPanels();
-    this.layoutSubmenuUi();
-    this.layoutDetailSubmenuUi();
-  }
-
-  private syncActionMenuState(): void {
-    const shouldOpen = this.shouldShowActionMenu();
-
-    if (shouldOpen !== this.actionMenuVisible) {
-      this.animateActionMenu(shouldOpen);
-    } else {
-      this.applyActionMenuAlpha();
-    }
-
-    this.syncSubmenuState();
-    this.syncDetailSubmenuState();
-  }
-
-  private animateActionMenu(open: boolean): void {
-    this.actionMenuVisible = open;
-    this.actionMenuTween?.stop();
-
-    const targetAlpha = open ? 1 : 0;
-
-    if (!open && this.actionMenuAlpha <= 0.01) {
-      this.actionMenuAlpha = 0;
-      this.applyActionMenuAlpha();
-      return;
-    }
-
-    this.actionMenuTween = this.tweens.add({
-      targets: this,
-      actionMenuAlpha: targetAlpha,
-      duration: open ? 180 : 120,
-      ease: open ? 'Cubic.easeOut' : 'Quad.easeIn',
-      onUpdate: () => this.applyActionMenuAlpha(),
-      onComplete: () => {
-        if (!open) {
-          this.actionMenuAlpha = 0;
-        }
-
-        this.applyActionMenuAlpha();
-      }
-    });
-  }
-
-  private syncSubmenuState(): void {
-    const shouldOpen = this.isSubmenuPhase();
-
-    if (shouldOpen !== this.submenuOpen) {
-      this.animateSubmenu(shouldOpen);
-      return;
-    }
-
-    this.layoutSubmenuUi();
-  }
-
-  private shouldShowDetailSubmenu(): boolean {
-    return this.getDetailSubmenuContent() !== null;
-  }
-
-  private getDetailSubmenuContent(): { title: string; body: string } | null {
+  private buildActionMenuPanels(): ActionMenuPanelDescriptor[] {
     const activeUnit = this.getActiveUnit();
-
     if (!activeUnit || activeUnit.team !== 'player') {
+      return [];
+    }
+
+    const rootPanel: ActionMenuPanelDescriptor = {
+      id: 'command-list',
+      kind: 'list',
+      title: this.getMenuTitle(),
+      blocksWorldInput: true,
+      entries: this.getMenuEntries().map((entry) => ({
+        id: entry.action,
+        label: entry.label,
+        enabled: entry.enabled,
+        active: this.getCurrentMenuAction() === entry.action
+      }))
+    };
+
+    switch (this.phase) {
+      case 'player-menu':
+        return [rootPanel];
+      case 'player-move':
+        return [rootPanel, this.buildMoveDetailPanel(activeUnit)];
+      case 'player-abilities':
+        return [rootPanel, this.buildAbilityListPanel()];
+      case 'player-action': {
+        const abilityDetail = this.buildAbilityDetailPanel();
+        return abilityDetail ? [rootPanel, this.buildAbilityListPanel(), abilityDetail] : [rootPanel, this.buildAbilityListPanel()];
+      }
+      case 'player-items':
+        return [rootPanel, this.buildItemListPanel()];
+      case 'player-item-action': {
+        const itemDetail = this.buildItemDetailPanel(activeUnit);
+        return itemDetail ? [rootPanel, this.buildItemListPanel(), itemDetail] : [rootPanel, this.buildItemListPanel()];
+      }
+      default:
+        return [];
+    }
+  }
+
+  private buildMoveDetailPanel(activeUnit: BattleUnit): ActionMenuPanelDescriptor {
+    return {
+      id: 'move-detail',
+      kind: 'detail',
+      title: 'Move',
+      blocksWorldInput: true,
+      body: [
+        `Stride up to ${activeUnit.move} tiles across open ground.`,
+        this.turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the map.'
+      ].join('\n')
+    };
+  }
+
+  private buildAbilityListPanel(): ActionMenuPanelDescriptor {
+    return {
+      id: 'ability-list',
+      kind: 'list',
+      title: 'Abilities',
+      blocksWorldInput: true,
+      entries: this.getSubmenuEntries().map((entry) => ({
+        id: entry.abilityId ?? '',
+        label: entry.label,
+        enabled: entry.enabled,
+        active: entry.abilityId === this.selectedAbilityId
+      }))
+    };
+  }
+
+  private buildAbilityDetailPanel(): ActionMenuPanelDescriptor | null {
+    const ability = this.getSelectedAbility();
+    if (!ability) {
       return null;
     }
 
-    if (this.phase === 'player-move') {
-      return {
-        title: 'Move',
-        body: [
-          `Stride up to ${activeUnit.move} tiles across open ground.`,
-          this.turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the map.'
-        ].join('\n')
-      };
-    }
-
-    if (this.phase === 'player-action') {
-      const ability = this.getSelectedAbility();
-      if (!ability) {
-        return null;
-      }
-
-      return {
-        title: ability.name,
-        body: [
-          ability.description,
-          `Range ${ability.rangeMin}-${ability.rangeMax}  ${ability.target === 'ally' ? 'Allies' : 'Enemies'}`
-        ].join('\n')
-      };
-    }
-
-    if (this.phase === 'player-items' || this.phase === 'player-item-action') {
-      if (!this.selectedItemId) {
-        return null;
-      }
-
-      const item = getItemDefinition(this.selectedItemId);
-      const count = this.getUnitInventory(activeUnit)[this.selectedItemId] ?? 0;
-
-      return {
-        title: item.name,
-        body: [
-          item.description,
-          `Range 1  •  Stock ${count}`,
-          this.phase === 'player-item-action'
-            ? 'Select an adjacent ally or self on the map.'
-            : `HP ${activeUnit.hp}/${activeUnit.maxHp}  CT ${activeUnit.ct}`
-        ].join('\n')
-      };
-    }
-
-    return null;
+    return {
+      id: 'ability-detail',
+      kind: 'detail',
+      title: ability.name,
+      blocksWorldInput: true,
+      body: [
+        ability.description,
+        `Range ${ability.rangeMin}-${ability.rangeMax}  •  ${ability.target === 'ally' ? 'Allies' : 'Enemies'}`
+      ].join('\n')
+    };
   }
 
-  private syncDetailSubmenuState(): void {
-    const shouldOpen = this.shouldShowDetailSubmenu();
-
-    if (shouldOpen !== this.detailSubmenuOpen) {
-      this.animateDetailSubmenu(shouldOpen);
-      return;
-    }
-
-    this.layoutDetailSubmenuUi();
+  private buildItemListPanel(): ActionMenuPanelDescriptor {
+    return {
+      id: 'item-list',
+      kind: 'list',
+      title: 'Items',
+      blocksWorldInput: true,
+      entries: this.getSubmenuEntries().map((entry) => ({
+        id: entry.itemId ?? '',
+        label: entry.label,
+        enabled: entry.enabled,
+        active: entry.itemId === this.selectedItemId
+      }))
+    };
   }
 
-  private animateSubmenu(open: boolean): void {
-    this.submenuOpen = open;
-    this.submenuTween?.stop();
-
-    const closedX = this.getMenuPanelSlideX(this.actionMenuPanels.sub, 0);
-    const targetX = open ? this.actionMenuPanels.sub.x : closedX;
-    const targetAlpha = open ? 1 : 0;
-
-    if (!open && this.submenuPanelAlpha <= 0.01) {
-      this.submenuPanelX = closedX;
-      this.submenuPanelAlpha = 0;
-      this.layoutSubmenuUi();
-      this.layoutDetailSubmenuUi();
-      return;
+  private buildItemDetailPanel(activeUnit: BattleUnit): ActionMenuPanelDescriptor | null {
+    if (!this.selectedItemId) {
+      return null;
     }
 
-    this.submenuTween = this.tweens.add({
-      targets: this,
-      submenuPanelX: targetX,
-      submenuPanelAlpha: targetAlpha,
-      duration: open ? 180 : 120,
-      ease: open ? 'Cubic.easeOut' : 'Quad.easeIn',
-      onUpdate: () => this.layoutSubmenuUi(),
-      onComplete: () => {
-        if (!open) {
-          this.submenuPanelX = closedX;
-          this.submenuPanelAlpha = 0;
-        }
+    const item = getItemDefinition(this.selectedItemId);
+    const count = this.getUnitInventory(activeUnit)[this.selectedItemId] ?? 0;
 
-        this.layoutSubmenuUi();
-        this.layoutDetailSubmenuUi();
-      }
-    });
-  }
-
-  private animateDetailSubmenu(open: boolean): void {
-    this.detailSubmenuOpen = open;
-    this.detailSubmenuTween?.stop();
-
-    const closedX = this.getMenuPanelSlideX(this.detailSubmenuPanel, 0);
-    const targetX = open ? this.detailSubmenuPanel.x : closedX;
-    const targetAlpha = open ? 1 : 0;
-
-    if (!open && this.detailSubmenuPanelAlpha <= 0.01) {
-      this.detailSubmenuPanelX = closedX;
-      this.detailSubmenuPanelAlpha = 0;
-      this.layoutDetailSubmenuUi();
-      return;
-    }
-
-    this.detailSubmenuTween = this.tweens.add({
-      targets: this,
-      detailSubmenuPanelX: targetX,
-      detailSubmenuPanelAlpha: targetAlpha,
-      duration: open ? 180 : 120,
-      ease: open ? 'Cubic.easeOut' : 'Quad.easeIn',
-      onUpdate: () => this.layoutDetailSubmenuUi(),
-      onComplete: () => {
-        if (!open) {
-          this.detailSubmenuPanelX = closedX;
-          this.detailSubmenuPanelAlpha = 0;
-        }
-
-        this.layoutDetailSubmenuUi();
-      }
-    });
-  }
-
-  private layoutSubmenuUi(): void {
-    const alpha = this.getSubmenuVisibleAlpha();
-    const visible = alpha > 0.01;
-    const submenuEntries = this.getSubmenuEntries();
-    const submenuInfoY =
-      submenuEntries.length > 0
-        ? this.actionMenuPanels.sub.y + 56 + Math.min(submenuEntries.length, 4) * this.submenuRowHeight
-        : this.actionMenuPanels.sub.y + 54;
-
-    this.submenuUiGraphics.clear();
-
-    if (visible) {
-      this.drawUiPanelShell(
-        this.submenuUiGraphics,
-        new Phaser.Geom.Rectangle(
-          this.submenuPanelX,
-          this.actionMenuPanels.sub.y,
-          this.actionMenuPanels.sub.width,
-          this.actionMenuPanels.sub.height
-        ),
-        alpha,
-        40,
-        16,
-        0x345168
-      );
-
-      const selectedAbility = this.getSelectedAbility();
-      const selectedItemId = this.selectedItemId;
-
-      for (const [index, entry] of submenuEntries.entries()) {
-        const bounds = this.getSubmenuEntryBounds(index);
-      const active =
-        ((this.phase === 'player-abilities' || this.phase === 'player-action') &&
-          !!entry.abilityId &&
-          entry.abilityId === selectedAbility?.id) ||
-        ((this.phase === 'player-items' || this.phase === 'player-item-action') &&
-          !!entry.itemId &&
-          entry.itemId === selectedItemId);
-        const fill = active ? 0x69402d : entry.enabled ? 0x241519 : 0x171012;
-        const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
-        const dotColor = active ? 0xf1d089 : entry.enabled ? 0xd4b470 : 0x7a6a52;
-
-        this.submenuUiGraphics.fillStyle(fill, (active ? 0.9 : 0.72) * alpha);
-        this.submenuUiGraphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
-        this.submenuUiGraphics.lineStyle(1, 0xd5ba7a, strokeAlpha * alpha);
-        this.submenuUiGraphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
-        this.submenuUiGraphics.fillStyle(dotColor, 0.95 * alpha);
-        this.submenuUiGraphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
-      }
-    }
-
-    this.submenuTitleText
-      .setPosition(this.submenuPanelX + 14, this.actionMenuPanels.sub.y + 12)
-      .setAlpha(alpha)
-      .setVisible(visible);
-    this.menuBodyText.setPosition(this.submenuPanelX + 18, submenuInfoY).setAlpha(alpha).setVisible(visible);
-    this.menuHintText
-      .setPosition(this.submenuPanelX + 18, this.actionMenuPanels.sub.bottom - 24)
-      .setAlpha(alpha)
-      .setVisible(visible);
-
-    for (const [index, text] of this.submenuTexts.entries()) {
-      text
-        .setPosition(this.submenuPanelX + 40, this.actionMenuPanels.sub.y + 52 + index * this.submenuRowHeight)
-        .setAlpha(alpha)
-        .setVisible(visible);
-    }
-  }
-
-  private layoutDetailSubmenuUi(): void {
-    const alpha = this.getDetailSubmenuVisibleAlpha();
-    const visible = alpha > 0.01;
-    const detailContent = this.getDetailSubmenuContent();
-
-    this.detailSubmenuUiGraphics.clear();
-
-    if (visible) {
-      this.drawUiPanelShell(
-        this.detailSubmenuUiGraphics,
-        new Phaser.Geom.Rectangle(
-          this.detailSubmenuPanelX,
-          this.detailSubmenuPanel.y,
-          this.detailSubmenuPanel.width,
-          this.detailSubmenuPanel.height
-        ),
-        alpha,
-        40,
-        16,
-        0x345168
-      );
-    }
-
-    this.detailSubmenuTitleText
-      .setText(detailContent?.title ?? '')
-      .setPosition(this.detailSubmenuPanelX + 14, this.detailSubmenuPanel.y + 12)
-      .setAlpha(alpha)
-      .setVisible(visible);
-    this.detailSubmenuBodyText
-      .setText(detailContent?.body ?? '')
-      .setPosition(this.detailSubmenuPanelX + 18, this.detailSubmenuPanel.y + 52)
-      .setAlpha(alpha)
-      .setVisible(visible);
-  }
-
-  private getActionMenuEntryBounds(index: number): Phaser.Geom.Rectangle {
-    return new Phaser.Geom.Rectangle(
-      this.actionMenuPanels.root.x + 10,
-      this.actionMenuPanels.root.y + 44 + index * this.actionMenuRowHeight,
-      this.actionMenuPanels.root.width - 20,
-      this.actionMenuRowHeight + 8
-    );
-  }
-
-  private getSubmenuEntryBounds(index: number): Phaser.Geom.Rectangle {
-    return new Phaser.Geom.Rectangle(
-      this.submenuPanelX + 12,
-      this.actionMenuPanels.sub.y + 46 + index * this.submenuRowHeight,
-      this.actionMenuPanels.sub.width - 24,
-      this.submenuRowHeight + 8
-    );
+    return {
+      id: 'item-detail',
+      kind: 'detail',
+      title: item.name,
+      blocksWorldInput: true,
+      body: [
+        item.description,
+        `Range 1  •  Stock ${count}`,
+        'Targets any adjacent unit.',
+        'Select an adjacent target on the map.'
+      ].join('\n')
+    };
   }
 
   private handleHudControlPointer(x: number, y: number): boolean {
@@ -4272,51 +3870,34 @@ export class BattleScene extends Phaser.Scene {
       return false;
     }
 
-    const entries = this.getMenuEntries();
-    const submenuEntries = this.getSubmenuEntries();
-    const submenuBounds = new Phaser.Geom.Rectangle(
-      this.submenuPanelX,
-      this.actionMenuPanels.sub.y,
-      this.actionMenuPanels.sub.width,
-      this.actionMenuPanels.sub.height
-    );
-
-    if (this.getSubmenuVisibleAlpha() > 0.01 && submenuBounds.contains(x, y)) {
-      for (const [index, entry] of submenuEntries.entries()) {
-        if (this.getSubmenuEntryBounds(index).contains(x, y)) {
-          if (entry.enabled) {
-            await this.activateSubmenuEntry(entry);
-          }
-
-          return true;
-        }
-      }
-
-      return this.isSubmenuPhase();
+    const hit = this.actionMenuStack.hitTest(x, y);
+    if (!hit) {
+      return false;
     }
 
-    if (this.getDetailSubmenuVisibleAlpha() > 0.01 && new Phaser.Geom.Rectangle(
-      this.detailSubmenuPanelX,
-      this.detailSubmenuPanel.y,
-      this.detailSubmenuPanel.width,
-      this.detailSubmenuPanel.height
-    ).contains(x, y)) {
+    if (!hit.entryId) {
+      return hit.blocksWorldInput;
+    }
+
+    if (hit.panelId === 'command-list') {
+      const entry = this.getMenuEntries().find((candidate) => candidate.action === hit.entryId);
+      if (entry?.enabled) {
+        await this.activateMenuEntry(entry);
+      }
       return true;
     }
 
-    if (this.actionMenuAlpha > 0.01 && this.actionMenuPanels.root.contains(x, y)) {
-      for (const [index, entry] of entries.entries()) {
-        if (this.getActionMenuEntryBounds(index).contains(x, y)) {
-          if (entry.enabled) {
-            await this.activateMenuEntry(entry);
-          }
-
-          return true;
-        }
+    if (hit.panelId === 'ability-list' || hit.panelId === 'item-list') {
+      const entry = this.getSubmenuEntries().find(
+        (candidate) => candidate.abilityId === hit.entryId || candidate.itemId === hit.entryId
+      );
+      if (entry?.enabled) {
+        await this.activateSubmenuEntry(entry);
       }
+      return true;
     }
 
-    return false;
+    return hit.blocksWorldInput;
   }
 
   private async activateMenuEntry(entry: MenuEntry): Promise<void> {
@@ -5773,51 +5354,10 @@ export class BattleScene extends Phaser.Scene {
     this.layoutDetailPanelSection();
 
     this.logText.setText(this.logLines.slice(0, this.visibleLogLines).join('\n'));
-
-    const menuEntries = this.getMenuEntries();
-    const currentMenuAction = this.getCurrentMenuAction();
-    const selectedAbility = this.getSelectedAbility();
-    const selectedItemId = this.selectedItemId;
-
-    for (const [index, text] of this.actionMenuTexts.entries()) {
-      const entry = menuEntries[index];
-
-      if (!entry) {
-        text.setText('');
-        continue;
-      }
-
-      const active = currentMenuAction === entry.action;
-      text.setText(`${active ? '› ' : ''}${entry.label}`);
-      text.setColor(!entry.enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba');
-    }
-
-    const submenuEntries = this.getSubmenuEntries();
-
-    for (const [index, text] of this.submenuTexts.entries()) {
-      const entry = submenuEntries[index];
-
-      if (!entry) {
-        text.setText('');
-        continue;
-      }
-
-      const active =
-        ((this.phase === 'player-abilities' || this.phase === 'player-action') &&
-          !!entry.abilityId &&
-          entry.abilityId === selectedAbility?.id) ||
-        ((this.phase === 'player-items' || this.phase === 'player-item-action') &&
-          !!entry.itemId &&
-          entry.itemId === selectedItemId);
-      text.setText(`${active ? '› ' : ''}${entry.label}`);
-      text.setColor(!entry.enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba');
-    }
-
-    this.menuTitleText.setText(this.getMenuTitle());
-    this.submenuTitleText.setText(this.getSubmenuTitle());
-    this.menuBodyText.setText(this.getMenuBodyText());
-    this.menuHintText.setText(this.getMenuHintText());
-    this.syncActionMenuState();
+    this.actionMenuStack.setPanels(this.buildActionMenuPanels());
+    this.actionMenuStack.setVisible(this.shouldShowActionMenu());
+    this.drawUiPanels();
+    this.actionMenuStack.draw();
   }
 
   private drawUiPanels(): void {
@@ -5826,31 +5366,8 @@ export class BattleScene extends Phaser.Scene {
     this.drawMapTitlePlaque();
     this.drawMapTitleIntro();
 
-    const activeUnit = this.getActiveUnit();
     const focusUnit = this.getDetailFocusUnit();
     this.drawDetailPlaque(focusUnit);
-
-    if (this.actionMenuAlpha > 0.01) {
-      this.drawUiPanelShell(this.uiGraphics, this.actionMenuPanels.root, this.actionMenuAlpha, 44, 18, 0x6d5430);
-
-      const menuEntries = this.getMenuEntries();
-      const currentMenuAction = this.getCurrentMenuAction();
-
-      for (const [index, entry] of menuEntries.entries()) {
-        const bounds = this.getActionMenuEntryBounds(index);
-        const active = currentMenuAction === entry.action;
-        const fill = active ? 0x7a5233 : entry.enabled ? 0x22171f : 0x161016;
-        const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
-        const dotColor = active ? 0xf1d089 : entry.enabled ? 0x8ad0cf : 0x7a6a52;
-
-        this.uiGraphics.fillStyle(fill, (active ? 0.9 : 0.72) * this.actionMenuAlpha);
-        this.uiGraphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
-        this.uiGraphics.lineStyle(1, 0xd5ba7a, strokeAlpha * this.actionMenuAlpha);
-        this.uiGraphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
-        this.uiGraphics.fillStyle(dotColor, 0.95 * this.actionMenuAlpha);
-        this.uiGraphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
-      }
-    }
 
     if (this.showPortraitPanel) {
       this.drawUiPanelShell(this.uiGraphics, this.uiPanels.portrait, 0.86, 28, 14, 0x4f3140);
@@ -6162,71 +5679,6 @@ export class BattleScene extends Phaser.Scene {
   private getMenuTitle(): string {
     const active = this.getActiveUnit();
     return active ? active.name : 'Command';
-  }
-
-  private getSubmenuTitle(): string {
-    switch (this.phase) {
-      case 'player-abilities':
-        return 'Abilities';
-      case 'player-action':
-        return 'Abilities';
-      case 'player-items':
-      case 'player-item-action':
-        return 'Items';
-      default:
-        return '';
-    }
-  }
-
-  private getMenuBodyText(): string {
-    const activeUnit = this.getActiveUnit();
-    const inventoryEntries = activeUnit ? getInventoryEntries(this.getUnitInventory(activeUnit)) : [];
-    const inventoryCount = inventoryEntries.reduce((total, entry) => total + entry.count, 0);
-    const carriedItemsText =
-      inventoryEntries.length > 0
-        ? inventoryEntries.map((entry) => `${getItemDefinition(entry.itemId).name} x${entry.count}`).join(', ')
-        : 'No carried items.';
-
-    if (
-      this.phase === 'player-abilities' ||
-      this.phase === 'player-items' ||
-      this.phase === 'player-action' ||
-      this.phase === 'player-item-action'
-    ) {
-      return '';
-    }
-
-    if (activeUnit && activeUnit.team === 'player') {
-      return [
-        `${activeUnit.attackName}`,
-        activeUnit.attackText,
-        `Carrying ${inventoryCount} item${inventoryCount === 1 ? '' : 's'}.`,
-        this.turnMoveUsed ? 'Move spent this turn.' : 'Move available.',
-        carriedItemsText
-      ].join('\n');
-    }
-
-    return [
-      'Items are carried by the unit that found them.',
-      'Collect chest caches and enemy drops for supplies.'
-    ].join('\n');
-  }
-
-  private getMenuHintText(): string {
-    switch (this.phase) {
-      case 'player-abilities':
-      case 'player-items':
-      case 'player-item-action':
-        return '';
-      case 'player-action':
-        return '';
-      case 'player-move':
-        return this.showHudControls ? 'Tap a command or the field.' : 'Click a tile.';
-      case 'player-menu':
-        return this.showHudControls ? 'Tap a command.' : 'Click a command.';
-      default:
-        return 'Chests open when a player unit ends movement on them.';
-    }
   }
 
   private getHoveredUnit(): BattleUnit | null {
