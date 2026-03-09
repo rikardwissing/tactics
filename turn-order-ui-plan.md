@@ -1,101 +1,104 @@
-# Turn Order UI Improvement Plan
+# Turn Order UI Improvement Plan (Compact-First)
 
 ## Goals
-- Improve readability of who acts **now**, **next**, and **soon** at a glance.
-- Preserve the game's moody, martial visual tone (parchment, brass, muted accents).
-- Make the timeline more actionable for both mouse and controller-style play.
-- Keep implementation incremental so gameplay logic remains stable.
+- Fit the turn order panel cleanly on constrained screens (mobile portrait, compact laptop, split attention with command UI).
+- Preserve fast tactical readability of **NOW**, **NEXT**, and near-future turns without clutter.
+- Keep the moody parchment/brass fantasy tone while reducing UI weight.
+- Avoid adding data that is already available elsewhere (unit names and health are intentionally excluded from the queue list).
 
-## Current State (Baseline)
-- The panel renders a vertical stack of cropped unit portraits (`maxEntries`) with team tint and active alpha emphasis.
-- Each portrait is clickable and can focus/select the corresponding unit.
-- The panel currently does not show:
-  - explicit turn index / separators,
-  - status overlays (stunned, delayed, empowered),
-  - projected initiative deltas,
-  - hover details/tooltips,
-  - clear ally/enemy grouping cues beyond tint.
+## Design Constraints
+- The queue must prioritize silhouette-level recognition and turn timing over full stat presentation.
+- Turn order entries should remain tappable/clickable for camera focus.
+- Do not rely on color alone for faction identification.
+- Names and HP bars/text are **not required** in turn order and should stay out unless explicitly re-requested.
+- Portraits should fill a square visual slot to maximize readability at small sizes.
+- Animations must improve comprehension, not add visual noise.
 
-## UX Problems to Solve
-1. **Weak "now vs next" hierarchy**: active unit and first upcoming unit are too similar.
-2. **Low information density**: portraits alone require map scanning to understand threat/action context.
-3. **Limited affordance feedback**: clickable behavior exists, but interaction intent is not communicated visually.
-4. **No anticipation support**: players cannot quickly read multi-turn consequences.
-5. **Accessibility gaps**: color-only team distinction is risky for color-vision differences.
+## Current Baseline
+- Compact rows already show portrait crop, team mark, turn-state badge (`NOW`/`NEXT`/`LATER`), and relative offset (`0`, `+1`, `+2`...).
+- Rows are interactable and can be used to focus units.
+- Queue size already scales by layout (`minimalMobile`, `portrait`, `compact`, default).
 
-## Proposed UI Changes
+## Problems Remaining
+1. **Vertical pressure on small screens**: even compact rows can compete with command/info panels.
+2. **Portrait footprint inconsistency**: cropped heads can feel too narrow and not fully occupy each square slot.
+3. **Background/border hierarchy needs stronger planning**: each turn state should read differently even in grayscale.
+4. **No robust capacity strategy**: players need to see the current unit plus more than three future turns when space allows.
+5. **Order updates feel abrupt**: queue reshuffles can be hard to track without transitional motion.
 
-### 1) Visual Hierarchy and Framing (Phase 1)
-- Add a dedicated "Now" frame for active unit:
-  - thicker brass/ivory border,
-  - subtle pulse or ember glow,
-  - optional small "NOW" badge.
-- Add "Next" and "Later" styling tiers:
-  - entry #1 after active gets medium emphasis,
-  - later entries use reduced contrast/opacity.
-- Add row background capsules (parchment-stone) for stronger silhouette separation.
+## Proposed Rework
 
-### 2) Information Layers (Phase 2)
-- Add compact per-entry metadata chips:
-  - team icon (ally/enemy shape, not just tint),
-  - status markers (e.g., stun, guard, burn),
-  - turn offset label (`+1`, `+2`, ...).
-- Add optional hover tooltip/side detail:
-  - unit name,
-  - HP (or health state text),
-  - key status effects impacting next turn.
+### Phase 1 — Square Portrait Slots & Space Budget (required)
+- Use fixed square portrait slots per mode (e.g., `32`, `36`, `40`), with image crop rules that fill the square visually.
+- Ensure face/upper-body framing is centered and scaled to avoid empty padding in the square.
+- Define strict gap/row tokens by layout mode:
+  - `minimalMobile`: smallest square + minimal gap,
+  - `portrait`: compact square with slightly clearer spacing,
+  - `compact/default`: roomier square while retaining tight stack.
+- Keep row hitboxes larger than the visible slot where needed for reliable taps.
 
-### 3) Interaction Clarity (Phase 3)
-- On hover/focus:
-  - brighten row and show selection ring on corresponding map unit.
-- On click:
-  - camera nudge/focus to selected queued unit (if visible/alive),
-  - maintain current unit-selection behavior.
-- Add keyboard/controller traversal for entries if input system supports it.
+### Phase 2 — Turn Background & Border Language (required)
+- Standardize per-turn container treatment:
+  - `NOW`: highest-contrast background + thick brass/ivory border + subtle glow/pulse.
+  - `NEXT`: medium-contrast background + medium border weight.
+  - `LATER`: subdued background + thin border.
+- Keep team identification as shape + tint (`▲`/`◆`) so readability survives color limitations.
+- Keep badge/offset in a compact top band and avoid expanding row width.
 
-### 4) Predictive Feedback (Phase 4)
-- Add temporary "preview" mode during targeting/ability selection:
-  - ghost markers showing potential queue shifts,
-  - color-safe arrows indicating speed-up/slow-down effects.
-- Ensure preview uses existing projected turn order source to avoid divergent logic.
+### Phase 3 — Queue Capacity Rules (required)
+- Always include the current acting unit in the visible stack.
+- Show more than three projected entries when layout permits:
+  - `minimalMobile`: `NOW + 3` target,
+  - `portrait`: `NOW + 4` target,
+  - `compact/default`: `NOW + 5` or more target.
+- If additional entries exist beyond visible slots, show a compact overflow marker (`+X`).
+- Do not hide `NOW` in favor of future units; current actor remains anchor row.
 
-## Technical Implementation Notes
-- Keep queue source of truth in existing turn projection logic (`projectTurnOrder` flow in `BattleScene`).
-- Extend `TurnOrderPanel` row model to include:
-  - frame/background image,
-  - badge text object,
-  - status icon container,
-  - optional offset text.
-- Avoid duplicating render logic in `BattleScene`; panel should own visual state derivation from passed queue metadata.
-- Add lightweight UI tokens (colors/sizes) as constants for consistency and theme iteration.
+### Phase 4 — Turn Order Change Animation (required)
+- Animate row movement when queue order changes (short vertical slide to new slot) so players can track who moved where.
+- Animate state transitions:
+  - incoming `NOW`: quick border brighten + settle,
+  - previous `NOW` to `LATER`: brief fade-down of emphasis,
+  - new entries: soft fade/slide-in.
+- Keep timing short and tactical (`120–220ms`) to avoid input lag perception.
+- If many rows change simultaneously, stagger by small offsets (`10–20ms`) to preserve readability.
+- Respect reduced-motion preferences with near-instant transitions.
 
-## Data & API Additions
-- Introduce a `TurnOrderEntryViewModel` (or similar) that wraps `BattleUnit` plus UI metadata:
-  - `isActive`, `offset`, `team`, `statuses`, `isPreviewDelta`.
-- Keep backward-compatible adapter so existing `setQueue` callsites can be migrated in steps.
+### Phase 5 — Interaction & Readability Polish
+- Strengthen hover/press feedback with alpha/border/badge shifts only (no layout shifts).
+- Maintain click-to-focus behavior and ensure it works equally on `NOW`, `NEXT`, and `LATER` entries.
+- Validate grayscale differentiation using border style + glyph shape, not color alone.
 
-## Rollout Plan
-1. **Milestone A**: Hierarchy-only pass (Now/Next/Later, frames, badges).
-2. **Milestone B**: Metadata chips + non-color team icon.
-3. **Milestone C**: Hover/click feedback polish and input navigation.
-4. **Milestone D**: Predictive queue preview during ability targeting.
+## Technical Notes
+- Keep source-of-truth turn sequencing in existing projection flow (`projectTurnOrder` + `BattleScene`).
+- Keep rendering/state logic centralized in `TurnOrderPanel`.
+- Avoid reintroducing per-row name/HP objects to prevent object-count growth and layout regression.
+- Use constants for portrait slot size, row padding, border thickness, per-mode visible counts, and animation durations.
+- Prefer tweening existing row objects to new positions instead of destroying/recreating objects on each update.
 
 ## Validation Checklist
-- Readability: can players identify the next 3 actors in <2 seconds.
-- Accuracy: timeline order always matches actual turn execution.
-- Performance: no measurable frame drops from additional UI objects.
-- Theme fit: visuals stay within parchment/brass/muted palette direction.
-- Accessibility: ally/enemy distinction remains clear in grayscale simulation.
+- Portraits visually fill square slots in all layout modes without excessive empty padding.
+- `NOW`, `NEXT`, and `LATER` are distinguishable by both border/background style and text token.
+- Queue shows current unit plus at least three upcoming turns on the most constrained layout.
+- Portrait mode and larger layouts show additional upcoming turns beyond three when available.
+- Queue reorders are understandable at a glance due to movement/state transition animation.
+- Animations do not block interaction and do not make command response feel delayed.
+- Queue never overlaps critical command buttons in minimal and portrait layouts.
+- Click/tap target remains reliable at reduced visual size.
 
 ## Risks & Mitigations
-- **Risk**: UI clutter at small resolutions.
-  - **Mitigation**: progressive disclosure (show full metadata on hover/focus).
-- **Risk**: Preview order desync with actual combat resolution.
-  - **Mitigation**: single shared projection pipeline; add assertion logging in debug.
-- **Risk**: Art mismatch with existing runtime assets.
-  - **Mitigation**: reuse current sprite crops and introduce minimal, theme-aligned framing assets.
+- **Risk:** Square-fill crop hides important silhouette detail.
+  - **Mitigation:** tune crop anchor per sprite family and verify at runtime scale.
+- **Risk:** Showing more entries increases clutter.
+  - **Mitigation:** keep lower-priority rows visually subdued and use overflow marker when needed.
+- **Risk:** Animation causes jitter or visual noise.
+  - **Mitigation:** short, consistent durations and no oversized easing/bounce.
+- **Risk:** Inconsistent behavior across layout modes.
+  - **Mitigation:** centralize mode tokens and test each mode explicitly.
 
 ## Success Criteria
-- Players report improved confidence in planning multi-turn actions.
-- Fewer mistaken assumptions about enemy upcoming turns.
-- Turn order panel remains legible and stylistically consistent with the battlefield UI.
+- Turn order remains legible and actionable on constrained screens without names or health bars.
+- Portraits read clearly because each entry uses a filled square slot.
+- Current unit is always present, and players can read more than three future turns when space allows.
+- Turn-order changes are easy to follow because row/state transitions are clearly animated.
+- Panel footprint stays compact while matching the game’s dark fantasy UI tone.
