@@ -8,6 +8,10 @@ interface TurnOrderRow {
   avatar: Phaser.GameObjects.Image;
   avatarMaskShape: Phaser.GameObjects.Graphics;
   pulseTween?: Phaser.Tweens.Tween;
+  moveTween?: Phaser.Tweens.Tween;
+  enterTween?: Phaser.Tweens.Tween;
+  exitTween?: Phaser.Tweens.Tween;
+  accentTween?: Phaser.Tweens.Tween;
   avatarTextureKey: string | null;
   avatarRenderSize: number;
   unitId: string | null;
@@ -25,17 +29,44 @@ interface RowLayout {
   avatarY: number;
 }
 
+interface TurnOrderEntry {
+  unitId: string | null;
+  spriteKey: string | null;
+  team: BattleUnit['team'] | null;
+  visible: boolean;
+  isCurrentTurn: boolean;
+}
+
 const EMPTY_BG = 0x080509;
 const PANEL_BG = 0x120a0f;
 const EMPTY_BORDER = 0x3a2930;
 const PLAYER_BORDER = 0x67b8ff;
 const ENEMY_BORDER = 0xff7272;
+const MOVE_DURATION = 180;
+const ENTER_DURATION = 160;
+const EXIT_DURATION = 150;
+const REFRESH_DURATION = 140;
+const ACCENT_DURATION = 120;
+const STAGGER_DELAY = 12;
+const TRANSITION_OFFSET_FACTOR = 0.55;
+const TOP_ENTRY_ALPHA = 0.3;
+
+type TransitionTweenKey = 'moveTween' | 'enterTween' | 'exitTween' | 'accentTween';
 
 export class TurnOrderPanel {
-  private readonly rows: TurnOrderRow[];
+  private rows: TurnOrderRow[];
   private readonly rowLayouts: RowLayout[];
   private rowWidth = 40;
   private avatarSize = 40;
+  private displayedEntries: TurnOrderEntry[];
+  private displayedVisibleCount = 0;
+  private displayedPanelVisible = false;
+  private displayedActiveUnitId: string | null = null;
+  private hasDisplayedQueue = false;
+  private layoutDirty = true;
+  private enterTimer?: Phaser.Time.TimerEvent;
+  private finalizeTimer?: Phaser.Time.TimerEvent;
+  private isTransitioning = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -87,6 +118,10 @@ export class TurnOrderPanel {
         avatar,
         avatarMaskShape,
         pulseTween: undefined,
+        moveTween: undefined,
+        enterTween: undefined,
+        exitTween: undefined,
+        accentTween: undefined,
         avatarTextureKey: null,
         avatarRenderSize: 0,
         unitId: null,
@@ -130,6 +165,8 @@ export class TurnOrderPanel {
 
       return row;
     });
+
+    this.displayedEntries = Array.from({ length: maxEntries }, () => this.createHiddenEntry());
   }
 
   getDisplayObjects(): Array<
@@ -144,6 +181,10 @@ export class TurnOrderPanel {
   }
 
   setVisible(visible: boolean): void {
+    if (!visible && this.isTransitioning) {
+      this.finishTransitionsToDisplayedState();
+    }
+
     for (const row of this.rows) {
       this.applyVisibility(row, visible && row.visible);
     }
@@ -167,16 +208,11 @@ export class TurnOrderPanel {
       const leftX = config.x;
 
       row.backing
-        .setPosition(leftX, y)
         .setSize(this.rowWidth, rowHeight)
         .setDisplaySize(this.rowWidth, rowHeight);
       row.border
-        .setPosition(leftX, y)
         .setSize(this.rowWidth, rowHeight)
         .setDisplaySize(this.rowWidth, rowHeight);
-      row.glow
-        .setPosition(leftX, y);
-      row.avatar.setPosition(leftX, y);
       this.updateAvatarMask(row, leftX, y, config.avatarSize);
 
       const avatarHitArea = row.avatar.input?.hitArea;
@@ -197,55 +233,84 @@ export class TurnOrderPanel {
         this.applyFaceCrop(row);
       }
     }
+
+    this.layoutDirty = true;
+    this.finishTransitionsToDisplayedState();
   }
 
-  setQueue(units: BattleUnit[], _activeUnitId: string | null, visibleCount: number, visiblePanel: boolean): void {
-    for (const [index, row] of this.rows.entries()) {
-      const unit = units[index];
-      row.visible = visiblePanel && index < visibleCount;
-      row.unitId = unit?.id ?? null;
-      row.team = unit?.team ?? null;
-      row.isCurrentTurn = !!unit && index === 0;
-      this.applyVisibility(row, row.visible);
-      this.syncPulse(row);
+  setQueue(units: BattleUnit[], activeUnitId: string | null, visibleCount: number, visiblePanel: boolean): void {
+    const previousEntries = this.displayedEntries.map((entry) => ({ ...entry }));
+    const previousVisibleCount = this.displayedVisibleCount;
+    const previousPanelVisible = this.displayedPanelVisible;
+    const previousActiveUnitId = this.displayedActiveUnitId;
+    const nextEntries = this.buildEntries(units, activeUnitId, visibleCount, visiblePanel);
 
-      if (!row.visible) {
-        continue;
+    if (this.isTransitioning) {
+      const matchesTransitionTarget =
+        previousVisibleCount === visibleCount &&
+        previousPanelVisible === visiblePanel &&
+        previousActiveUnitId === activeUnitId &&
+        this.entriesMatchQueue(previousEntries, nextEntries) &&
+        this.entriesMatchState(previousEntries, nextEntries);
+      if (matchesTransitionTarget) {
+        return;
       }
 
-      if (!unit) {
-        row.backing.setFillStyle(EMPTY_BG, 0.68);
-        row.border.setAlpha(1);
-        row.glow.setAlpha(1);
-        row.glow.clear().setVisible(false);
-        row.border.setStrokeStyle(1, EMPTY_BORDER, 0.62);
-        row.avatarTextureKey = null;
-        row.avatarRenderSize = 0;
-        row.avatar.setVisible(false).clearTint().setAlpha(0);
-        this.applyRowLayout(row, index);
-        continue;
-      }
+      this.finishTransitionsToDisplayedState();
+    }
 
-      const borderColor = unit.team === 'player' ? PLAYER_BORDER : ENEMY_BORDER;
+    const hasSameQueue =
+      this.hasDisplayedQueue &&
+      previousVisibleCount === visibleCount &&
+      previousPanelVisible === visiblePanel &&
+      this.entriesMatchQueue(previousEntries, nextEntries);
+    const hasSameState =
+      hasSameQueue &&
+      previousActiveUnitId === activeUnitId &&
+      this.entriesMatchState(previousEntries, nextEntries);
+    const shouldSnap =
+      !this.hasDisplayedQueue ||
+      this.layoutDirty ||
+      previousVisibleCount !== visibleCount ||
+      previousPanelVisible !== visiblePanel ||
+      !visiblePanel;
+    const shouldAdvance =
+      !shouldSnap &&
+      !hasSameQueue &&
+      this.isStandardAdvance(previousEntries, nextEntries, visibleCount);
+    const shouldRefresh = !shouldSnap && !hasSameQueue;
+    const shouldAccent =
+      hasSameQueue &&
+      !hasSameState &&
+      nextEntries[0]?.visible === true &&
+      nextEntries[0].unitId !== null &&
+      nextEntries[0].unitId === activeUnitId;
 
-      row.backing.setFillStyle(PANEL_BG, row.isCurrentTurn ? 0.95 : 0.9);
-      row.border.setStrokeStyle(row.isCurrentTurn ? 3 : 2, borderColor, row.isCurrentTurn ? 1 : 0.92);
-      row.avatar
-        .setVisible(true)
-        .clearTint()
-        .setAlpha(row.isCurrentTurn ? 1 : 0.95);
+    this.displayedEntries = nextEntries.map((entry) => ({ ...entry }));
+    this.displayedVisibleCount = visibleCount;
+    this.displayedPanelVisible = visiblePanel;
+    this.displayedActiveUnitId = activeUnitId;
+    this.hasDisplayedQueue = true;
+    this.layoutDirty = false;
 
-      const needsAvatarRefresh =
-        row.avatarTextureKey !== unit.spriteKey || row.avatarRenderSize !== this.avatarSize;
+    if (shouldSnap) {
+      this.applyEntriesToRows(nextEntries, visibleCount, visiblePanel);
+      return;
+    }
 
-      if (needsAvatarRefresh) {
-        row.avatar.setTexture(unit.spriteKey);
-        row.avatarTextureKey = unit.spriteKey;
-        this.applyFaceCrop(row);
-      }
+    if (shouldAdvance) {
+      this.animateAdvance(nextEntries, visibleCount, visiblePanel);
+      return;
+    }
 
-      this.applyRowLayout(row, index);
-      this.applyRowInteractionState(row, false);
+    if (shouldRefresh) {
+      this.animateRefresh(previousEntries, nextEntries, visibleCount, visiblePanel);
+      return;
+    }
+
+    this.applyEntriesToRows(nextEntries, visibleCount, visiblePanel);
+    if (shouldAccent) {
+      this.playNowAccent(this.rows[0]);
     }
   }
 
@@ -339,9 +404,7 @@ export class TurnOrderPanel {
     const shouldPulse = row.visible && row.unitId !== null && row.isCurrentTurn;
 
     if (!shouldPulse) {
-      row.pulseTween?.stop();
-      row.pulseTween?.remove();
-      row.pulseTween = undefined;
+      this.clearTween(row, 'pulseTween');
       row.border.setAlpha(1);
       row.glow.setAlpha(1);
       return;
@@ -369,11 +432,7 @@ export class TurnOrderPanel {
       return;
     }
 
-    row.backing.setPosition(target.backingX, target.backingY);
-    row.glow.setPosition(target.borderX, target.borderY);
-    row.border.setPosition(target.borderX, target.borderY);
-    row.avatar.setPosition(target.avatarX, target.avatarY);
-    row.avatarMaskShape.setPosition(target.avatarX, target.avatarY);
+    this.setRowPosition(row, target.avatarX, target.avatarY);
   }
 
   getUnitIdAt(pointerX: number, pointerY: number): string | null {
@@ -388,5 +447,380 @@ export class TurnOrderPanel {
     }
 
     return null;
+  }
+
+  private createHiddenEntry(): TurnOrderEntry {
+    return {
+      unitId: null,
+      spriteKey: null,
+      team: null,
+      visible: false,
+      isCurrentTurn: false
+    };
+  }
+
+  private buildEntries(
+    units: BattleUnit[],
+    activeUnitId: string | null,
+    visibleCount: number,
+    visiblePanel: boolean
+  ): TurnOrderEntry[] {
+    return Array.from({ length: this.maxEntries }, (_, index) => {
+      const unit = units[index];
+      const visible = visiblePanel && index < visibleCount;
+
+      return {
+        unitId: unit?.id ?? null,
+        spriteKey: unit?.spriteKey ?? null,
+        team: unit?.team ?? null,
+        visible,
+        isCurrentTurn: visible && index === 0 && unit?.id === activeUnitId
+      };
+    });
+  }
+
+  private entriesMatchQueue(left: TurnOrderEntry[], right: TurnOrderEntry[]): boolean {
+    for (let index = 0; index < this.maxEntries; index += 1) {
+      const leftEntry = left[index] ?? this.createHiddenEntry();
+      const rightEntry = right[index] ?? this.createHiddenEntry();
+      if (
+        leftEntry.visible !== rightEntry.visible ||
+        leftEntry.unitId !== rightEntry.unitId ||
+        leftEntry.spriteKey !== rightEntry.spriteKey ||
+        leftEntry.team !== rightEntry.team
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private entriesMatchState(left: TurnOrderEntry[], right: TurnOrderEntry[]): boolean {
+    for (let index = 0; index < this.maxEntries; index += 1) {
+      if ((left[index]?.isCurrentTurn ?? false) !== (right[index]?.isCurrentTurn ?? false)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private isStandardAdvance(previous: TurnOrderEntry[], next: TurnOrderEntry[], visibleCount: number): boolean {
+    if (visibleCount <= 1) {
+      return false;
+    }
+
+    for (let index = 0; index < visibleCount - 1; index += 1) {
+      const previousEntry = previous[index + 1] ?? this.createHiddenEntry();
+      const nextEntry = next[index] ?? this.createHiddenEntry();
+      if (
+        previousEntry.visible !== nextEntry.visible ||
+        previousEntry.unitId !== nextEntry.unitId ||
+        previousEntry.spriteKey !== nextEntry.spriteKey ||
+        previousEntry.team !== nextEntry.team
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private applyEntriesToRows(entries: TurnOrderEntry[], visibleCount: number, visiblePanel: boolean): void {
+    for (let index = 0; index < this.maxEntries; index += 1) {
+      const row = this.rows[index];
+      const entry = entries[index] ?? this.createHiddenEntry();
+      this.configureRow(row, entry, visiblePanel && index < visibleCount);
+      this.applyRowLayout(row, index);
+    }
+  }
+
+  private configureRow(row: TurnOrderRow, entry: TurnOrderEntry, forceVisible = entry.visible): void {
+    row.visible = forceVisible;
+    row.unitId = entry.unitId;
+    row.team = entry.team;
+    row.isCurrentTurn = entry.isCurrentTurn;
+    this.clearTween(row, 'moveTween');
+    this.clearTween(row, 'enterTween');
+    this.clearTween(row, 'exitTween');
+    this.applyTransitionAlpha(row, 1);
+    this.applyVisibility(row, row.visible);
+
+    if (!row.visible) {
+      row.avatarTextureKey = null;
+      row.avatarRenderSize = 0;
+      row.avatar.setVisible(false).clearTint().setAlpha(0);
+      row.glow.clear().setVisible(false);
+      return;
+    }
+
+    if (!entry.unitId || !entry.spriteKey) {
+      row.backing.setFillStyle(EMPTY_BG, 0.68);
+      row.border.setStrokeStyle(1, EMPTY_BORDER, 0.62);
+      row.glow.clear().setVisible(false);
+      row.avatarTextureKey = null;
+      row.avatarRenderSize = 0;
+      row.avatar.setVisible(false).clearTint().setAlpha(0);
+      this.applyRowInteractionState(row, false);
+      return;
+    }
+
+    const borderColor = entry.team === 'player' ? PLAYER_BORDER : ENEMY_BORDER;
+    const needsAvatarRefresh =
+      row.avatarTextureKey !== entry.spriteKey || row.avatarRenderSize !== this.avatarSize;
+
+    row.backing.setFillStyle(PANEL_BG, entry.isCurrentTurn ? 0.95 : 0.9);
+    row.border.setStrokeStyle(entry.isCurrentTurn ? 3 : 2, borderColor, entry.isCurrentTurn ? 1 : 0.92);
+    row.avatar
+      .setVisible(true)
+      .clearTint()
+      .setAlpha(entry.isCurrentTurn ? 1 : 0.95);
+
+    if (needsAvatarRefresh) {
+      row.avatar.setTexture(entry.spriteKey);
+      row.avatarTextureKey = entry.spriteKey;
+      this.applyFaceCrop(row);
+    }
+
+    this.applyRowInteractionState(row, false);
+  }
+
+  private animateAdvance(entries: TurnOrderEntry[], visibleCount: number, visiblePanel: boolean): void {
+    if (!visiblePanel || visibleCount <= 1) {
+      this.applyEntriesToRows(entries, visibleCount, visiblePanel);
+      return;
+    }
+
+    this.isTransitioning = true;
+
+    const exitingRow = this.rows[0];
+    const shiftedRows = this.rows.slice(1, visibleCount);
+    const hiddenRows = this.rows.slice(visibleCount);
+    this.rows = [...shiftedRows, exitingRow, ...hiddenRows];
+
+    for (let index = 0; index < visibleCount - 1; index += 1) {
+      const row = this.rows[index];
+      const entry = entries[index];
+      this.configureRow(row, entry, true);
+      this.tweenRowState(row, 'moveTween', {
+        index,
+        toY: this.rowLayouts[index].avatarY,
+        duration: MOVE_DURATION,
+        delay: index * STAGGER_DELAY,
+        ease: 'Cubic.easeInOut'
+      });
+    }
+
+    this.clearTween(exitingRow, 'pulseTween');
+    this.clearTween(exitingRow, 'accentTween');
+    this.tweenRowState(exitingRow, 'exitTween', {
+      index: 0,
+      toY: this.rowLayouts[0].avatarY + Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR),
+      toAlpha: 0,
+      duration: EXIT_DURATION,
+      ease: 'Cubic.easeIn'
+    });
+
+    const enteringEntry = entries[visibleCount - 1] ?? this.createHiddenEntry();
+    const topIndex = visibleCount - 1;
+    const topLayout = this.rowLayouts[topIndex];
+
+    this.enterTimer = this.scene.time.delayedCall(EXIT_DURATION, () => {
+      this.configureRow(exitingRow, enteringEntry, visiblePanel && topIndex < visibleCount);
+      this.setRowPosition(exitingRow, topLayout.avatarX, topLayout.avatarY - Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR));
+      this.applyTransitionAlpha(exitingRow, TOP_ENTRY_ALPHA);
+      this.tweenRowState(exitingRow, 'enterTween', {
+        index: topIndex,
+        fromY: topLayout.avatarY - Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR),
+        toY: topLayout.avatarY,
+        fromAlpha: TOP_ENTRY_ALPHA,
+        toAlpha: 1,
+        duration: ENTER_DURATION,
+        ease: 'Cubic.easeOut'
+      });
+    });
+
+    const totalDuration = Math.max(
+      EXIT_DURATION + ENTER_DURATION,
+      MOVE_DURATION + Math.max(0, visibleCount - 2) * STAGGER_DELAY
+    );
+    this.scheduleTransitionFinalize(totalDuration + 24, () => {
+      this.applyEntriesToRows(entries, visibleCount, visiblePanel);
+      if (entries[0]?.isCurrentTurn) {
+        this.playNowAccent(this.rows[0]);
+      }
+    });
+  }
+
+  private animateRefresh(
+    previousEntries: TurnOrderEntry[],
+    entries: TurnOrderEntry[],
+    visibleCount: number,
+    visiblePanel: boolean
+  ): void {
+    this.isTransitioning = true;
+
+    for (let index = 0; index < this.maxEntries; index += 1) {
+      const row = this.rows[index];
+      const previousEntry = previousEntries[index] ?? this.createHiddenEntry();
+      const entry = entries[index] ?? this.createHiddenEntry();
+      const shouldShow = visiblePanel && index < visibleCount;
+
+      if (!shouldShow) {
+        if (previousEntry.visible) {
+          this.tweenRowState(row, 'exitTween', {
+            index,
+            toY: this.rowLayouts[index].avatarY + Math.round(this.avatarSize * 0.18),
+            toAlpha: 0,
+            duration: REFRESH_DURATION,
+            delay: index * 8,
+            ease: 'Quad.easeIn'
+          });
+        }
+        continue;
+      }
+
+      const changed =
+        previousEntry.unitId !== entry.unitId ||
+        previousEntry.spriteKey !== entry.spriteKey ||
+        previousEntry.team !== entry.team ||
+        previousEntry.visible !== entry.visible;
+
+      this.configureRow(row, entry, true);
+      this.applyRowLayout(row, index);
+
+      if (changed) {
+        this.applyTransitionAlpha(row, 0);
+        this.tweenRowState(row, 'enterTween', {
+          index,
+          toY: this.rowLayouts[index].avatarY,
+          toAlpha: 1,
+          duration: REFRESH_DURATION,
+          delay: index * 8,
+          ease: 'Quad.easeOut'
+        });
+      }
+    }
+
+    this.scheduleTransitionFinalize(REFRESH_DURATION + Math.max(0, visibleCount - 1) * 8 + 20, () => {
+      this.applyEntriesToRows(entries, visibleCount, visiblePanel);
+      if (entries[0]?.isCurrentTurn) {
+        this.playNowAccent(this.rows[0]);
+      }
+    });
+  }
+
+  private playNowAccent(row: TurnOrderRow): void {
+    if (!row.visible || !row.unitId || !row.isCurrentTurn) {
+      return;
+    }
+
+    this.clearTween(row, 'pulseTween');
+    this.clearTween(row, 'accentTween');
+    row.glow.setVisible(true);
+    row.accentTween = this.scene.tweens.add({
+      targets: [row.backing, row.border, row.avatar, row.glow],
+      alpha: { from: 1, to: 0.65 },
+      duration: ACCENT_DURATION,
+      ease: 'Cubic.easeOut',
+      yoyo: true,
+      onComplete: () => {
+        row.accentTween = undefined;
+        this.applyRowInteractionState(row, false);
+        this.syncPulse(row);
+      }
+    });
+  }
+
+  private tweenRowState(
+    row: TurnOrderRow,
+    tweenKey: Exclude<TransitionTweenKey, 'accentTween'>,
+    config: {
+      index: number;
+      fromY?: number;
+      toY: number;
+      fromAlpha?: number;
+      toAlpha?: number;
+      duration: number;
+      delay?: number;
+      ease: string;
+    }
+  ): void {
+    const x = this.rowLayouts[config.index]?.avatarX ?? row.avatar.x;
+    const state = {
+      y: config.fromY ?? row.avatar.y,
+      alpha: config.fromAlpha ?? 1
+    };
+
+    this.setRowPosition(row, x, state.y);
+    this.applyTransitionAlpha(row, state.alpha);
+    this.clearTween(row, tweenKey);
+    row[tweenKey] = this.scene.tweens.add({
+      targets: state,
+      y: config.toY,
+      alpha: config.toAlpha ?? 1,
+      duration: config.duration,
+      delay: config.delay ?? 0,
+      ease: config.ease,
+      onUpdate: () => {
+        this.setRowPosition(row, x, state.y);
+        this.applyTransitionAlpha(row, state.alpha);
+      },
+      onComplete: () => {
+        row[tweenKey] = undefined;
+      }
+    });
+  }
+
+  private scheduleTransitionFinalize(delay: number, onComplete: () => void): void {
+    this.finalizeTimer?.remove(false);
+    this.finalizeTimer = this.scene.time.delayedCall(delay, () => {
+      this.finalizeTimer = undefined;
+      this.isTransitioning = false;
+      onComplete();
+    });
+  }
+
+  private finishTransitionsToDisplayedState(): void {
+    this.stopTransitionTweens();
+    if (this.hasDisplayedQueue) {
+      this.applyEntriesToRows(this.displayedEntries, this.displayedVisibleCount, this.displayedPanelVisible);
+    }
+    this.isTransitioning = false;
+  }
+
+  private stopTransitionTweens(): void {
+    this.enterTimer?.remove(false);
+    this.enterTimer = undefined;
+    this.finalizeTimer?.remove(false);
+    this.finalizeTimer = undefined;
+    for (const row of this.rows) {
+      this.clearTween(row, 'moveTween');
+      this.clearTween(row, 'enterTween');
+      this.clearTween(row, 'exitTween');
+      this.clearTween(row, 'accentTween');
+    }
+  }
+
+  private clearTween(row: TurnOrderRow, key: TransitionTweenKey | 'pulseTween'): void {
+    row[key]?.stop();
+    row[key]?.remove();
+    row[key] = undefined;
+  }
+
+  private setRowPosition(row: TurnOrderRow, x: number, y: number): void {
+    row.backing.setPosition(x, y);
+    row.glow.setPosition(x, y);
+    row.border.setPosition(x, y);
+    row.avatar.setPosition(x, y);
+    row.avatarMaskShape.setPosition(x, y);
+  }
+
+  private applyTransitionAlpha(row: TurnOrderRow, alpha: number): void {
+    row.backing.setAlpha(alpha);
+    row.border.setAlpha(alpha);
+    row.avatar.setAlpha(alpha);
+    row.glow.setAlpha(alpha);
   }
 }

@@ -45,8 +45,102 @@ export interface ActionMenuHitResult {
   entryId?: string;
 }
 
+interface BattleActionMenuButtonConfig {
+  bounds: Phaser.Geom.Rectangle;
+  alpha: number;
+  active: boolean;
+  enabled: boolean;
+  isRootPanel: boolean;
+  label: string;
+  fontSize: number;
+  depth: number;
+  visible: boolean;
+}
+
+class BattleActionMenuButton {
+  readonly text: Phaser.GameObjects.Text;
+
+  constructor(
+    scene: Phaser.Scene,
+    onCreateObject?: (object: Phaser.GameObjects.GameObject) => void
+  ) {
+    this.text = scene.add.text(0, 0, '', {
+      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+      fontSize: '14px',
+      color: '#f5e9cf'
+    });
+    this.text.setOrigin(0, 0.5).setScrollFactor(0).setVisible(false);
+    onCreateObject?.(this.text);
+  }
+
+  layout(
+    graphics: Phaser.GameObjects.Graphics,
+    {
+      bounds,
+      alpha,
+      active,
+      enabled,
+      isRootPanel,
+      label,
+      fontSize,
+      depth,
+      visible
+    }: BattleActionMenuButtonConfig
+  ): void {
+    if (!visible) {
+      this.text.setText('').setVisible(false);
+      return;
+    }
+
+    const fill = isRootPanel
+      ? active
+        ? 0x7a5233
+        : enabled
+          ? 0x22171f
+          : 0x161016
+      : active
+        ? 0x69402d
+        : enabled
+          ? 0x241519
+          : 0x171012;
+    const strokeAlpha = active ? 0.5 : enabled ? 0.18 : 0.1;
+    const dotColor = isRootPanel
+      ? active
+        ? 0xf1d089
+        : enabled
+          ? 0x8ad0cf
+          : 0x7a6a52
+      : active
+        ? 0xf1d089
+        : enabled
+          ? 0xd4b470
+          : 0x7a6a52;
+
+    graphics.fillStyle(fill, (active ? 0.9 : 0.72) * alpha);
+    graphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+    graphics.lineStyle(1, PANEL_STROKE, strokeAlpha * alpha);
+    graphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
+    graphics.fillStyle(dotColor, 0.95 * alpha);
+    graphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
+
+    this.text
+      .setText(label)
+      .setColor(!enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba')
+      .setFontSize(fontSize)
+      .setPosition(bounds.x + 30, bounds.centerY)
+      .setAlpha(alpha)
+      .setDepth(depth)
+      .setVisible(true);
+  }
+
+  destroy(): void {
+    this.text.destroy();
+  }
+}
+
 interface PanelState {
   descriptor: ActionMenuPanelDescriptor | null;
+  graphics: Phaser.GameObjects.Graphics;
   targetBounds: Phaser.Geom.Rectangle;
   displayX: number;
   alpha: number;
@@ -56,7 +150,7 @@ interface PanelState {
   targetActive: boolean;
   titleText: Phaser.GameObjects.Text;
   bodyText: Phaser.GameObjects.Text;
-  entryTexts: Phaser.GameObjects.Text[];
+  entryButtons: BattleActionMenuButton[];
   tween?: Phaser.Tweens.Tween;
 }
 
@@ -73,7 +167,6 @@ const ROOT_ACCENT = 0x6d5430;
 const CHILD_ACCENT = 0x345168;
 
 export class BattleActionMenuStack {
-  private readonly graphics: Phaser.GameObjects.Graphics;
   private readonly panelStates = new Map<string, PanelState>();
   private layout: ActionMenuStackLayout = {
     rootX: 0,
@@ -100,18 +193,15 @@ export class BattleActionMenuStack {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly options: StackObjectOptions = {}
-  ) {
-    this.graphics = scene.add.graphics().setDepth(BASE_DEPTH).setScrollFactor(0);
-    this.options.onCreateObject?.(this.graphics);
-  }
+  ) {}
 
   getDisplayObjects(): Phaser.GameObjects.GameObject[] {
     return [
-      this.graphics,
       ...Array.from(this.panelStates.values()).flatMap((state) => [
+        state.graphics,
         state.titleText,
         state.bodyText,
-        ...state.entryTexts
+        ...state.entryButtons.map((button) => button.text)
       ])
     ];
   }
@@ -204,15 +294,15 @@ export class BattleActionMenuStack {
   destroy(): void {
     for (const state of this.panelStates.values()) {
       state.tween?.stop();
+      state.graphics.destroy();
       state.titleText.destroy();
       state.bodyText.destroy();
-      for (const text of state.entryTexts) {
-        text.destroy();
+      for (const button of state.entryButtons) {
+        button.destroy();
       }
     }
 
     this.panelStates.clear();
-    this.graphics.destroy();
   }
 
   private syncPanels(): void {
@@ -232,7 +322,7 @@ export class BattleActionMenuStack {
       state.targetBounds = bounds;
       state.order = order;
       state.targetActive = true;
-      this.ensureEntryTexts(state, descriptor.entries?.length ?? 0);
+      this.ensureEntryButtons(state, descriptor.entries?.length ?? 0);
       this.animatePanel(state, bounds.x, 1);
     }
 
@@ -285,6 +375,7 @@ export class BattleActionMenuStack {
 
     const state: PanelState = {
       descriptor: null,
+      graphics: this.createGraphics(),
       targetBounds: new Phaser.Geom.Rectangle(this.layout.rootX, this.getRootTop(), this.layout.rootWidth, this.layout.panelHeight),
       displayX: this.layout.rootX - (this.layout.slideDistance ?? 26),
       alpha: 0,
@@ -302,21 +393,22 @@ export class BattleActionMenuStack {
         color: '#d9c7a8',
         lineSpacing: 4
       }),
-      entryTexts: []
+      entryButtons: []
     };
 
     this.panelStates.set(panelId, state);
     return state;
   }
 
-  private ensureEntryTexts(state: PanelState, targetCount: number): void {
-    while (state.entryTexts.length < targetCount) {
-      state.entryTexts.push(
-        this.createText({
-          fontSize: '14px',
-          color: '#f5e9cf'
-        })
-      );
+  private createGraphics(): Phaser.GameObjects.Graphics {
+    const graphics = this.scene.add.graphics().setDepth(BASE_DEPTH).setScrollFactor(0).setVisible(false);
+    this.options.onCreateObject?.(graphics);
+    return graphics;
+  }
+
+  private ensureEntryButtons(state: PanelState, targetCount: number): void {
+    while (state.entryButtons.length < targetCount) {
+      state.entryButtons.push(new BattleActionMenuButton(this.scene, this.options.onCreateObject));
     }
   }
 
@@ -384,8 +476,6 @@ export class BattleActionMenuStack {
   }
 
   private redraw(): void {
-    this.graphics.clear();
-
     const states = Array.from(this.panelStates.values()).filter((state) => state.descriptor).sort((left, right) => {
       if (left.order === right.order) {
         return Number(left.targetActive) - Number(right.targetActive);
@@ -404,12 +494,15 @@ export class BattleActionMenuStack {
       const visible = state.alpha > 0.01;
       const accentColor =
         descriptor.accentColor ?? (state.order === 0 ? ROOT_ACCENT : CHILD_ACCENT);
+      const depthBase = BASE_DEPTH + state.order * 8;
+
+      state.graphics.clear().setDepth(depthBase).setVisible(visible);
 
       if (visible) {
-        this.drawPanelShell(bounds, state.alpha, state.order === 0 ? 44 : 40, state.order === 0 ? 18 : 16, accentColor);
+        this.drawPanelShell(state.graphics, bounds, state.alpha, 40, state.order === 0 ? 18 : 16, accentColor);
 
         if (descriptor.kind === 'list') {
-          this.drawEntries(bounds, descriptor, state.alpha, state.order === 0);
+          this.drawEntries(state, bounds, descriptor, state.alpha, state.order === 0);
         }
       }
 
@@ -418,6 +511,7 @@ export class BattleActionMenuStack {
   }
 
   private drawEntries(
+    state: PanelState,
     bounds: Phaser.Geom.Rectangle,
     descriptor: ActionMenuPanelDescriptor,
     alpha: number,
@@ -427,37 +521,17 @@ export class BattleActionMenuStack {
 
     for (const [index, entry] of entries.entries()) {
       const entryBounds = this.getEntryBounds(bounds, index);
-      const active = entry.active ?? false;
-      const fill = isRootPanel
-        ? active
-          ? 0x7a5233
-          : entry.enabled
-            ? 0x22171f
-            : 0x161016
-        : active
-          ? 0x69402d
-          : entry.enabled
-            ? 0x241519
-            : 0x171012;
-      const strokeAlpha = active ? 0.5 : entry.enabled ? 0.18 : 0.1;
-      const dotColor = isRootPanel
-        ? active
-          ? 0xf1d089
-          : entry.enabled
-            ? 0x8ad0cf
-            : 0x7a6a52
-        : active
-          ? 0xf1d089
-          : entry.enabled
-            ? 0xd4b470
-            : 0x7a6a52;
-
-      this.graphics.fillStyle(fill, (active ? 0.9 : 0.72) * alpha);
-      this.graphics.fillRoundedRect(entryBounds.x, entryBounds.y, entryBounds.width, entryBounds.height, 12);
-      this.graphics.lineStyle(1, PANEL_STROKE, strokeAlpha * alpha);
-      this.graphics.strokeRoundedRect(entryBounds.x, entryBounds.y, entryBounds.width, entryBounds.height, 12);
-      this.graphics.fillStyle(dotColor, 0.95 * alpha);
-      this.graphics.fillCircle(entryBounds.x + 16, entryBounds.centerY, active ? 6 : 5);
+      state.entryButtons[index]?.layout(state.graphics, {
+        bounds: entryBounds,
+        alpha,
+        active: entry.active ?? false,
+        enabled: entry.enabled,
+        isRootPanel,
+        label: entry.label,
+        fontSize: this.typography.entryFontSize,
+        depth: BASE_DEPTH + 2 + state.order * 8,
+        visible: true
+      });
     }
   }
 
@@ -495,21 +569,12 @@ export class BattleActionMenuStack {
     }
 
     const entries = descriptor.entries ?? [];
-    for (const [index, text] of state.entryTexts.entries()) {
+    for (const [index, button] of state.entryButtons.entries()) {
       const entry = entries[index];
       if (!entry || !visible) {
-        text.setText('').setVisible(false);
+        button.text.setText('').setVisible(false);
         continue;
       }
-
-      text
-        .setText(`${entry.active ? '› ' : ''}${entry.label}`)
-        .setColor(!entry.enabled ? '#8c7e62' : entry.active ? '#fff5cf' : '#f2e3ba')
-        .setFontSize(this.typography.entryFontSize)
-        .setPosition(bounds.x + 40, bounds.y + 52 + index * this.typography.rowHeight)
-        .setAlpha(alpha)
-        .setDepth(depthBase + 2)
-        .setVisible(true);
     }
   }
 
@@ -525,36 +590,37 @@ export class BattleActionMenuStack {
   private getEntryBounds(bounds: Phaser.Geom.Rectangle, index: number): Phaser.Geom.Rectangle {
     return new Phaser.Geom.Rectangle(
       bounds.x + 10,
-      bounds.y + 44 + index * this.typography.rowHeight,
+      bounds.y + 50 + index * this.typography.rowHeight,
       bounds.width - 20,
-      this.typography.rowHeight + 8
+      this.typography.rowHeight
     );
   }
 
   private drawPanelShell(
+    graphics: Phaser.GameObjects.Graphics,
     panel: Phaser.Geom.Rectangle,
     alpha: number,
     headerHeight: number,
     radius: number,
     accentColor: number
   ): void {
-    this.graphics.fillStyle(SHADOW_COLOR, 0.32 * alpha);
-    this.graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
-    this.graphics.fillStyle(PANEL_OUTER_COLOR, 0.96 * alpha);
-    this.graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    this.graphics.fillStyle(PANEL_INNER_COLOR, 0.96 * alpha);
-    this.graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    this.graphics.fillStyle(accentColor, 0.54 * alpha);
-    this.graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
-    this.graphics.fillStyle(accentColor, 0.24 * alpha);
-    this.graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
-    this.graphics.fillStyle(0xf4ddb0, 0.08 * alpha);
-    this.graphics.fillRoundedRect(panel.x + 18, panel.y + 9, panel.width - 36, 6, 3);
-    this.graphics.lineStyle(2, PANEL_STROKE, 0.42 * alpha);
-    this.graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    this.graphics.lineStyle(1, accentColor, 0.34 * alpha);
-    this.graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    this.graphics.lineStyle(1, accentColor, 0.24 * alpha);
-    this.graphics.lineBetween(panel.x + 18, panel.y + headerHeight, panel.right - 18, panel.y + headerHeight);
+    graphics.fillStyle(SHADOW_COLOR, 0.32 * alpha);
+    graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
+    graphics.fillStyle(PANEL_OUTER_COLOR, 0.96 * alpha);
+    graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.fillStyle(PANEL_INNER_COLOR, 0.96 * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.fillStyle(accentColor, 0.54 * alpha);
+    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
+    graphics.fillStyle(accentColor, 0.24 * alpha);
+    graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
+    graphics.fillStyle(0xf4ddb0, 0.08 * alpha);
+    graphics.fillRoundedRect(panel.x + 18, panel.y + 9, panel.width - 36, 6, 3);
+    graphics.lineStyle(2, PANEL_STROKE, 0.42 * alpha);
+    graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
+    graphics.lineStyle(1, accentColor, 0.34 * alpha);
+    graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
+    graphics.lineStyle(1, accentColor, 0.24 * alpha);
+    graphics.lineBetween(panel.x + 18, panel.y + headerHeight, panel.right - 18, panel.y + headerHeight);
   }
 }

@@ -1822,6 +1822,7 @@ export class BattleScene extends Phaser.Scene {
       bottom: actionMenuBottom,
       rootWidth: actionMenuRootWidth,
       panelHeight: actionMenuPanelHeight,
+      overlap: Math.round(actionMenuRootWidth * 0.70),
       panelWidths: {
         list: actionMenuRootWidth,
         detail: actionMenuRootWidth
