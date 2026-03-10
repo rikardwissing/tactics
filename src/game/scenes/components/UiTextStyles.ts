@@ -75,6 +75,13 @@ export const UI_TEXT_WORLD_LABEL = withDefaults({
   strokeThickness: 4
 });
 
+export const UI_TEXT_WORLD_BARK = withDefaults({
+  fontSize: '16px',
+  fontStyle: 'bold',
+  stroke: UI_COLOR_TEXT_STROKE,
+  strokeThickness: 5
+});
+
 export const UI_TEXT_DAMAGE = withDefaults({
   fontSize: '18px',
   fontStyle: 'bold',

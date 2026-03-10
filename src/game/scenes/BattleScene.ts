@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
-import { DEFAULT_UNIT_IMAGE_KEY } from '../assets';
+import { DEFAULT_UNIT_IMAGE_KEY, FACTION_MOTTO_AUDIO_KEYS } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
+import { CombatEffectDefinition, CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
-import { AttackStyle, BattleUnit, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
+import { AttackStyle, BattleUnit, FactionId, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
 import { createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
@@ -53,6 +54,7 @@ import {
   UI_TEXT_LABEL_CENTER,
   UI_TEXT_TITLE,
   UI_TEXT_TITLE_CENTER,
+  UI_TEXT_WORLD_BARK,
   UI_TEXT_WORLD_LABEL
 } from './components/UiTextStyles';
 import { TurnOrderPanel } from './components/TurnOrderPanel';
@@ -183,6 +185,7 @@ const BOARD_ZOOM_SENSITIVITY = 0.00055;
 const TOUCH_PAN_THRESHOLD = 14;
 const CHEST_DISPLAY_WIDTH = 47;
 const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
+const UNIT_CAMERA_FOCUS_HEIGHT_FACTOR = 0.5;
 
 const BASE_UI_PANELS = {
   topLeft: new Phaser.Geom.Rectangle(20, 18, 392, 164),
@@ -447,6 +450,11 @@ export class BattleScene extends Phaser.Scene {
   private detailPanelOffsetX = 24;
   private detailPanelUnitId: string | null = null;
   private detailPanelTween?: Phaser.Tweens.Tween;
+  private turnStartCatchPhraseText: Phaser.GameObjects.Text | null = null;
+  private turnStartCatchPhraseEvent: Phaser.Time.TimerEvent | null = null;
+  private factionMottoPlayed = new Set<FactionId>();
+  private pendingFactionMottoId: FactionId | null = null;
+  private factionMottoSound: Phaser.Sound.BaseSound | null = null;
   private mapIntroBounds = new Phaser.Geom.Rectangle();
   private mapObjectiveBoxBounds = new Phaser.Geom.Rectangle();
   private detailBodyBoxBounds = new Phaser.Geom.Rectangle();
@@ -595,6 +603,11 @@ export class BattleScene extends Phaser.Scene {
     this.detailPanelUnitId = null;
     this.detailPanelTween?.remove();
     this.detailPanelTween = undefined;
+    this.clearTurnStartCatchPhrase();
+    this.factionMottoPlayed.clear();
+    this.pendingFactionMottoId = null;
+    this.stopFactionMottoSound();
+    this.syncSceneAudioMute();
 
     this.input.addPointer(2);
 
@@ -754,6 +767,7 @@ export class BattleScene extends Phaser.Scene {
     });
     this.input.keyboard?.on('keydown-M', () => {
       const muted = audioDirector.toggleMute();
+      this.syncSceneAudioMute();
       this.pushLog(`Audio ${muted ? 'muted' : 'enabled'}.`);
       this.refreshUi();
     });
@@ -765,6 +779,7 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.setPauseMenuOpen(false);
+    this.clearTurnStartCatchPhrase();
     this.restarting = true;
     this.busy = true;
     this.phase = 'animating';
@@ -882,6 +897,9 @@ export class BattleScene extends Phaser.Scene {
     this.actionMenuStack.destroy();
     this.tweens.killAll();
     this.time.removeAllEvents();
+    this.clearTurnStartCatchPhrase();
+    this.pendingFactionMottoId = null;
+    this.stopFactionMottoSound();
     this.isPanning = false;
     this.touchPointerId = null;
     this.touchSecondaryPointerId = null;
@@ -2301,6 +2319,9 @@ export class BattleScene extends Phaser.Scene {
     this.mapPlaqueAlpha = 0;
     this.mapPlaqueOffsetX = -20;
     this.applyMapTitlePresentation();
+    this.time.delayedCall(MAP_TITLE_INTRO_DURATION + 120, () => {
+      this.playFactionMottoForTeam('player');
+    });
 
     this.tweens.add({
       targets: this,
@@ -2948,8 +2969,8 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const point = this.isoToScreen(tile);
-    view.container.setPosition(point.x, point.y + UNIT_GROUND_OFFSET_Y);
+    const point = this.getUnitGroundPoint(tile);
+    view.container.setPosition(point.x, point.y);
     view.container.setDepth(this.getUnitDepth(tile));
     view.container.setVisible(unit.alive);
     view.container.setAlpha(unit.alive ? 1 : 0);
@@ -3132,7 +3153,26 @@ export class BattleScene extends Phaser.Scene {
       return new Phaser.Math.Vector2(view.container.x, view.container.y);
     }
 
-    return this.isoToScreen(unit);
+    return this.getUnitGroundPoint(unit);
+  }
+
+  private getUnitGroundPoint(tile: Point & { height?: number }): Phaser.Math.Vector2 {
+    const point = this.isoToScreen(tile);
+    return new Phaser.Math.Vector2(point.x, point.y + UNIT_GROUND_OFFSET_Y);
+  }
+
+  private getUnitCameraFocusPoint(
+    unit: BattleUnit,
+    groundPoint: Phaser.Math.Vector2 = this.getUnitWorldPoint(unit)
+  ): Phaser.Math.Vector2 {
+    const view = this.views.get(unit.id);
+    const spriteOffsetX = view?.sprite.x ?? 0;
+    const spriteOffsetY = view?.sprite.y ?? 0;
+
+    return new Phaser.Math.Vector2(
+      groundPoint.x + spriteOffsetX,
+      groundPoint.y + spriteOffsetY - unit.spriteDisplayHeight * UNIT_CAMERA_FOCUS_HEIGHT_FACTOR
+    );
   }
 
   private getUnitSpritePoint(unit: BattleUnit, heightFactor: number): Phaser.Math.Vector2 {
@@ -3425,17 +3465,43 @@ export class BattleScene extends Phaser.Scene {
     const camera = this.getWorldCamera();
     const boardFocus = this.getBoardFocusPoint();
     const fitSize = this.getBoardFitSize();
-    const playArea = this.playAreaRect.width > 0 && this.playAreaRect.height > 0
-      ? this.playAreaRect
-      : new Phaser.Geom.Rectangle(0, 0, camera.width, camera.height);
+    const playArea = this.getCameraPlayArea(camera);
+    const targetScroll = this.getScrollForScreenAnchor(
+      focusX,
+      focusY,
+      playArea.centerX,
+      playArea.centerY,
+      camera
+    );
 
     return this.resolveBoardScroll(
-      focusX - playArea.centerX / camera.zoom,
-      focusY - playArea.centerY / camera.zoom,
+      targetScroll.x,
+      targetScroll.y,
       camera,
       boardFocus,
       fitSize,
       true
+    );
+  }
+
+  private getCameraPlayArea(camera: Phaser.Cameras.Scene2D.Camera): Phaser.Geom.Rectangle {
+    return this.playAreaRect.width > 0 && this.playAreaRect.height > 0
+      ? this.playAreaRect
+      : new Phaser.Geom.Rectangle(0, 0, camera.width, camera.height);
+  }
+
+  private getScrollForScreenAnchor(
+    worldX: number,
+    worldY: number,
+    screenX: number,
+    screenY: number,
+    camera: Phaser.Cameras.Scene2D.Camera
+  ): Phaser.Math.Vector2 {
+    const currentWorldPoint = camera.getWorldPoint(screenX, screenY);
+
+    return new Phaser.Math.Vector2(
+      camera.scrollX + (worldX - currentWorldPoint.x),
+      camera.scrollY + (worldY - currentWorldPoint.y)
     );
   }
 
@@ -3447,26 +3513,31 @@ export class BattleScene extends Phaser.Scene {
     fitSize: { width: number; height: number },
     lockToBoard: boolean
   ): Phaser.Math.Vector2 {
-    const playArea = this.playAreaRect.width > 0 && this.playAreaRect.height > 0
-      ? this.playAreaRect
-      : new Phaser.Geom.Rectangle(0, 0, camera.width, camera.height);
-    const playAreaLeft = playArea.x / camera.zoom;
-    const playAreaTop = playArea.y / camera.zoom;
-    const visibleWidth = playArea.width / camera.zoom;
-    const visibleHeight = playArea.height / camera.zoom;
-    const minScrollX = this.cameraBounds.x - playAreaLeft;
-    const minScrollY = this.cameraBounds.y - playAreaTop;
-    const maxScrollX = this.cameraBounds.right - (playArea.right / camera.zoom);
-    const maxScrollY = this.cameraBounds.bottom - (playArea.bottom / camera.zoom);
+    const playArea = this.getCameraPlayArea(camera);
+    const playAreaTopLeft = camera.getWorldPoint(playArea.x, playArea.y);
+    const playAreaBottomRight = camera.getWorldPoint(playArea.right, playArea.bottom);
+    const visibleWidth = playAreaBottomRight.x - playAreaTopLeft.x;
+    const visibleHeight = playAreaBottomRight.y - playAreaTopLeft.y;
+    const minScrollX = this.cameraBounds.x + (camera.scrollX - playAreaTopLeft.x);
+    const minScrollY = this.cameraBounds.y + (camera.scrollY - playAreaTopLeft.y);
+    const maxScrollX = this.cameraBounds.right + (camera.scrollX - playAreaBottomRight.x);
+    const maxScrollY = this.cameraBounds.bottom + (camera.scrollY - playAreaBottomRight.y);
     const canScrollX = maxScrollX > minScrollX;
     const canScrollY = maxScrollY > minScrollY;
+    const centeredScroll = this.getScrollForScreenAnchor(
+      boardFocus.x,
+      boardFocus.y,
+      playArea.centerX,
+      playArea.centerY,
+      camera
+    );
     const resolvedScrollX =
       (lockToBoard && visibleWidth >= fitSize.width) || !canScrollX
-        ? boardFocus.x - playArea.centerX / camera.zoom
+        ? centeredScroll.x
         : Phaser.Math.Clamp(scrollX, minScrollX, maxScrollX);
     const resolvedScrollY =
       (lockToBoard && visibleHeight >= fitSize.height) || !canScrollY
-        ? boardFocus.y - playArea.centerY / camera.zoom
+        ? centeredScroll.y
         : Phaser.Math.Clamp(scrollY, minScrollY, maxScrollY);
 
     return new Phaser.Math.Vector2(resolvedScrollX, resolvedScrollY);
@@ -3809,6 +3880,7 @@ export class BattleScene extends Phaser.Scene {
           return true;
         case 'mute': {
           const muted = audioDirector.toggleMute();
+          this.syncSceneAudioMute();
           this.pushLog(`Audio ${muted ? 'muted' : 'enabled'}.`);
           this.refreshUi();
           return true;
@@ -3858,6 +3930,7 @@ export class BattleScene extends Phaser.Scene {
         return;
       case 'audio': {
         const muted = audioDirector.toggleMute();
+        this.syncSceneAudioMute();
         this.pushLog(`Audio ${muted ? 'muted' : 'enabled'}.`);
         this.refreshUi();
         return;
@@ -4140,11 +4213,20 @@ export class BattleScene extends Phaser.Scene {
     switch (item.effect.kind) {
       case 'heal': {
         const recovered = Math.min(item.effect.amount, target.maxHp - target.hp);
+        audioDirector.playHeal();
+        await this.playCombatEffect(item.effectKey, activeUnit, target);
         target.hp += recovered;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
         this.positionUnit(target);
-        audioDirector.playHeal();
+        await this.flashUnitSprite(target, 0xb8ffd0);
+        await this.showFloatingCombatText(
+          this.getUnitSpritePoint(target, 0.72),
+          recovered > 0 ? `+${recovered}` : 'MISS',
+          UI_TEXT_DAMAGE,
+          42,
+          720
+        );
         this.pushLog(
           recovered > 0
             ? `${activeUnit.name} uses ${item.name} on ${target.name}, restoring ${recovered} HP.`
@@ -4154,11 +4236,20 @@ export class BattleScene extends Phaser.Scene {
         return;
       }
       case 'ct':
+        audioDirector.playUiConfirm();
+        await this.playCombatEffect(item.effectKey, activeUnit, target);
         target.ct += item.effect.amount;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
         this.positionUnit(target);
-        audioDirector.playUiConfirm();
+        await this.flashUnitSprite(target, 0xf4dd91);
+        await this.showFloatingCombatText(
+          this.getUnitSpritePoint(target, 0.72),
+          `+${item.effect.amount} CT`,
+          UI_TEXT_DAMAGE,
+          40,
+          720
+        );
         this.pushLog(`${activeUnit.name} uses ${item.name} on ${target.name}, granting ${item.effect.amount} CT.`);
         await this.finishPlayerCommand(activeUnit, `${activeUnit.name} can still move this turn.`);
         return;
@@ -4288,7 +4379,7 @@ export class BattleScene extends Phaser.Scene {
     if (target.kind !== 'unit') {
       return;
     }
-    const focusPoint = this.getUnitWorldPoint(unit);
+    const focusPoint = this.getUnitCameraFocusPoint(unit);
     await this.panCameraToPoint(focusPoint.x, focusPoint.y, 260);
   }
 
@@ -4380,10 +4471,12 @@ export class BattleScene extends Phaser.Scene {
     this.activeUnitId = actor.id;
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
-    const actorFocusPoint = this.getUnitWorldPoint(actor);
+    const actorFocusPoint = this.getUnitCameraFocusPoint(actor);
     await this.panCameraToPoint(actorFocusPoint.x, actorFocusPoint.y, 280);
     this.playTurnStartAnimation(actor);
     audioDirector.playTurnStart(actor.team);
+    this.queueTurnStartCatchPhrase(actor);
+    this.playFactionMotto(actor.factionId);
 
     if (actor.team === 'player') {
       this.phase = 'player-menu';
@@ -4758,10 +4851,11 @@ export class BattleScene extends Phaser.Scene {
           continue;
         }
 
-        const destination = this.isoToScreen(tile);
+        const destination = this.getUnitGroundPoint(tile);
         const startDepth = view.container.depth;
         const destinationDepth = this.getUnitDepth(tile);
-        const cameraPanPromise = this.panCameraToPoint(destination.x, destination.y, 240);
+        const cameraFocusPoint = this.getUnitCameraFocusPoint(unit, destination);
+        const cameraPanPromise = this.panCameraToPoint(cameraFocusPoint.x, cameraFocusPoint.y, 240);
         audioDirector.playStep();
 
         const movementPromise = new Promise<void>((resolve) => {
@@ -4941,7 +5035,11 @@ export class BattleScene extends Phaser.Scene {
       });
     });
 
-    await this.playAttackEffect(strikeAttacker, launchPoint, impactPoint, angle);
+    await this.playCombatEffect(strikeAttacker.effectKey, attacker, target, {
+      launchPoint,
+      impactPoint,
+      angle
+    });
 
     const damageRoll = calculateDamage(strikeAttacker, target, this.map, this.rng.frac());
     target.hp = Math.max(0, target.hp - damageRoll.amount);
@@ -5046,45 +5144,15 @@ export class BattleScene extends Phaser.Scene {
     const effectPoint = this.getUnitSpritePoint(target, 0.72);
     audioDirector.playHeal();
 
-    this.emitSupportBurst(effectPoint.x, effectPoint.y, 0x99f0b6);
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: targetView.sprite,
-        tint: 0xb8ffd0,
-        duration: 150,
-        yoyo: true,
-        repeat: 1,
-        onComplete: () => {
-          targetView.sprite.clearTint();
-          resolve();
-        }
-      });
-    });
+    await this.playCombatEffect(ability.effectKey ?? attacker.effectKey, attacker, target);
+    await this.flashUnitSprite(target, 0xb8ffd0);
 
     if (amount > 0) {
       target.hp += amount;
       this.positionUnit(target);
     }
 
-    const healText = this.registerWorldObject(
-      this.add.text(effectPoint.x, effectPoint.y, amount > 0 ? `+${amount}` : 'MISS', UI_TEXT_DAMAGE)
-    );
-    healText.setOrigin(0.5).setDepth(980);
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: healText,
-        y: effectPoint.y - 42,
-        alpha: 0,
-        duration: 720,
-        ease: 'Cubic.easeOut',
-        onComplete: () => {
-          healText.destroy();
-          resolve();
-        }
-      });
-    });
+    await this.showFloatingCombatText(effectPoint, amount > 0 ? `+${amount}` : 'MISS', UI_TEXT_DAMAGE, 42, 720);
 
     this.pushLog(amount > 0 ? `${target.name} recovers ${amount} HP.` : `${target.name} needs no healing.`);
   }
@@ -5114,7 +5182,7 @@ export class BattleScene extends Phaser.Scene {
       });
     });
 
-    this.emitSupportBurst(targetPoint.x, targetPoint.y - 56, 0xf0d27d);
+    await this.playCombatEffect(_ability.effectKey ?? attacker.effectKey, attacker, target);
 
     if (target.dropItemId) {
       const quantity = target.dropQuantity ?? 1;
@@ -5158,61 +5226,107 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private async playAttackEffect(
-    attacker: BattleUnit,
-    launchPoint: Phaser.Math.Vector2,
-    impactPoint: Phaser.Math.Vector2,
-    angle: number
+  private async playCombatEffect(
+    effectId: CombatEffectId,
+    source: BattleUnit,
+    target: BattleUnit,
+    overrides?: {
+      launchPoint?: Phaser.Math.Vector2;
+      impactPoint?: Phaser.Math.Vector2;
+      angle?: number;
+    }
   ): Promise<void> {
-    switch (attacker.attackStyle) {
-      case 'blade-arc':
-        await this.animateImpactSprite(attacker.effectKey, impactPoint, angle + 0.08, 0.14, 0.88, 220, true);
-        return;
-      case 'arrow-flight':
-        await this.animateProjectileSprite(attacker.effectKey, launchPoint, impactPoint, angle, 0.16, 0.34, 230);
-        return;
-      case 'ember-burst':
-        await this.animateImpactSprite(attacker.effectKey, impactPoint, 0, 0.12, 0.92, 300, true);
-        return;
-      case 'grave-cleave':
-        await this.animateImpactSprite(attacker.effectKey, impactPoint, angle - 0.12, 0.16, 0.96, 240, false);
-        return;
-      case 'feather-shot':
-        await this.animateProjectileSprite(attacker.effectKey, launchPoint, impactPoint, angle, 0.14, 0.3, 250, 0.55);
-        return;
-      case 'ash-hex':
-        await this.animateImpactSprite(
-          attacker.effectKey,
-          new Phaser.Math.Vector2(impactPoint.x, impactPoint.y + 42),
-          0.2,
-          0.12,
-          0.86,
-          360,
-          false,
-          1.4
+    const effect = getCombatEffectDefinition(effectId);
+    const launchPoint =
+      overrides?.launchPoint ??
+      this.getUnitSpritePoint(source, effect.launchAnchor ?? effect.impactAnchor ?? 0.55);
+    const impactBase =
+      overrides?.impactPoint ??
+      this.getUnitSpritePoint(target, effect.impactAnchor ?? effect.launchAnchor ?? 0.56);
+    const impactPoint = new Phaser.Math.Vector2(
+      impactBase.x,
+      impactBase.y + (effect.impactOffsetY ?? 0)
+    );
+    const sourcePoint = new Phaser.Math.Vector2(
+      launchPoint.x,
+      launchPoint.y + (effect.sourceOffsetY ?? 0)
+    );
+    const angle =
+      overrides?.angle ??
+      Phaser.Math.Angle.Between(sourcePoint.x, sourcePoint.y, impactPoint.x, impactPoint.y);
+
+    switch (effect.motion) {
+      case 'projectile':
+        await this.animateProjectileSprite(
+          effect.assetKey,
+          sourcePoint,
+          impactPoint,
+          angle,
+          effect.startScale,
+          effect.peakScale,
+          effect.duration,
+          effect.spin ?? 0,
+          effect.additive ?? false
         );
-        return;
+        if (effect.burstTint !== undefined) {
+          this.emitSupportBurst(impactPoint.x, impactPoint.y, effect.burstTint);
+        }
+        break;
+      case 'impact-arc':
+      case 'impact-burst':
+      case 'ground-sigil':
+      case 'support-bloom':
+        await this.animateImpactSprite(
+          effect.assetKey,
+          impactPoint,
+          angle + (effect.rotationOffset ?? 0),
+          effect.startScale,
+          effect.peakScale,
+          effect.duration,
+          effect.additive ?? false,
+          effect.endScaleMultiplier ?? 1.15,
+          effect.burstTint
+        );
+        break;
+      case 'transfer': {
+        const transferFrom = effect.travelFromTarget ? impactPoint : sourcePoint;
+        const transferTo = effect.travelFromTarget ? sourcePoint : impactPoint;
+        await this.animateTransferEffect(effect, transferFrom, transferTo);
+        break;
+      }
+      case 'ct-surge':
+        await this.animateCtSurgeEffect(effect, impactPoint);
+        break;
       default:
-        return;
+        break;
     }
   }
 
   private async animateProjectileSprite(
-    key: string,
+    key: string | null,
     launchPoint: Phaser.Math.Vector2,
     impactPoint: Phaser.Math.Vector2,
     angle: number,
     startScale: number,
     endScale: number,
     duration: number,
-    spin = 0
+    spin = 0,
+    additive = false
   ): Promise<void> {
+    if (!key) {
+      return;
+    }
+
     const projectile = this.registerWorldObject(this.add
       .image(launchPoint.x, launchPoint.y, key)
       .setDepth(962)
       .setScale(startScale)
       .setRotation(angle)
       .setAlpha(0.96));
+
+    if (additive) {
+      projectile.setBlendMode(Phaser.BlendModes.ADD);
+    }
 
     await new Promise<void>((resolve) => {
       this.tweens.add({
@@ -5233,15 +5347,24 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async animateImpactSprite(
-    key: string,
+    key: string | null,
     impactPoint: Phaser.Math.Vector2,
     rotation: number,
     startScale: number,
     peakScale: number,
     duration: number,
     additive: boolean,
-    endScaleMultiplier = 1.15
+    endScaleMultiplier = 1.15,
+    burstTint?: number
   ): Promise<void> {
+    if (!key) {
+      if (burstTint !== undefined) {
+        this.emitSupportBurst(impactPoint.x, impactPoint.y, burstTint);
+      }
+      await this.wait(duration * 0.85);
+      return;
+    }
+
     const effect = this.registerWorldObject(this.add
       .image(impactPoint.x, impactPoint.y, key)
       .setDepth(962)
@@ -5271,6 +5394,9 @@ export class BattleScene extends Phaser.Scene {
             duration: duration * 0.55,
             ease: 'Quad.easeOut',
             onComplete: () => {
+              if (burstTint !== undefined) {
+                this.emitSupportBurst(impactPoint.x, impactPoint.y, burstTint);
+              }
               effect.destroy();
               resolve();
             }
@@ -5278,6 +5404,58 @@ export class BattleScene extends Phaser.Scene {
         }
       });
     });
+  }
+
+  private async animateTransferEffect(
+    effect: CombatEffectDefinition,
+    launchPoint: Phaser.Math.Vector2,
+    impactPoint: Phaser.Math.Vector2
+  ): Promise<void> {
+    const angle = Phaser.Math.Angle.Between(launchPoint.x, launchPoint.y, impactPoint.x, impactPoint.y);
+
+    if (effect.assetKey) {
+      await this.animateProjectileSprite(
+        effect.assetKey,
+        launchPoint,
+        impactPoint,
+        angle,
+        effect.startScale,
+        effect.peakScale,
+        effect.duration,
+        effect.spin ?? 0,
+        effect.additive ?? false
+      );
+    } else {
+      this.emitSupportBurst(launchPoint.x, launchPoint.y, effect.burstTint ?? 0xf0d27d);
+      await this.wait(effect.duration * 0.45);
+      this.emitSupportBurst(impactPoint.x, impactPoint.y, effect.burstTint ?? 0xf0d27d);
+      await this.wait(effect.duration * 0.3);
+    }
+  }
+
+  private async animateCtSurgeEffect(
+    effect: CombatEffectDefinition,
+    impactPoint: Phaser.Math.Vector2
+  ): Promise<void> {
+    if (effect.assetKey) {
+      await this.animateImpactSprite(
+        effect.assetKey,
+        impactPoint,
+        effect.rotationOffset ?? 0,
+        effect.startScale,
+        effect.peakScale,
+        effect.duration,
+        effect.additive ?? false,
+        effect.endScaleMultiplier ?? 1.2,
+        effect.burstTint
+      );
+      return;
+    }
+
+    this.emitSupportBurst(impactPoint.x - 10, impactPoint.y + 6, 0x6bd7c8);
+    await this.wait(effect.duration * 0.18);
+    this.emitSupportBurst(impactPoint.x + 12, impactPoint.y - 10, effect.burstTint ?? 0xdcbf70);
+    await this.wait(effect.duration * 0.5);
   }
 
   private emitSupportBurst(x: number, y: number, tint: number): void {
@@ -5295,6 +5473,59 @@ export class BattleScene extends Phaser.Scene {
     particles.setDepth(961);
     particles.explode(16, x, y);
     this.time.delayedCall(500, () => particles.destroy());
+  }
+
+  private async flashUnitSprite(target: BattleUnit, tint: number): Promise<void> {
+    const targetView = this.views.get(target.id);
+
+    if (!targetView) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: targetView.sprite,
+        tint,
+        duration: 150,
+        yoyo: true,
+        repeat: 1,
+        onComplete: () => {
+          targetView.sprite.clearTint();
+          resolve();
+        }
+      });
+    });
+  }
+
+  private async showFloatingCombatText(
+    point: Phaser.Math.Vector2,
+    text: string,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+    riseAmount: number,
+    duration: number
+  ): Promise<void> {
+    const floatingText = this.registerWorldObject(this.add.text(point.x, point.y, text, style));
+    floatingText.setOrigin(0.5).setDepth(980);
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: floatingText,
+        y: point.y - riseAmount,
+        alpha: 0,
+        duration,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          floatingText.destroy();
+          resolve();
+        }
+      });
+    });
+  }
+
+  private wait(duration: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.time.delayedCall(duration, () => resolve());
+    });
   }
 
   private async endCurrentTurn(): Promise<void> {
@@ -5321,6 +5552,7 @@ export class BattleScene extends Phaser.Scene {
     this.activeUnitId = null;
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes.clear();
+    this.clearTurnStartCatchPhrase();
     if (result === 'Victory') {
       audioDirector.playVictory();
     } else {
@@ -5812,6 +6044,139 @@ export class BattleScene extends Phaser.Scene {
   private getFactionDisplayNameForTeam(team: BattleUnit['team']): string {
     const unit = this.units.find((candidate) => candidate.team === team);
     return unit ? getFactionProfile(unit.factionId).displayName : team === 'player' ? 'Allied Forces' : 'Hostile Forces';
+  }
+
+  private queueTurnStartCatchPhrase(unit: BattleUnit): void {
+    this.clearTurnStartCatchPhrase();
+    this.turnStartCatchPhraseEvent = this.time.delayedCall(120, () => {
+      this.turnStartCatchPhraseEvent = null;
+      this.showTurnStartCatchPhrase(unit);
+    });
+  }
+
+  private showTurnStartCatchPhrase(unit: BattleUnit): void {
+    const view = this.views.get(unit.id);
+
+    if (!view || !unit.alive || this.phase === 'complete') {
+      return;
+    }
+
+    this.clearTurnStartCatchPhrase();
+
+    const barkPoint = this.getUnitSpritePoint(unit, 1.06);
+    const barkText = this.registerWorldObject(
+      this.add.text(barkPoint.x, barkPoint.y, unit.turnStartCatchPhrase, UI_TEXT_WORLD_BARK)
+    );
+
+    barkText
+      .setOrigin(0.5)
+      .setDepth(984)
+      .setAlpha(0);
+
+    this.turnStartCatchPhraseText = barkText;
+
+    this.tweens.add({
+      targets: barkText,
+      y: barkPoint.y - 18,
+      alpha: 1,
+      duration: 120,
+      ease: 'Quad.easeOut',
+      yoyo: true,
+      hold: 460,
+      onComplete: () => {
+        if (this.turnStartCatchPhraseText === barkText) {
+          this.turnStartCatchPhraseText = null;
+        }
+        barkText.destroy();
+      }
+    });
+  }
+
+  private getFactionIdForTeam(team: BattleUnit['team']): FactionId | null {
+    return this.units.find((candidate) => candidate.team === team)?.factionId ?? null;
+  }
+
+  private syncSceneAudioMute(): void {
+    this.sound.mute = audioDirector.isMuted();
+  }
+
+  private playFactionMottoForTeam(team: BattleUnit['team']): void {
+    const factionId = this.getFactionIdForTeam(team);
+
+    if (!factionId) {
+      return;
+    }
+
+    this.playFactionMotto(factionId);
+  }
+
+  private playFactionMotto(factionId: FactionId): void {
+    if (this.factionMottoPlayed.has(factionId) || audioDirector.isMuted()) {
+      return;
+    }
+
+    if (this.sound.locked) {
+      if (this.pendingFactionMottoId) {
+        return;
+      }
+
+      this.pendingFactionMottoId = factionId;
+      this.sound.once('unlocked', () => {
+        const pendingFactionId = this.pendingFactionMottoId;
+        this.pendingFactionMottoId = null;
+
+        if (pendingFactionId) {
+          this.playFactionMotto(pendingFactionId);
+        }
+      });
+      return;
+    }
+
+    this.stopFactionMottoSound();
+
+    const sound = this.sound.add(FACTION_MOTTO_AUDIO_KEYS[factionId], { volume: 0.92 });
+    const played = sound.play();
+
+    if (!played) {
+      sound.destroy();
+      return;
+    }
+
+    this.factionMottoSound = sound;
+    this.factionMottoPlayed.add(factionId);
+
+    const profile = getFactionProfile(factionId);
+    this.pushLog(`${profile.displayName}: "${profile.motto}"`);
+
+    sound.once('complete', () => {
+      if (this.factionMottoSound === sound) {
+        this.factionMottoSound = null;
+      }
+      sound.destroy();
+    });
+  }
+
+  private stopFactionMottoSound(): void {
+    if (!this.factionMottoSound) {
+      return;
+    }
+
+    this.factionMottoSound.stop();
+    this.factionMottoSound.destroy();
+    this.factionMottoSound = null;
+  }
+
+  private clearTurnStartCatchPhrase(): void {
+    this.turnStartCatchPhraseEvent?.remove(false);
+    this.turnStartCatchPhraseEvent = null;
+
+    if (!this.turnStartCatchPhraseText) {
+      return;
+    }
+
+    this.tweens.killTweensOf(this.turnStartCatchPhraseText);
+    this.turnStartCatchPhraseText.destroy();
+    this.turnStartCatchPhraseText = null;
   }
 
   private getInspectionUnit(): BattleUnit | null {

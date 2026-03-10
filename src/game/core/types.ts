@@ -1,3 +1,4 @@
+import { CombatEffectId } from './combatEffects';
 import { ItemId } from './items';
 
 export type Team = 'player' | 'enemy';
@@ -67,7 +68,7 @@ export interface UnitAbility {
   powerModifier?: number;
   healAmount?: number;
   attackStyle?: AttackStyle;
-  effectKey?: string;
+  effectKey?: CombatEffectId;
 }
 
 export interface UnitBlueprint {
@@ -76,6 +77,7 @@ export interface UnitBlueprint {
   roleId: UnitRoleId;
   name: string;
   className: string;
+  turnStartCatchPhrase: string;
   team: Team;
   spriteKey: string;
   accentColor: number;
@@ -92,7 +94,7 @@ export interface UnitBlueprint {
   spriteDisplayHeight: number;
   idleStyle: IdleStyle;
   attackStyle: AttackStyle;
-  effectKey: string;
+  effectKey: CombatEffectId;
   abilities: readonly UnitAbility[];
   dropItemId?: ItemId;
   dropQuantity?: number;

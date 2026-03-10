@@ -39,6 +39,15 @@ interface RowLayout {
 
 type TurnOrderOrientation = 'vertical' | 'horizontal';
 
+interface TurnOrderLayoutConfig {
+  x: number;
+  startY: number;
+  gap: number;
+  avatarSize: number;
+  orientation: TurnOrderOrientation;
+  reverse: boolean;
+}
+
 interface TurnOrderEntry {
   unitId: string | null;
   spriteKey: string | null;
@@ -74,6 +83,7 @@ export class TurnOrderPanel {
   private isTransitioning = false;
   private orientation: TurnOrderOrientation = 'vertical';
   private reverse = false;
+  private layoutConfig: TurnOrderLayoutConfig | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -205,22 +215,43 @@ export class TurnOrderPanel {
     orientation?: TurnOrderOrientation;
     reverse?: boolean;
   }): void {
-    this.rowWidth = config.avatarSize;
-    this.avatarSize = config.avatarSize;
-    const rowHeight = config.avatarSize;
-    this.orientation = config.orientation ?? 'vertical';
-    this.reverse = config.reverse ?? false;
+    const nextLayout: TurnOrderLayoutConfig = {
+      x: config.x,
+      startY: config.startY,
+      gap: config.gap,
+      avatarSize: config.avatarSize,
+      orientation: config.orientation ?? 'vertical',
+      reverse: config.reverse ?? false
+    };
+    if (
+      this.layoutConfig &&
+      this.layoutConfig.x === nextLayout.x &&
+      this.layoutConfig.startY === nextLayout.startY &&
+      this.layoutConfig.gap === nextLayout.gap &&
+      this.layoutConfig.avatarSize === nextLayout.avatarSize &&
+      this.layoutConfig.orientation === nextLayout.orientation &&
+      this.layoutConfig.reverse === nextLayout.reverse
+    ) {
+      return;
+    }
+
+    this.layoutConfig = nextLayout;
+    this.rowWidth = nextLayout.avatarSize;
+    this.avatarSize = nextLayout.avatarSize;
+    const rowHeight = nextLayout.avatarSize;
+    this.orientation = nextLayout.orientation;
+    this.reverse = nextLayout.reverse;
 
     for (const [index, row] of this.rows.entries()) {
       const visualIndex = this.reverse ? this.maxEntries - 1 - index : index;
       const leftX =
         this.orientation === 'horizontal'
-          ? config.x + visualIndex * config.gap
-          : config.x;
+          ? nextLayout.x + visualIndex * nextLayout.gap
+          : nextLayout.x;
       const y =
         this.orientation === 'horizontal'
-          ? config.startY
-          : config.startY + visualIndex * config.gap;
+          ? nextLayout.startY
+          : nextLayout.startY + visualIndex * nextLayout.gap;
 
       row.backing
         .setSize(this.rowWidth, rowHeight)
@@ -228,11 +259,11 @@ export class TurnOrderPanel {
       row.border
         .setSize(this.rowWidth, rowHeight)
         .setDisplaySize(this.rowWidth, rowHeight);
-      this.updateAvatarMask(row, leftX, y, config.avatarSize);
+      this.updateAvatarMask(row, leftX, y, nextLayout.avatarSize);
 
       const avatarHitArea = row.avatar.input?.hitArea;
       if (avatarHitArea instanceof Phaser.Geom.Rectangle) {
-        avatarHitArea.setTo(0, 0, config.avatarSize, config.avatarSize);
+        avatarHitArea.setTo(0, 0, nextLayout.avatarSize, nextLayout.avatarSize);
       }
 
       this.rowLayouts[index] = {

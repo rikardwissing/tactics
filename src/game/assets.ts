@@ -1,3 +1,5 @@
+import type { FactionId } from './core/types';
+
 const titleBackdrop = new URL('../assets/game/backdrops/title-backdrop.png', import.meta.url).href;
 const theOrderHouseMarshal = new URL('../assets/game/units/the-order-house-marshal.png', import.meta.url).href;
 const theOrderSquireOperative = new URL('../assets/game/units/the-order-squire-operative.png', import.meta.url).href;
@@ -11,12 +13,17 @@ const factionMottoTimeTravelers = new URL('../assets/game/voices/faction-motto-t
 const factionMottoMyrmidons = new URL('../assets/game/voices/faction-motto-myrmidons.mp3', import.meta.url).href;
 const factionMottoTheOrder = new URL('../assets/game/voices/faction-motto-the-order.mp3', import.meta.url).href;
 const factionMottoChildrenOfTheProphecy = new URL('../assets/game/voices/faction-motto-children-of-the-prophecy.mp3', import.meta.url).href;
-const radiantSlash = new URL('../assets/game/effects/radiant-slash.png', import.meta.url).href;
-const skystingArrow = new URL('../assets/game/effects/skysting-arrow.png', import.meta.url).href;
-const cinderBurst = new URL('../assets/game/effects/cinder-burst.png', import.meta.url).href;
-const graveCleave = new URL('../assets/game/effects/grave-cleave.png', import.meta.url).href;
-const blackfeatherShot = new URL('../assets/game/effects/blackfeather-shot.png', import.meta.url).href;
-const ashHex = new URL('../assets/game/effects/ash-hex.png', import.meta.url).href;
+const theOrderBreacherStrike = new URL('../assets/game/effects/the-order-breacher-strike.png', import.meta.url).href;
+const theOrderRelayLance = new URL('../assets/game/effects/the-order-relay-lance.png', import.meta.url).href;
+const theOrderTracerVolley = new URL('../assets/game/effects/the-order-tracer-volley.png', import.meta.url).href;
+const theOrderCauteryCharge = new URL('../assets/game/effects/the-order-cautery-charge.png', import.meta.url).href;
+const theOrderFieldMend = new URL('../assets/game/effects/the-order-field-mend.png', import.meta.url).href;
+const theOrderStripGear = new URL('../assets/game/effects/the-order-strip-gear.png', import.meta.url).href;
+const myrmidonsBreakerCleave = new URL('../assets/game/effects/myrmidons-breaker-cleave.png', import.meta.url).href;
+const myrmidonsBrineShot = new URL('../assets/game/effects/myrmidons-brine-shot.png', import.meta.url).href;
+const myrmidonsPhaseLash = new URL('../assets/game/effects/myrmidons-phase-lash.png', import.meta.url).href;
+const itemMendingSalve = new URL('../assets/game/effects/item-mending-salve.png', import.meta.url).href;
+const itemQuickTonic = new URL('../assets/game/effects/item-quick-tonic.png', import.meta.url).href;
 const chapelChestClosed = new URL('../assets/game/props/chapel-chest-closed.png', import.meta.url).href;
 const chapelChestOpen = new URL('../assets/game/props/chapel-chest-open.png', import.meta.url).href;
 const terrainGrassA = new URL('../assets/game/terrain/terrain-grass-a.png', import.meta.url).href;
@@ -42,12 +49,17 @@ export const IMAGE_ASSETS = [
   { key: 'myrmidons-spectre', url: myrmidonsSpectre },
   { key: 'time-travelers-aion-trooper', url: timeTravelersAionTrooper },
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
-  { key: 'radiant-slash', url: radiantSlash },
-  { key: 'skysting-arrow', url: skystingArrow },
-  { key: 'cinder-burst', url: cinderBurst },
-  { key: 'grave-cleave', url: graveCleave },
-  { key: 'blackfeather-shot', url: blackfeatherShot },
-  { key: 'ash-hex', url: ashHex },
+  { key: 'the-order-breacher-strike', url: theOrderBreacherStrike },
+  { key: 'the-order-relay-lance', url: theOrderRelayLance },
+  { key: 'the-order-tracer-volley', url: theOrderTracerVolley },
+  { key: 'the-order-cautery-charge', url: theOrderCauteryCharge },
+  { key: 'the-order-field-mend', url: theOrderFieldMend },
+  { key: 'the-order-strip-gear', url: theOrderStripGear },
+  { key: 'myrmidons-breaker-cleave', url: myrmidonsBreakerCleave },
+  { key: 'myrmidons-brine-shot', url: myrmidonsBrineShot },
+  { key: 'myrmidons-phase-lash', url: myrmidonsPhaseLash },
+  { key: 'item-mending-salve', url: itemMendingSalve },
+  { key: 'item-quick-tonic', url: itemQuickTonic },
   { key: 'chapel-chest-closed', url: chapelChestClosed },
   { key: 'chapel-chest-open', url: chapelChestOpen },
   { key: 'terrain-grass-a', url: terrainGrassA },
@@ -68,3 +80,10 @@ export const AUDIO_ASSETS = [
   { key: 'faction-motto-the-order', url: factionMottoTheOrder },
   { key: 'faction-motto-children-of-the-prophecy', url: factionMottoChildrenOfTheProphecy }
 ] as const;
+
+export const FACTION_MOTTO_AUDIO_KEYS = {
+  'time-travelers': 'faction-motto-time-travelers',
+  myrmidons: 'faction-motto-myrmidons',
+  'the-order': 'faction-motto-the-order',
+  'children-of-the-prophecy': 'faction-motto-children-of-the-prophecy'
+} satisfies Record<FactionId, (typeof AUDIO_ASSETS)[number]['key']>;

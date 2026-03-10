@@ -7,6 +7,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'house-marshal',
     name: 'House Marshal',
     className: 'Surface Commander',
+    turnStartCatchPhrase: 'Hold the line.',
     team: 'player',
     spriteKey: 'the-order-house-marshal',
     accentColor: 0xc7a35e,
@@ -20,10 +21,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     jump: 1,
     attackName: 'Breacher Strike',
     attackText: 'Heavy close-quarters assault. Strongest on high ground.',
-    spriteDisplayHeight: 132,
+    spriteDisplayHeight: 140,
     idleStyle: 'knight',
     attackStyle: 'blade-arc',
-    effectKey: 'radiant-slash',
+    effectKey: 'the-order-breacher-strike',
     abilities: [
       {
         id: 'attack',
@@ -44,7 +45,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         rangeMax: 4,
         powerModifier: -6,
         attackStyle: 'arrow-flight',
-        effectKey: 'skysting-arrow'
+        effectKey: 'the-order-relay-lance'
       }
     ]
   },
@@ -54,6 +55,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'squire-operative',
     name: 'Squire Operative',
     className: 'Recon Marksman',
+    turnStartCatchPhrase: 'Marked and ready.',
     team: 'player',
     spriteKey: 'the-order-squire-operative',
     accentColor: 0xb55f53,
@@ -67,10 +69,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     jump: 1,
     attackName: 'Tracer Volley',
     attackText: 'Long-range burst. Punishes exposed targets.',
-    spriteDisplayHeight: 126,
+    spriteDisplayHeight: 136,
     idleStyle: 'archer',
     attackStyle: 'arrow-flight',
-    effectKey: 'skysting-arrow',
+    effectKey: 'the-order-tracer-volley',
     abilities: [
       {
         id: 'attack',
@@ -88,7 +90,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         kind: 'steal',
         target: 'enemy',
         rangeMin: 1,
-        rangeMax: 1
+        rangeMax: 1,
+        effectKey: 'the-order-strip-gear'
       }
     ]
   },
@@ -98,6 +101,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'banner-surgeon',
     name: 'Banner Surgeon',
     className: 'Field Medic',
+    turnStartCatchPhrase: 'Steady. Breathe.',
     team: 'player',
     spriteKey: 'the-order-banner-surgeon',
     accentColor: 0xde8b5e,
@@ -111,10 +115,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     jump: 1,
     attackName: 'Cautery Charge',
     attackText: 'Mid-range surgical blast with reliable damage.',
-    spriteDisplayHeight: 126,
+    spriteDisplayHeight: 146,
     idleStyle: 'mage',
     attackStyle: 'ember-burst',
-    effectKey: 'cinder-burst',
+    effectKey: 'the-order-cautery-charge',
     abilities: [
       {
         id: 'attack',
@@ -133,7 +137,8 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
         target: 'ally',
         rangeMin: 0,
         rangeMax: 3,
-        healAmount: 24
+        healAmount: 24,
+        effectKey: 'the-order-field-mend'
       }
     ]
   },
@@ -143,6 +148,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'tide-legionary',
     name: 'Tide Legionary',
     className: 'Shock Infantry',
+    turnStartCatchPhrase: 'Break the shore.',
     team: 'enemy',
     spriteKey: 'myrmidons-tide-legionary',
     accentColor: 0x48a79c,
@@ -159,7 +165,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     spriteDisplayHeight: 136,
     idleStyle: 'warden',
     attackStyle: 'grave-cleave',
-    effectKey: 'grave-cleave',
+    effectKey: 'myrmidons-breaker-cleave',
     abilities: [
       {
         id: 'attack',
@@ -179,6 +185,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'hunter',
     name: 'Hunter',
     className: 'Amphibious Marksman',
+    turnStartCatchPhrase: 'I scent blood.',
     team: 'enemy',
     spriteKey: 'myrmidons-hunter',
     accentColor: 0x7fc9ba,
@@ -195,7 +202,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     spriteDisplayHeight: 126,
     idleStyle: 'ranger',
     attackStyle: 'feather-shot',
-    effectKey: 'blackfeather-shot',
+    effectKey: 'myrmidons-brine-shot',
     abilities: [
       {
         id: 'attack',
@@ -215,6 +222,7 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     roleId: 'spectre',
     name: 'Spectre',
     className: 'Bio-Psionic Raider',
+    turnStartCatchPhrase: 'The deep sees.',
     team: 'enemy',
     spriteKey: 'myrmidons-spectre',
     accentColor: 0x7f9fc8,
@@ -228,10 +236,10 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     jump: 1,
     attackName: 'Phase Lash',
     attackText: 'Psionic strike that spikes from the second line.',
-    spriteDisplayHeight: 128,
+    spriteDisplayHeight: 150,
     idleStyle: 'priest',
     attackStyle: 'ash-hex',
-    effectKey: 'ash-hex',
+    effectKey: 'myrmidons-phase-lash',
     abilities: [
       {
         id: 'attack',
