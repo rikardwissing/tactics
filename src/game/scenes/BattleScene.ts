@@ -78,6 +78,7 @@ type InspectionTarget =
   | { kind: 'unit'; unitId: string }
   | { kind: 'tile'; x: number; y: number }
   | { kind: 'mission' };
+type BattleIntroPhase = 'intro' | 'hud';
 
 interface UnitView {
   container: Phaser.GameObjects.Container;
@@ -186,6 +187,7 @@ const TOUCH_PAN_THRESHOLD = 14;
 const CHEST_DISPLAY_WIDTH = 47;
 const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
 const UNIT_CAMERA_FOCUS_HEIGHT_FACTOR = 0.5;
+const UNIT_FOLLOW_SCREEN_ANCHOR_Y = 0.34;
 
 const BASE_UI_PANELS = {
   topLeft: new Phaser.Geom.Rectangle(20, 18, 392, 164),
@@ -448,7 +450,7 @@ export class BattleScene extends Phaser.Scene {
   private mapPlaqueOffsetX = 0;
   private detailPanelAlpha = 0;
   private detailPanelOffsetX = 24;
-  private detailPanelUnitId: string | null = null;
+  private detailPanelSelectionKey: string | null = null;
   private detailPanelTween?: Phaser.Tweens.Tween;
   private turnStartCatchPhraseText: Phaser.GameObjects.Text | null = null;
   private turnStartCatchPhraseEvent: Phaser.Time.TimerEvent | null = null;
@@ -525,6 +527,7 @@ export class BattleScene extends Phaser.Scene {
     actionEntries: []
   };
   private headerMenuOpen = false;
+  private battleIntroPhase: BattleIntroPhase = 'hud';
   private headerMenuTitleText!: Phaser.GameObjects.Text;
   private headerMenuOptionTexts: Phaser.GameObjects.Text[] = [];
   private dockActionTexts: Phaser.GameObjects.Text[] = [];
@@ -572,6 +575,7 @@ export class BattleScene extends Phaser.Scene {
     this.hoverTile = null;
     this.inspectionTarget = { kind: 'mission' };
     this.headerMenuOpen = false;
+    this.battleIntroPhase = 'intro';
     this.moveNodes.clear();
     this.phase = 'intro';
     this.busy = false;
@@ -596,11 +600,11 @@ export class BattleScene extends Phaser.Scene {
     this.resultOverlayBody = undefined;
     this.mapIntroAlpha = 0;
     this.mapIntroOffsetY = 18;
-    this.mapPlaqueAlpha = 1;
+    this.mapPlaqueAlpha = 0;
     this.mapPlaqueOffsetX = 0;
     this.detailPanelAlpha = 0;
     this.detailPanelOffsetX = 24;
-    this.detailPanelUnitId = null;
+    this.detailPanelSelectionKey = null;
     this.detailPanelTween?.remove();
     this.detailPanelTween = undefined;
     this.clearTurnStartCatchPhrase();
@@ -662,7 +666,12 @@ export class BattleScene extends Phaser.Scene {
     this.input.removeAllListeners();
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.phase === 'complete') {
+      if (this.phase === 'complete' || this.isBattleIntroActive()) {
+        this.setHoveredTurnOrderUnitId(null);
+        if (this.hoverTile) {
+          this.hoverTile = null;
+          this.drawHighlights();
+        }
         return;
       }
 
@@ -697,6 +706,10 @@ export class BattleScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
+
       if (pointer.wasTouch) {
         this.handleTouchPointerDown(pointer);
         return;
@@ -726,7 +739,7 @@ export class BattleScene extends Phaser.Scene {
         _deltaX: number,
         deltaY: number
       ) => {
-        if (this.phase === 'complete' || this.isPointerOverUi(pointer.x, pointer.y)) {
+        if (this.phase === 'complete' || this.isBattleIntroActive() || this.isPointerOverUi(pointer.x, pointer.y)) {
           return;
         }
 
@@ -743,9 +756,15 @@ export class BattleScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.D
     }) as PanKeys | undefined;
     this.input.keyboard?.on('keydown-SPACE', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       void this.handleSpaceKey();
     });
     this.input.keyboard?.on('keydown-R', (_event: KeyboardEvent) => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       if (_event.repeat) {
         return;
       }
@@ -753,19 +772,34 @@ export class BattleScene extends Phaser.Scene {
       this.restartBattle();
     });
     this.input.keyboard?.on('keydown-ESC', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       this.setPauseMenuOpen(!this.headerMenuOpen);
       this.refreshUi();
     });
     this.input.keyboard?.on('keydown-Q', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       this.rotateBoard(-1);
     });
     this.input.keyboard?.on('keydown-E', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       this.rotateBoard(1);
     });
     this.input.keyboard?.on('keydown-T', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       this.cycleTimeOfDay();
     });
     this.input.keyboard?.on('keydown-M', () => {
+      if (this.isBattleIntroActive()) {
+        return;
+      }
       const muted = audioDirector.toggleMute();
       this.syncSceneAudioMute();
       this.pushLog(`Audio ${muted ? 'muted' : 'enabled'}.`);
@@ -786,6 +820,10 @@ export class BattleScene extends Phaser.Scene {
     this.input.enabled = false;
     this.input.keyboard?.removeAllListeners();
     this.scene.restart({ levelId: this.level.id });
+  }
+
+  private isBattleIntroActive(): boolean {
+    return this.battleIntroPhase === 'intro';
   }
 
   private setPauseMenuOpen(open: boolean): void {
@@ -1667,9 +1705,7 @@ export class BattleScene extends Phaser.Scene {
       this,
       6,
       undefined,
-      (unitId) => {
-        void this.panToUnitFromTurnOrder(unitId);
-      },
+      undefined,
       (unitId) => {
         this.setHoveredTurnOrderUnitId(unitId);
       }
@@ -3461,16 +3497,19 @@ export class BattleScene extends Phaser.Scene {
     camera.setScroll(resolved.x, resolved.y);
   }
 
-  private getCameraScrollForFocus(focusX: number, focusY: number): Phaser.Math.Vector2 {
+  private getCameraScrollForFocus(
+    focusX: number,
+    focusY: number,
+    anchorPoint: Phaser.Math.Vector2 = this.getCameraCenterAnchorPoint(this.getWorldCamera())
+  ): Phaser.Math.Vector2 {
     const camera = this.getWorldCamera();
     const boardFocus = this.getBoardFocusPoint();
     const fitSize = this.getBoardFitSize();
-    const playArea = this.getCameraPlayArea(camera);
     const targetScroll = this.getScrollForScreenAnchor(
       focusX,
       focusY,
-      playArea.centerX,
-      playArea.centerY,
+      anchorPoint.x,
+      anchorPoint.y,
       camera
     );
 
@@ -3488,6 +3527,20 @@ export class BattleScene extends Phaser.Scene {
     return this.playAreaRect.width > 0 && this.playAreaRect.height > 0
       ? this.playAreaRect
       : new Phaser.Geom.Rectangle(0, 0, camera.width, camera.height);
+  }
+
+  private getCameraCenterAnchorPoint(camera: Phaser.Cameras.Scene2D.Camera): Phaser.Math.Vector2 {
+    const playArea = this.getCameraPlayArea(camera);
+    return new Phaser.Math.Vector2(playArea.centerX, playArea.centerY);
+  }
+
+  private getUnitFollowAnchorPoint(camera: Phaser.Cameras.Scene2D.Camera): Phaser.Math.Vector2 {
+    const playArea = this.getCameraPlayArea(camera);
+
+    return new Phaser.Math.Vector2(
+      playArea.centerX,
+      playArea.y + playArea.height * UNIT_FOLLOW_SCREEN_ANCHOR_Y
+    );
   }
 
   private getScrollForScreenAnchor(
@@ -3524,11 +3577,12 @@ export class BattleScene extends Phaser.Scene {
     const maxScrollY = this.cameraBounds.bottom + (camera.scrollY - playAreaBottomRight.y);
     const canScrollX = maxScrollX > minScrollX;
     const canScrollY = maxScrollY > minScrollY;
+    const centerAnchorPoint = this.getCameraCenterAnchorPoint(camera);
     const centeredScroll = this.getScrollForScreenAnchor(
       boardFocus.x,
       boardFocus.y,
-      playArea.centerX,
-      playArea.centerY,
+      centerAnchorPoint.x,
+      centerAnchorPoint.y,
       camera
     );
     const resolvedScrollX =
@@ -3545,7 +3599,11 @@ export class BattleScene extends Phaser.Scene {
 
   private panCameraToPoint(focusX: number, focusY: number, duration: number): Promise<void> {
     const camera = this.getWorldCamera();
-    const targetScroll = this.getCameraScrollForFocus(focusX, focusY);
+    const targetScroll = this.getCameraScrollForFocus(
+      focusX,
+      focusY,
+      this.getUnitFollowAnchorPoint(camera)
+    );
 
     if (
       Phaser.Math.Distance.Between(
@@ -4368,19 +4426,26 @@ export class BattleScene extends Phaser.Scene {
 
   private async panToUnitFromTurnOrder(unitId: string): Promise<void> {
     const unit = this.units.find((entry) => entry.id === unitId && entry.alive);
+    const currentTarget = this.getResolvedInspectionTarget();
 
     if (!unit) {
       return;
     }
 
-    const target = this.setInspectionTarget({ kind: 'unit', unitId }, false, true);
-    this.drawHighlights();
-    this.refreshUi();
+    if (currentTarget.kind === 'unit' && currentTarget.unitId === unitId) {
+      return;
+    }
+
+    const target = this.setInspectionTarget({ kind: 'unit', unitId }, false);
     if (target.kind !== 'unit') {
+      this.drawHighlights();
+      this.refreshUi();
       return;
     }
     const focusPoint = this.getUnitCameraFocusPoint(unit);
     await this.panCameraToPoint(focusPoint.x, focusPoint.y, 260);
+    this.drawHighlights();
+    this.refreshUi();
   }
 
   private async handleSpaceKey(): Promise<void> {
@@ -6279,6 +6344,9 @@ export class BattleScene extends Phaser.Scene {
     const unit = this.units.find((candidate) => candidate.alive && candidate.x === tile.x && candidate.y === tile.y);
     if (unit) {
       this.setInspectionTarget({ kind: 'unit', unitId: unit.id }, false, true);
+      this.drawHighlights();
+      this.refreshUi();
+      return;
     } else {
       this.setInspectionTarget({ kind: 'tile', x: tile.x, y: tile.y }, false, true);
     }
@@ -6302,22 +6370,14 @@ export class BattleScene extends Phaser.Scene {
       this.showDetailPanel = false;
       this.detailPanelAlpha = 0;
       this.detailPanelOffsetX = 24;
-      this.detailPanelUnitId = null;
+      this.detailPanelSelectionKey = null;
       return;
     }
 
     this.showDetailPanel = true;
-    if (target.kind !== 'unit') {
-      this.detailPanelTween?.remove();
-      this.detailPanelTween = undefined;
-      this.detailPanelAlpha = 1;
-      this.detailPanelOffsetX = 0;
-      this.detailPanelUnitId = null;
-      return;
-    }
-
-    const shouldAnimate = this.detailPanelUnitId !== target.unitId || this.detailPanelAlpha <= 0.01;
-    this.detailPanelUnitId = target.unitId;
+    const nextSelectionKey = this.getDetailPanelSelectionKey(target);
+    const shouldAnimate = this.detailPanelSelectionKey !== nextSelectionKey || this.detailPanelAlpha <= 0.01;
+    this.detailPanelSelectionKey = nextSelectionKey;
 
     if (!shouldAnimate) {
       this.detailPanelAlpha = 1;
@@ -6342,6 +6402,18 @@ export class BattleScene extends Phaser.Scene {
         this.detailPanelTween = undefined;
       }
     });
+  }
+
+  private getDetailPanelSelectionKey(target: InspectionTarget): string | null {
+    switch (target.kind) {
+      case 'unit':
+        return `unit:${target.unitId}`;
+      case 'tile':
+        return `tile:${target.x},${target.y}`;
+      case 'mission':
+      default:
+        return null;
+    }
   }
 
   private showDetailPortrait(textureKey: string, kind: DetailPortraitKind): void {

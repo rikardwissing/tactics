@@ -24,6 +24,8 @@ Approved anchor assets promoted but not yet battle-integrated:
 
 - `src/assets/game/units/time-travelers-aion-trooper.png`
 - `src/assets/game/units/children-of-the-prophecy-aevum-guardian.png`
+- `src/assets/game/units/time-travelers-scavenger-marksman.png`
+- `src/assets/game/units/time-travelers-chronomedic.png`
 
 ## Factions
 
