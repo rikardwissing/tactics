@@ -228,6 +228,7 @@ const TERRAIN_TILE_ASSETS: Record<TerrainType, readonly string[]> = {
 type PropRenderConfig = {
   height: number;
   minWidth: number;
+  offsetX?: number;
   baseFill: number;
   baseAlpha: number;
   rim: number;
@@ -257,6 +258,7 @@ const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
   'light-torch': {
     height: 88,
     minWidth: 44,
+    offsetX: -3,
     baseFill: 0x2c2118,
     baseAlpha: 0.1,
     rim: 0x7f5f32,
@@ -2975,6 +2977,7 @@ export class BattleScene extends Phaser.Scene {
 
     const point = this.isoToScreen(tile);
     const config = PROP_RENDER_CONFIG[prop.assetId];
+    const imageX = point.x + (config.offsetX ?? 0);
     const basePoints = this.scaleTilePolygon(this.getTileTopPoints(tile), point, 0.98);
 
     view.base.clear();
@@ -2985,17 +2988,17 @@ export class BattleScene extends Phaser.Scene {
     view.base.setDepth(this.getPropBaseDepth(tile));
 
     const imageY = point.y + TILE_HEIGHT / 2 + 2;
-    view.image.setPosition(point.x, imageY);
+    view.image.setPosition(imageX, imageY);
     view.image.setDepth(this.getPropDepth(tile));
     view.shadowOverlay?.setDepth(this.getPropDepth(tile) + 0.05);
 
     if (view.groundGlow && view.haloGlow && config.light) {
       view.groundGlow.setPosition(point.x, point.y + TILE_HEIGHT / 2 - 2);
-      view.haloGlow.setPosition(point.x, imageY - config.light.sourceOffsetY);
+      view.haloGlow.setPosition(imageX, imageY - config.light.sourceOffsetY);
     }
 
     if (view.embers && config.light) {
-      view.embers.setPosition(point.x, imageY - config.light.sourceOffsetY);
+      view.embers.setPosition(imageX, imageY - config.light.sourceOffsetY);
     }
   }
 
