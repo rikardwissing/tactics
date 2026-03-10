@@ -665,6 +665,8 @@ export class BattleScene extends Phaser.Scene {
     this.pushLog(`${this.getFactionDisplayNameForTeam('player')} and ${this.getFactionDisplayNameForTeam('enemy')} clash on the ruined ridge.`);
     this.pushLog('Take the crest and break the enemy line before they close around the altar.');
     this.refreshUi();
+    this.updateUiLayout(this.scale.width, this.scale.height);
+    this.refreshUi();
     this.startMapTitleSequence();
 
     this.time.delayedCall(MAP_TITLE_INTRO_DURATION + MAP_TITLE_INTRO_HOLD + MAP_TITLE_OUTRO_DURATION + 120, () => {
@@ -1054,6 +1056,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.worldCamera.ignore(uiObjects);
     this.uiCamera.ignore(worldObjects);
+    this.syncBackdropScreenScale();
   }
 
   private getUiObjects(): Phaser.GameObjects.GameObject[] {
@@ -1833,6 +1836,7 @@ export class BattleScene extends Phaser.Scene {
     this.ambientOverlay
       .setPosition(width / 2, height / 2)
       .setSize(width * 1.22, height * 1.22);
+    this.syncBackdropScreenScale();
 
     this.getWorldCamera().setSize(width, height);
     this.uiCamera?.setViewport(0, 0, width, height).setSize(width, height);
@@ -1842,6 +1846,16 @@ export class BattleScene extends Phaser.Scene {
     this.drawHighlights();
     this.layoutResultOverlay();
     this.refreshUi();
+  }
+
+  private syncBackdropScreenScale(): void {
+    const zoom = Math.max(0.001, this.getWorldCamera().zoom);
+    const inverseZoom = 1 / zoom;
+
+    this.backdropImage.setScale(inverseZoom);
+    this.backdropShade.setScale(inverseZoom);
+    this.introOverlayShade.setScale(inverseZoom);
+    this.ambientOverlay.setScale(inverseZoom);
   }
 
   private updateUiLayout(width: number, height: number): void {
@@ -3854,6 +3868,7 @@ export class BattleScene extends Phaser.Scene {
 
     const worldPointBefore = camera.getWorldPoint(screenX, screenY);
     camera.setZoom(nextZoom);
+    this.syncBackdropScreenScale();
     const worldPointAfter = camera.getWorldPoint(screenX, screenY);
 
     if (nextZoom <= minimumZoom + 0.001) {
