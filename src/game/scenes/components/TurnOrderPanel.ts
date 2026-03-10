@@ -89,8 +89,7 @@ export class TurnOrderPanel {
     private readonly scene: Phaser.Scene,
     private readonly maxEntries: number,
     private readonly origin: Phaser.Math.Vector2 = new Phaser.Math.Vector2(0, 0),
-    private readonly onSelectUnit?: (unitId: string) => void,
-    private readonly onHoverUnit?: (unitId: string | null) => void
+    private readonly onSelectUnit?: (unitId: string) => void
   ) {
     this.rowLayouts = Array.from({ length: maxEntries }, () => ({
       backingX: origin.x,
@@ -155,30 +154,17 @@ export class TurnOrderPanel {
         this.onSelectUnit?.(row.unitId);
       };
 
-      const onHover = (hovered: boolean) => {
-        if (!row.visible) {
-          return;
-        }
-
-        this.onHoverUnit?.(hovered ? row.unitId : null);
-        this.applyRowInteractionState(row, hovered);
-      };
-
       row.backing
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => {
           onSelect();
-        })
-        .on('pointerout', () => onHover(false))
-        .on('pointerover', () => onHover(true));
+        });
 
       row.avatar
         .setInteractive({ useHandCursor: true })
         .on('pointerdown', () => {
           onSelect();
-        })
-        .on('pointerout', () => onHover(false))
-        .on('pointerover', () => onHover(true));
+        });
 
       return row;
     });

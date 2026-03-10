@@ -7,7 +7,7 @@ This document defines the phase 1 faction roster, the first playable slice, and 
 - Player faction: The Order
 - Enemy faction: The Myrmidons
 - Current battle implementation: 3 vs 3 infantry-scale roster using renamed unit identities, and all six visible battle units now use approved Renations art
-- Latest Myrmidon revisions: `Hunter` uses the approved opaque-silhouette remake, and `Spectre` uses the approved ammo-belt-free remake
+- Latest Myrmidon revisions: `Hunter` uses the approved squad-aligned remake derived from the current `Tide Legionary` and `Spectre`, and `Spectre` uses the approved ammo-belt-free remake
 
 Current runtime mapping for the current prototype:
 

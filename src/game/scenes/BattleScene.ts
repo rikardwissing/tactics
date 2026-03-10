@@ -418,7 +418,6 @@ export class BattleScene extends Phaser.Scene {
   private selectedAbilityId: string | null = null;
   private selectedItemId: ItemId | null = null;
   private hoverTile: TileData | null = null;
-  private hoveredTurnOrderUnitId: string | null = null;
   private moveNodes = new Map<string, ReachNode>();
   private phase: Phase = 'intro';
   private busy = false;
@@ -667,7 +666,6 @@ export class BattleScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       if (this.phase === 'complete' || this.isBattleIntroActive()) {
-        this.setHoveredTurnOrderUnitId(null);
         if (this.hoverTile) {
           this.hoverTile = null;
           this.drawHighlights();
@@ -681,7 +679,6 @@ export class BattleScene extends Phaser.Scene {
       }
 
       if (this.isPanning) {
-        this.setHoveredTurnOrderUnitId(null);
         const camera = this.getWorldCamera();
         this.setBoardScroll(
           this.panCameraOrigin.x - (pointer.x - this.panPointerOrigin.x) / camera.zoom,
@@ -689,8 +686,6 @@ export class BattleScene extends Phaser.Scene {
         );
         return;
       }
-
-      this.setHoveredTurnOrderUnitId(this.turnOrderPanel.getUnitIdAt(pointer.x, pointer.y));
 
       if (this.isPointerOverUi(pointer.x, pointer.y)) {
         if (this.hoverTile) {
@@ -837,8 +832,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handleTouchPointerDown(pointer: Phaser.Input.Pointer): void {
-    this.setHoveredTurnOrderUnitId(null);
-
     if (this.isPointerOverUi(pointer.x, pointer.y)) {
       void this.handlePointerDown(pointer);
       return;
@@ -855,8 +848,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private handleTouchPointerMove(pointer: Phaser.Input.Pointer): void {
-    this.setHoveredTurnOrderUnitId(null);
-
     if (this.touchSecondaryPointerId !== null) {
       if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
         this.updatePinchZoom();
@@ -897,8 +888,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async handleTouchPointerUp(pointer: Phaser.Input.Pointer): Promise<void> {
-    this.setHoveredTurnOrderUnitId(null);
-
     if (this.touchSecondaryPointerId !== null) {
       if (pointer.id === this.touchPointerId || pointer.id === this.touchSecondaryPointerId) {
         const remainingPointerId =
@@ -1686,11 +1675,11 @@ export class BattleScene extends Phaser.Scene {
 
     this.mapIntroEyebrowText = this.add.text(0, 0, '', UI_TEXT_LABEL_CENTER).setOrigin(0.5, 0);
 
-    this.mapIntroTitleText = this.add.text(0, 0, this.level.name, UI_TEXT_DISPLAY_CENTER).setOrigin(0.5, 0);
+    this.mapIntroTitleText = this.add.text(0, 0, this.level.name, UI_TEXT_TITLE_CENTER).setOrigin(0.5, 0);
 
     this.mapIntroMetaText = this.add.text(0, 0, '', UI_TEXT_BODY_CENTER).setOrigin(0.5, 0);
 
-    this.mapIntroFlavorText = this.add.text(0, 0, '', UI_TEXT_TITLE_CENTER).setOrigin(0.5, 0);
+    this.mapIntroFlavorText = this.add.text(0, 0, '', UI_TEXT_BODY_CENTER).setOrigin(0.5, 0);
 
     this.logLabelText = this.add.text(0, 0, 'BATTLE LOG', UI_TEXT_LABEL);
 
@@ -1705,10 +1694,7 @@ export class BattleScene extends Phaser.Scene {
       this,
       6,
       undefined,
-      undefined,
-      (unitId) => {
-        this.setHoveredTurnOrderUnitId(unitId);
-      }
+      undefined
     );
 
     this.activeBadge = this.add.text(0, 0, '', UI_NARROW_HEADER_TITLE_TEXT_STYLE);
@@ -2249,6 +2235,8 @@ export class BattleScene extends Phaser.Scene {
   private layoutMapTitleSection(width: number, height: number): void {
     const introVisible = this.mapIntroAlpha > 0.01;
     const hudVisible = this.battleIntroPhase === 'hud';
+    const controlPaddingX = 12;
+    const controlPaddingY = 6;
     const introMargin = UI_SCREEN_MARGIN;
     const introMaxWidth = width <= 640 ? width - introMargin * 2 : 460;
     const introWidth = Phaser.Math.Clamp(width - introMargin * 2, 280, introMaxWidth);
@@ -2313,14 +2301,23 @@ export class BattleScene extends Phaser.Scene {
       .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
     this.mapObjectiveTagText.setVisible(false);
     this.mapObjectiveBoxBounds.setTo(0, 0, 0, 0);
-    this.autoBattleToggleBounds.setTo(0, 0, 0, 0);
+    this.autoBattleToggleText
+      .setPosition(headerPanel.right - UI_PANEL_HEADER_INSET, BattleUiChrome.getHeaderCenterY(headerPanel, 'narrow'))
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
+    const menuTextBounds = this.autoBattleToggleText.getBounds();
     this.headerMenuButtonBounds.setTo(
-      hudVisible ? headerPanel.x : 0,
-      hudVisible ? headerPanel.y : 0,
-      hudVisible ? headerPanel.width : 0,
-      hudVisible ? headerPanel.height : 0
+      hudVisible ? menuTextBounds.x - controlPaddingX : 0,
+      hudVisible ? menuTextBounds.y - controlPaddingY : 0,
+      hudVisible ? menuTextBounds.width + controlPaddingX * 2 : 0,
+      hudVisible ? menuTextBounds.height + controlPaddingY * 2 : 0
     );
-    this.autoBattleToggleText.setVisible(false);
+    this.autoBattleToggleBounds.setTo(
+      this.headerMenuButtonBounds.x,
+      this.headerMenuButtonBounds.y,
+      this.headerMenuButtonBounds.width,
+      this.headerMenuButtonBounds.height
+    );
     const menuPanelWidth = 248;
     const optionRowHeight = 30;
     const optionGap = UI_PANEL_COMPACT_GAP;
@@ -2346,10 +2343,10 @@ export class BattleScene extends Phaser.Scene {
         .setVisible(hudVisible && this.headerMenuOpen);
     }
 
-    const introEyebrowBand = introGrid.band(introGrid.content.y, 18);
-    const introTitleBand = introGrid.band(introEyebrowBand.bottom + UI_PANEL_MICRO_GAP, 34);
-    const introMetaBand = introGrid.band(introTitleBand.bottom + UI_PANEL_GAP * 2, 24);
-    const introFlavorBand = introGrid.band(introMetaBand.bottom + UI_PANEL_COMPACT_GAP, 42);
+    const introEyebrowBand = introGrid.band(introGrid.content.y, this.mapIntroEyebrowText.height);
+    const introTitleBand = introGrid.band(introEyebrowBand.bottom + UI_PANEL_MICRO_GAP, this.mapIntroTitleText.height);
+    const introMetaBand = introGrid.band(introTitleBand.bottom + UI_PANEL_GAP, this.mapIntroMetaText.height);
+    const introFlavorBand = introGrid.band(introMetaBand.bottom + UI_PANEL_COMPACT_GAP, this.mapIntroFlavorText.height);
 
     this.mapIntroEyebrowText
       .setPosition(introEyebrowBand.centerX, introEyebrowBand.y)
@@ -5713,6 +5710,7 @@ export class BattleScene extends Phaser.Scene {
     this.mapIntroMetaText.setText(this.getMapIntroMeta(timeOfDayLabel));
     this.mapIntroFlavorText.setText(this.getMapIntroSummary());
     this.headerMenuTitleText.setText('PAUSED');
+    this.autoBattleToggleText.setText('MENU');
     this.headerMenuOptionTexts[0]?.setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`);
     this.headerMenuOptionTexts[1]?.setText(`AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`);
     this.headerMenuOptionTexts[2]?.setText('RESTART');
@@ -5829,6 +5827,16 @@ export class BattleScene extends Phaser.Scene {
       dividerAlpha: 0.22
     });
 
+    if (this.headerMenuButtonBounds.width > 0) {
+      BattleUiChrome.drawPill(this.uiGraphics, this.headerMenuButtonBounds, {
+        fillColor: this.headerMenuOpen ? UI_COLOR_ACCENT_WARM : UI_COLOR_PANEL_SURFACE_ALT,
+        strokeColor: UI_COLOR_PANEL_BORDER,
+        fillAlpha: 0.92 * this.mapPlaqueAlpha,
+        strokeAlpha: 0.38 * this.mapPlaqueAlpha,
+        radius: 14
+      });
+    }
+
     if (this.headerMenuOpen) {
       this.uiGraphics.fillStyle(UI_COLOR_OVERLAY, 0.56);
       this.uiGraphics.fillRect(0, 0, this.scale.width, this.scale.height);
@@ -5874,7 +5882,7 @@ export class BattleScene extends Phaser.Scene {
     BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
       accentColor: UI_COLOR_ACCENT_WARM,
       alpha,
-      headerHeight: 34,
+      headerHeight: UI_PLAQUE_HEADER_HEIGHT,
       radius: 28,
       headerAlpha: 0.68,
       sideRuleAlpha: 0.12,
@@ -6529,14 +6537,6 @@ export class BattleScene extends Phaser.Scene {
     }
 
     return this.units.find((unit) => unit.id === this.activeUnitId && unit.alive) ?? null;
-  }
-
-  private setHoveredTurnOrderUnitId(unitId: string | null): void {
-    if (this.hoveredTurnOrderUnitId === unitId) {
-      return;
-    }
-
-    this.hoveredTurnOrderUnitId = unitId;
   }
 
   private pushLog(message: string): void {
