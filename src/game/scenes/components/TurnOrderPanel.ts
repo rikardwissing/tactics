@@ -1,5 +1,12 @@
 import Phaser from 'phaser';
 import { BattleUnit } from '../../core/types';
+import {
+  UI_COLOR_ACCENT_COOL,
+  UI_COLOR_DANGER,
+  UI_COLOR_PANEL_SHADOW,
+  UI_COLOR_PANEL_SURFACE,
+  UI_COLOR_PANEL_BORDER
+} from './UiColors';
 
 interface TurnOrderRow {
   backing: Phaser.GameObjects.Rectangle;
@@ -29,6 +36,8 @@ interface RowLayout {
   avatarY: number;
 }
 
+type TurnOrderOrientation = 'vertical' | 'horizontal';
+
 interface TurnOrderEntry {
   unitId: string | null;
   spriteKey: string | null;
@@ -37,11 +46,6 @@ interface TurnOrderEntry {
   isCurrentTurn: boolean;
 }
 
-const EMPTY_BG = 0x080509;
-const PANEL_BG = 0x120a0f;
-const EMPTY_BORDER = 0x3a2930;
-const PLAYER_BORDER = 0x67b8ff;
-const ENEMY_BORDER = 0xff7272;
 const MOVE_DURATION = 180;
 const ENTER_DURATION = 160;
 const EXIT_DURATION = 150;
@@ -67,6 +71,8 @@ export class TurnOrderPanel {
   private enterTimer?: Phaser.Time.TimerEvent;
   private finalizeTimer?: Phaser.Time.TimerEvent;
   private isTransitioning = false;
+  private orientation: TurnOrderOrientation = 'vertical';
+  private reverse = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -86,16 +92,16 @@ export class TurnOrderPanel {
 
     this.rows = Array.from({ length: maxEntries }, () => {
       const backing = scene.add
-        .rectangle(origin.x, origin.y, this.rowWidth, 40, PANEL_BG, 0.92)
+        .rectangle(origin.x, origin.y, this.rowWidth, 40, UI_COLOR_PANEL_SURFACE, 0.92)
         .setOrigin(0, 0)
         .setVisible(false)
-        .setStrokeStyle(1, EMPTY_BORDER, 0.9);
+        .setStrokeStyle(1, UI_COLOR_PANEL_BORDER, 0.9);
 
       const border = scene.add
         .rectangle(origin.x, origin.y, this.rowWidth, 40, 0x000000, 0)
         .setOrigin(0, 0)
         .setVisible(false)
-        .setStrokeStyle(2, EMPTY_BORDER, 0.82);
+        .setStrokeStyle(2, UI_COLOR_PANEL_BORDER, 0.82);
 
       const glow = scene.add
         .graphics()
@@ -195,17 +201,25 @@ export class TurnOrderPanel {
     startY: number;
     gap: number;
     avatarSize: number;
+    orientation?: TurnOrderOrientation;
     reverse?: boolean;
   }): void {
     this.rowWidth = config.avatarSize;
     this.avatarSize = config.avatarSize;
     const rowHeight = config.avatarSize;
-    const reverse = config.reverse ?? false;
+    this.orientation = config.orientation ?? 'vertical';
+    this.reverse = config.reverse ?? false;
 
     for (const [index, row] of this.rows.entries()) {
-      const visualIndex = reverse ? this.maxEntries - 1 - index : index;
-      const y = config.startY + visualIndex * config.gap;
-      const leftX = config.x;
+      const visualIndex = this.reverse ? this.maxEntries - 1 - index : index;
+      const leftX =
+        this.orientation === 'horizontal'
+          ? config.x + visualIndex * config.gap
+          : config.x;
+      const y =
+        this.orientation === 'horizontal'
+          ? config.startY
+          : config.startY + visualIndex * config.gap;
 
       row.backing
         .setSize(this.rowWidth, rowHeight)
@@ -322,7 +336,7 @@ export class TurnOrderPanel {
       return;
     }
 
-    const borderColor = row.team === 'player' ? PLAYER_BORDER : ENEMY_BORDER;
+    const borderColor = row.team === 'player' ? UI_COLOR_ACCENT_COOL : UI_COLOR_DANGER;
     const baseBackingAlpha = row.isCurrentTurn ? 0.95 : 0.9;
     const hoverBackingAlpha = row.isCurrentTurn ? 1 : 0.95;
     const glowAlpha = row.isCurrentTurn ? (hovered ? 0.28 : 0.24) : 0;
@@ -556,8 +570,8 @@ export class TurnOrderPanel {
     }
 
     if (!entry.unitId || !entry.spriteKey) {
-      row.backing.setFillStyle(EMPTY_BG, 0.68);
-      row.border.setStrokeStyle(1, EMPTY_BORDER, 0.62);
+      row.backing.setFillStyle(UI_COLOR_PANEL_SHADOW, 0.68);
+      row.border.setStrokeStyle(1, UI_COLOR_PANEL_BORDER, 0.62);
       row.glow.clear().setVisible(false);
       row.avatarTextureKey = null;
       row.avatarRenderSize = 0;
@@ -566,11 +580,11 @@ export class TurnOrderPanel {
       return;
     }
 
-    const borderColor = entry.team === 'player' ? PLAYER_BORDER : ENEMY_BORDER;
+    const borderColor = entry.team === 'player' ? UI_COLOR_ACCENT_COOL : UI_COLOR_DANGER;
     const needsAvatarRefresh =
       row.avatarTextureKey !== entry.spriteKey || row.avatarRenderSize !== this.avatarSize;
 
-    row.backing.setFillStyle(PANEL_BG, entry.isCurrentTurn ? 0.95 : 0.9);
+    row.backing.setFillStyle(UI_COLOR_PANEL_SURFACE, entry.isCurrentTurn ? 0.95 : 0.9);
     row.border.setStrokeStyle(entry.isCurrentTurn ? 3 : 2, borderColor, entry.isCurrentTurn ? 1 : 0.92);
     row.avatar
       .setVisible(true)
@@ -598,6 +612,7 @@ export class TurnOrderPanel {
     const shiftedRows = this.rows.slice(1, visibleCount);
     const hiddenRows = this.rows.slice(visibleCount);
     this.rows = [...shiftedRows, exitingRow, ...hiddenRows];
+    const transitionOffset = this.getTransitionOffset();
 
     for (let index = 0; index < visibleCount - 1; index += 1) {
       const row = this.rows[index];
@@ -605,6 +620,7 @@ export class TurnOrderPanel {
       this.configureRow(row, entry, true);
       this.tweenRowState(row, 'moveTween', {
         index,
+        toX: this.rowLayouts[index].avatarX,
         toY: this.rowLayouts[index].avatarY,
         duration: MOVE_DURATION,
         delay: index * STAGGER_DELAY,
@@ -616,7 +632,8 @@ export class TurnOrderPanel {
     this.clearTween(exitingRow, 'accentTween');
     this.tweenRowState(exitingRow, 'exitTween', {
       index: 0,
-      toY: this.rowLayouts[0].avatarY + Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR),
+      toX: this.rowLayouts[0].avatarX + transitionOffset.exitX,
+      toY: this.rowLayouts[0].avatarY + transitionOffset.exitY,
       toAlpha: 0,
       duration: EXIT_DURATION,
       ease: 'Cubic.easeIn'
@@ -628,11 +645,17 @@ export class TurnOrderPanel {
 
     this.enterTimer = this.scene.time.delayedCall(EXIT_DURATION, () => {
       this.configureRow(exitingRow, enteringEntry, visiblePanel && topIndex < visibleCount);
-      this.setRowPosition(exitingRow, topLayout.avatarX, topLayout.avatarY - Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR));
+      this.setRowPosition(
+        exitingRow,
+        topLayout.avatarX + transitionOffset.enterX,
+        topLayout.avatarY + transitionOffset.enterY
+      );
       this.applyTransitionAlpha(exitingRow, TOP_ENTRY_ALPHA);
       this.tweenRowState(exitingRow, 'enterTween', {
         index: topIndex,
-        fromY: topLayout.avatarY - Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR),
+        fromX: topLayout.avatarX + transitionOffset.enterX,
+        toX: topLayout.avatarX,
+        fromY: topLayout.avatarY + transitionOffset.enterY,
         toY: topLayout.avatarY,
         fromAlpha: TOP_ENTRY_ALPHA,
         toAlpha: 1,
@@ -660,6 +683,7 @@ export class TurnOrderPanel {
     visiblePanel: boolean
   ): void {
     this.isTransitioning = true;
+    const transitionOffset = this.getTransitionOffset();
 
     for (let index = 0; index < this.maxEntries; index += 1) {
       const row = this.rows[index];
@@ -671,7 +695,8 @@ export class TurnOrderPanel {
         if (previousEntry.visible) {
           this.tweenRowState(row, 'exitTween', {
             index,
-            toY: this.rowLayouts[index].avatarY + Math.round(this.avatarSize * 0.18),
+            toX: this.rowLayouts[index].avatarX + transitionOffset.exitX * 0.48,
+            toY: this.rowLayouts[index].avatarY + transitionOffset.exitY * 0.48,
             toAlpha: 0,
             duration: REFRESH_DURATION,
             delay: index * 8,
@@ -694,6 +719,7 @@ export class TurnOrderPanel {
         this.applyTransitionAlpha(row, 0);
         this.tweenRowState(row, 'enterTween', {
           index,
+          toX: this.rowLayouts[index].avatarX,
           toY: this.rowLayouts[index].avatarY,
           toAlpha: 1,
           duration: REFRESH_DURATION,
@@ -738,6 +764,8 @@ export class TurnOrderPanel {
     tweenKey: Exclude<TransitionTweenKey, 'accentTween'>,
     config: {
       index: number;
+      fromX?: number;
+      toX: number;
       fromY?: number;
       toY: number;
       fromAlpha?: number;
@@ -747,24 +775,25 @@ export class TurnOrderPanel {
       ease: string;
     }
   ): void {
-    const x = this.rowLayouts[config.index]?.avatarX ?? row.avatar.x;
     const state = {
+      x: config.fromX ?? row.avatar.x,
       y: config.fromY ?? row.avatar.y,
       alpha: config.fromAlpha ?? 1
     };
 
-    this.setRowPosition(row, x, state.y);
+    this.setRowPosition(row, state.x, state.y);
     this.applyTransitionAlpha(row, state.alpha);
     this.clearTween(row, tweenKey);
     row[tweenKey] = this.scene.tweens.add({
       targets: state,
+      x: config.toX,
       y: config.toY,
       alpha: config.toAlpha ?? 1,
       duration: config.duration,
       delay: config.delay ?? 0,
       ease: config.ease,
       onUpdate: () => {
-        this.setRowPosition(row, x, state.y);
+        this.setRowPosition(row, state.x, state.y);
         this.applyTransitionAlpha(row, state.alpha);
       },
       onComplete: () => {
@@ -807,6 +836,25 @@ export class TurnOrderPanel {
     row[key]?.stop();
     row[key]?.remove();
     row[key] = undefined;
+  }
+
+  private getTransitionOffset(): {
+    exitX: number;
+    exitY: number;
+    enterX: number;
+    enterY: number;
+  } {
+    const distance = Math.round(this.avatarSize * TRANSITION_OFFSET_FACTOR);
+
+    if (this.orientation === 'horizontal') {
+      return this.reverse
+        ? { exitX: distance, exitY: 0, enterX: -distance, enterY: 0 }
+        : { exitX: -distance, exitY: 0, enterX: distance, enterY: 0 };
+    }
+
+    return this.reverse
+      ? { exitX: 0, exitY: distance, enterX: 0, enterY: -distance }
+      : { exitX: 0, exitY: -distance, enterX: 0, enterY: distance };
   }
 
   private setRowPosition(row: TurnOrderRow, x: number, y: number): void {

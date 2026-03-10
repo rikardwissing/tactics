@@ -1,0 +1,14 @@
+export const UI_PLAQUE_HEADER_HEIGHT = 40;
+export const UI_NARROW_PLAQUE_HEADER_HEIGHT = 32;
+export const UI_PLAQUE_RADIUS = 22;
+export const UI_INSET_RADIUS = 12;
+export const UI_SCREEN_MARGIN = 18;
+export const UI_PANEL_GAP = 12;
+export const UI_PANEL_TIGHT_GAP = 10;
+export const UI_PANEL_COMPACT_GAP = 8;
+export const UI_PANEL_MICRO_GAP = 6;
+export const UI_PANEL_MINI_GAP = 4;
+export const UI_PANEL_COMPACT_INSET = 10;
+export const UI_PANEL_CONTENT_INSET = 16;
+export const UI_PANEL_HEADER_INSET = 18;
+export const UI_PANEL_CONTENT_GAP = 8;

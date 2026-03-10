@@ -1,4 +1,26 @@
 import Phaser from 'phaser';
+import {
+  BattleUiChrome,
+  UI_PANEL_COMPACT_INSET,
+  UI_PANEL_CONTENT_GAP,
+  UI_PANEL_CONTENT_INSET,
+  UI_PANEL_HEADER_INSET,
+  UI_PANEL_TIGHT_GAP,
+  UI_PLAQUE_HEADER_HEIGHT
+} from './BattleUiChrome';
+import { UI_TEXT_ACTION, UI_TEXT_BODY, UI_TEXT_TITLE } from './UiTextStyles';
+import {
+  UI_COLOR_ACCENT_COOL,
+  UI_COLOR_ACCENT_WARM,
+  UI_COLOR_PANEL_BORDER,
+  UI_COLOR_PANEL_SHADOW,
+  UI_COLOR_PANEL_SURFACE,
+  UI_COLOR_PANEL_SURFACE_ALT,
+  UI_COLOR_TEXT,
+  UI_COLOR_TEXT_DISABLED,
+  UI_COLOR_SUCCESS
+} from './UiColors';
+import { createUiSubGrid } from './UiGrid';
 
 export interface ActionMenuEntryDescriptor {
   id: string;
@@ -33,9 +55,6 @@ export interface ActionMenuStackLayout {
 }
 
 export interface ActionMenuStackTypography {
-  titleFontSize: number;
-  entryFontSize: number;
-  bodyFontSize: number;
   rowHeight: number;
 }
 
@@ -52,7 +71,6 @@ interface BattleActionMenuButtonConfig {
   enabled: boolean;
   isRootPanel: boolean;
   label: string;
-  fontSize: number;
   depth: number;
   visible: boolean;
 }
@@ -64,11 +82,7 @@ class BattleActionMenuButton {
     scene: Phaser.Scene,
     onCreateObject?: (object: Phaser.GameObjects.GameObject) => void
   ) {
-    this.text = scene.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      fontSize: '14px',
-      color: '#f5e9cf'
-    });
+    this.text = scene.add.text(0, 0, '', UI_TEXT_ACTION);
     this.text.setOrigin(0, 0.5).setScrollFactor(0).setVisible(false);
     onCreateObject?.(this.text);
   }
@@ -82,7 +96,6 @@ class BattleActionMenuButton {
       enabled,
       isRootPanel,
       label,
-      fontSize,
       depth,
       visible
     }: BattleActionMenuButtonConfig
@@ -94,40 +107,43 @@ class BattleActionMenuButton {
 
     const fill = isRootPanel
       ? active
-        ? 0x7a5233
+        ? UI_COLOR_ACCENT_WARM
         : enabled
-          ? 0x22171f
-          : 0x161016
+          ? UI_COLOR_PANEL_SURFACE_ALT
+          : UI_COLOR_PANEL_SHADOW
       : active
-        ? 0x69402d
+        ? UI_COLOR_ACCENT_WARM
         : enabled
-          ? 0x241519
-          : 0x171012;
+          ? UI_COLOR_PANEL_SURFACE
+          : UI_COLOR_PANEL_SHADOW;
     const strokeAlpha = active ? 0.5 : enabled ? 0.18 : 0.1;
     const dotColor = isRootPanel
       ? active
-        ? 0xf1d089
+        ? UI_COLOR_PANEL_BORDER
         : enabled
-          ? 0x8ad0cf
-          : 0x7a6a52
+          ? UI_COLOR_SUCCESS
+          : UI_COLOR_PANEL_BORDER
       : active
-        ? 0xf1d089
+        ? UI_COLOR_PANEL_BORDER
         : enabled
-          ? 0xd4b470
-          : 0x7a6a52;
+          ? UI_COLOR_ACCENT_WARM
+          : UI_COLOR_PANEL_BORDER;
+
+    const rowGrid = createUiSubGrid(bounds, 8, 10, 0, 8);
+    const dotColumn = rowGrid.column(0, 1, bounds.y, bounds.height);
+    const labelColumn = rowGrid.column(1, 7, bounds.y, bounds.height);
 
     graphics.fillStyle(fill, (active ? 0.9 : 0.72) * alpha);
     graphics.fillRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
-    graphics.lineStyle(1, PANEL_STROKE, strokeAlpha * alpha);
+    graphics.lineStyle(1, UI_COLOR_PANEL_BORDER, strokeAlpha * alpha);
     graphics.strokeRoundedRect(bounds.x, bounds.y, bounds.width, bounds.height, 12);
     graphics.fillStyle(dotColor, 0.95 * alpha);
-    graphics.fillCircle(bounds.x + 16, bounds.centerY, active ? 6 : 5);
+    graphics.fillCircle(dotColumn.centerX, dotColumn.centerY, active ? 6 : 5);
 
     this.text
       .setText(label)
-      .setColor(!enabled ? '#8c7e62' : active ? '#fff5cf' : '#f2e3ba')
-      .setFontSize(fontSize)
-      .setPosition(bounds.x + 30, bounds.centerY)
+      .setColor(!enabled ? UI_COLOR_TEXT_DISABLED : UI_COLOR_TEXT)
+      .setPosition(labelColumn.x, labelColumn.centerY)
       .setAlpha(alpha)
       .setDepth(depth)
       .setVisible(true);
@@ -159,13 +175,6 @@ interface StackObjectOptions {
 }
 
 const BASE_DEPTH = 900;
-const SHADOW_COLOR = 0x040203;
-const PANEL_OUTER_COLOR = 0x0b1018;
-const PANEL_INNER_COLOR = 0x17131d;
-const PANEL_STROKE = 0xd5ba7a;
-const ROOT_ACCENT = 0x6d5430;
-const CHILD_ACCENT = 0x345168;
-
 export class BattleActionMenuStack {
   private readonly panelStates = new Map<string, PanelState>();
   private layout: ActionMenuStackLayout = {
@@ -182,9 +191,6 @@ export class BattleActionMenuStack {
     slideDistance: 26
   };
   private typography: ActionMenuStackTypography = {
-    titleFontSize: 20,
-    entryFontSize: 14,
-    bodyFontSize: 12,
     rowHeight: 28
   };
   private descriptors: ActionMenuPanelDescriptor[] = [];
@@ -383,16 +389,8 @@ export class BattleActionMenuStack {
       targetAlpha: 0,
       order: this.panelStates.size,
       targetActive: false,
-      titleText: this.createText({
-        fontSize: '20px',
-        fontStyle: 'bold',
-        color: '#fff3da'
-      }),
-      bodyText: this.createText({
-        fontSize: '12px',
-        color: '#d9c7a8',
-        lineSpacing: 4
-      }),
+      titleText: this.createText(UI_TEXT_TITLE),
+      bodyText: this.createText(UI_TEXT_BODY),
       entryButtons: []
     };
 
@@ -413,10 +411,7 @@ export class BattleActionMenuStack {
   }
 
   private createText(style: Phaser.Types.GameObjects.Text.TextStyle): Phaser.GameObjects.Text {
-    const text = this.scene.add.text(0, 0, '', {
-      fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
-      ...style
-    });
+    const text = this.scene.add.text(0, 0, '', style);
 
     text.setScrollFactor(0).setDepth(BASE_DEPTH + 1).setVisible(false);
     this.options.onCreateObject?.(text);
@@ -493,13 +488,20 @@ export class BattleActionMenuStack {
       const bounds = this.getDisplayedBounds(state);
       const visible = state.alpha > 0.01;
       const accentColor =
-        descriptor.accentColor ?? (state.order === 0 ? ROOT_ACCENT : CHILD_ACCENT);
+        descriptor.accentColor ?? (state.order === 0 ? UI_COLOR_ACCENT_WARM : UI_COLOR_ACCENT_COOL);
       const depthBase = BASE_DEPTH + state.order * 8;
 
       state.graphics.clear().setDepth(depthBase).setVisible(visible);
 
       if (visible) {
-        this.drawPanelShell(state.graphics, bounds, state.alpha, 40, state.order === 0 ? 18 : 16, accentColor);
+        this.drawPanelShell(
+          state.graphics,
+          bounds,
+          state.alpha,
+          UI_PLAQUE_HEADER_HEIGHT,
+          state.order === 0 ? 18 : 16,
+          accentColor
+        );
 
         if (descriptor.kind === 'list') {
           this.drawEntries(state, bounds, descriptor, state.alpha, state.order === 0);
@@ -528,7 +530,6 @@ export class BattleActionMenuStack {
         enabled: entry.enabled,
         isRootPanel,
         label: entry.label,
-        fontSize: this.typography.entryFontSize,
         depth: BASE_DEPTH + 2 + state.order * 8,
         visible: true
       });
@@ -547,10 +548,12 @@ export class BattleActionMenuStack {
     }
 
     const depthBase = BASE_DEPTH + 1 + state.order * 8;
+    const contentBounds = BattleUiChrome.getContentBounds(bounds);
+    const contentGrid = createUiSubGrid(contentBounds, 1, 0, 0, UI_PANEL_TIGHT_GAP);
     state.titleText
       .setText(descriptor.title)
-      .setFontSize(this.typography.titleFontSize)
-      .setPosition(bounds.x + 14, bounds.y + 12)
+      .setOrigin(0, 0.5)
+      .setPosition(bounds.x + UI_PANEL_HEADER_INSET, BattleUiChrome.getHeaderCenterY(bounds))
       .setAlpha(alpha)
       .setDepth(depthBase)
       .setVisible(visible);
@@ -558,9 +561,9 @@ export class BattleActionMenuStack {
     if (descriptor.kind === 'detail') {
       state.bodyText
         .setText(descriptor.body ?? '')
-        .setFontSize(this.typography.bodyFontSize)
-        .setWordWrapWidth(bounds.width - 28, true)
-        .setPosition(bounds.x + 18, bounds.y + 52)
+        .setOrigin(0, 0)
+        .setWordWrapWidth(contentGrid.content.width, true)
+        .setPosition(contentGrid.content.x, contentGrid.content.y)
         .setAlpha(alpha)
         .setDepth(depthBase + 1)
         .setVisible(visible);
@@ -588,12 +591,9 @@ export class BattleActionMenuStack {
   }
 
   private getEntryBounds(bounds: Phaser.Geom.Rectangle, index: number): Phaser.Geom.Rectangle {
-    return new Phaser.Geom.Rectangle(
-      bounds.x + 10,
-      bounds.y + 50 + index * this.typography.rowHeight,
-      bounds.width - 20,
-      this.typography.rowHeight
-    );
+    const contentBounds = BattleUiChrome.getContentBounds(bounds);
+    const contentGrid = createUiSubGrid(contentBounds, 1, 0, 0, UI_PANEL_TIGHT_GAP);
+    return contentGrid.band(contentGrid.content.y + index * this.typography.rowHeight, this.typography.rowHeight);
   }
 
   private drawPanelShell(
@@ -604,23 +604,14 @@ export class BattleActionMenuStack {
     radius: number,
     accentColor: number
   ): void {
-    graphics.fillStyle(SHADOW_COLOR, 0.32 * alpha);
-    graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
-    graphics.fillStyle(PANEL_OUTER_COLOR, 0.96 * alpha);
-    graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    graphics.fillStyle(PANEL_INNER_COLOR, 0.96 * alpha);
-    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    graphics.fillStyle(accentColor, 0.54 * alpha);
-    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
-    graphics.fillStyle(accentColor, 0.24 * alpha);
-    graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
-    graphics.fillStyle(0xf4ddb0, 0.08 * alpha);
-    graphics.fillRoundedRect(panel.x + 18, panel.y + 9, panel.width - 36, 6, 3);
-    graphics.lineStyle(2, PANEL_STROKE, 0.42 * alpha);
-    graphics.strokeRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    graphics.lineStyle(1, accentColor, 0.34 * alpha);
-    graphics.strokeRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    graphics.lineStyle(1, accentColor, 0.24 * alpha);
-    graphics.lineBetween(panel.x + 18, panel.y + headerHeight, panel.right - 18, panel.y + headerHeight);
+    BattleUiChrome.drawPlaqueShell(graphics, panel, {
+      accentColor,
+      alpha,
+      headerHeight,
+      radius,
+      headerAlpha: 0.54,
+      sideRuleAlpha: 0.24,
+      dividerAlpha: 0.24
+    });
   }
 }
