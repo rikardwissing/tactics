@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { DEFAULT_UNIT_IMAGE_KEY } from '../../assets';
 import { BattleUnit } from '../../core/types';
 import {
   UI_COLOR_ACCENT_COOL,
@@ -110,7 +111,7 @@ export class TurnOrderPanel {
         .setBlendMode(Phaser.BlendModes.ADD);
 
       const avatar = scene.add
-        .image(origin.x, origin.y, 'holy-knight')
+        .image(origin.x, origin.y, DEFAULT_UNIT_IMAGE_KEY)
         .setOrigin(0, 0)
         .setVisible(false);
       const avatarMaskShape = scene.make.graphics({ x: origin.x, y: origin.y }, false);

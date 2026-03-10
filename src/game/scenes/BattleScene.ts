@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { DEFAULT_UNIT_IMAGE_KEY } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
@@ -6,6 +7,7 @@ import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
 import { AttackStyle, BattleUnit, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
 import { createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
+import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
 import { ActionMenuPanelDescriptor, BattleActionMenuStack } from './components/BattleActionMenuStack';
 import {
@@ -229,6 +231,7 @@ type PropRenderConfig = {
   height: number;
   minWidth: number;
   offsetX?: number;
+  groundOffsetY?: number;
   baseFill: number;
   baseAlpha: number;
   rim: number;
@@ -259,6 +262,7 @@ const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
     height: 88,
     minWidth: 44,
     offsetX: -3,
+    groundOffsetY: 11,
     baseFill: 0x2c2118,
     baseAlpha: 0.1,
     rim: 0x7f5f32,
@@ -276,6 +280,7 @@ const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
   'sanctum-brazier': {
     height: 80,
     minWidth: 60,
+    groundOffsetY: 21,
     baseFill: 0x2f2118,
     baseAlpha: 0.12,
     rim: 0x8c6535,
@@ -630,8 +635,8 @@ export class BattleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize(this.scale.gameSize);
 
-    this.pushLog('Dawn Company engages the Ashen Host on the ruined ridge.');
-    this.pushLog('Take the crest and cut down the enemy casters first.');
+    this.pushLog(`${this.getFactionDisplayNameForTeam('player')} and ${this.getFactionDisplayNameForTeam('enemy')} clash on the ruined ridge.`);
+    this.pushLog('Take the crest and break the enemy line before they close around the altar.');
     this.refreshUi();
     this.startMapTitleSequence();
 
@@ -1656,7 +1661,7 @@ export class BattleScene extends Phaser.Scene {
     this.activeBadge.setOrigin(0, 0.5);
 
     this.portrait = this.add
-      .image(0, 0, 'holy-knight')
+      .image(0, 0, DEFAULT_UNIT_IMAGE_KEY)
       .setVisible(false)
       .setScale(0.24);
 
@@ -2978,6 +2983,7 @@ export class BattleScene extends Phaser.Scene {
     const point = this.isoToScreen(tile);
     const config = PROP_RENDER_CONFIG[prop.assetId];
     const imageX = point.x + (config.offsetX ?? 0);
+    const groundOffsetY = config.groundOffsetY ?? (TILE_HEIGHT / 2 + 2);
     const basePoints = this.scaleTilePolygon(this.getTileTopPoints(tile), point, 0.98);
 
     view.base.clear();
@@ -2987,13 +2993,13 @@ export class BattleScene extends Phaser.Scene {
     view.base.strokePoints(basePoints, true, true);
     view.base.setDepth(this.getPropBaseDepth(tile));
 
-    const imageY = point.y + TILE_HEIGHT / 2 + 2;
+    const imageY = point.y + groundOffsetY;
     view.image.setPosition(imageX, imageY);
     view.image.setDepth(this.getPropDepth(tile));
     view.shadowOverlay?.setDepth(this.getPropDepth(tile) + 0.05);
 
     if (view.groundGlow && view.haloGlow && config.light) {
-      view.groundGlow.setPosition(point.x, point.y + TILE_HEIGHT / 2 - 2);
+      view.groundGlow.setPosition(point.x, point.y + groundOffsetY - 2);
       view.haloGlow.setPosition(imageX, imageY - config.light.sourceOffsetY);
     }
 
@@ -5338,7 +5344,7 @@ export class BattleScene extends Phaser.Scene {
         0,
         result === 'Victory'
           ? 'The chapel ridge is yours.\nTap or click to battle again.'
-          : 'The Ashen Host holds the altar.\nTap or click to try again.',
+          : `The altar falls to ${this.getFactionDisplayNameForTeam('enemy')}.\nTap or click to try again.`,
         UI_TEXT_BODY_CENTER
       )
       .setOrigin(0.5)
@@ -5658,7 +5664,7 @@ export class BattleScene extends Phaser.Scene {
     if (inspectionUnit) {
       return {
         badgeText: inspectionUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT',
-        metaText: `${inspectionUnit.team === 'player' ? 'Dawn Company' : 'Ashen Host'}  •  ${inspectionUnit.className}`,
+        metaText: `${getFactionProfile(inspectionUnit.factionId).displayName}  •  ${inspectionUnit.className}`,
         titleText: inspectionUnit.name,
         bodyText: this.getInspectionUnitBodyText(inspectionUnit, commandFocusUnit?.id === inspectionUnit.id),
         statValues: [
@@ -5801,6 +5807,11 @@ export class BattleScene extends Phaser.Scene {
     }
 
     return [unit.attackName, unit.attackText].join('\n');
+  }
+
+  private getFactionDisplayNameForTeam(team: BattleUnit['team']): string {
+    const unit = this.units.find((candidate) => candidate.team === team);
+    return unit ? getFactionProfile(unit.factionId).displayName : team === 'player' ? 'Allied Forces' : 'Hostile Forces';
   }
 
   private getInspectionUnit(): BattleUnit | null {

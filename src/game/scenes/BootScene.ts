@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { IMAGE_ASSETS } from '../assets';
+import { AUDIO_ASSETS, IMAGE_ASSETS } from '../assets';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -9,6 +9,10 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     for (const asset of IMAGE_ASSETS) {
       this.load.image(asset.key, asset.url);
+    }
+
+    for (const asset of AUDIO_ASSETS) {
+      this.load.audio(asset.key, asset.url);
     }
   }
 

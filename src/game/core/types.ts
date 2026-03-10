@@ -1,6 +1,28 @@
 import { ItemId } from './items';
 
 export type Team = 'player' | 'enemy';
+export type FactionId = 'time-travelers' | 'myrmidons' | 'the-order' | 'children-of-the-prophecy';
+export type UnitRoleId =
+  | 'aion-trooper'
+  | 'rift-engineer'
+  | 'chronomedic'
+  | 'scavenger-marksman'
+  | 'paradox-warden'
+  | 'tide-legionary'
+  | 'hunter'
+  | 'spectre'
+  | 'brine-shaper'
+  | 'reef-champion'
+  | 'house-marshal'
+  | 'squire-operative'
+  | 'banner-surgeon'
+  | 'relic-marksman'
+  | 'palatine-enforcer'
+  | 'aevum-guardian'
+  | 'mirage-seer'
+  | 'sand-strider'
+  | 'memory-keeper'
+  | 'oracle-lancer';
 export type TerrainType = 'grass' | 'stone' | 'moss' | 'sanctum';
 export type IdleStyle = 'knight' | 'archer' | 'mage' | 'warden' | 'ranger' | 'priest';
 export type AbilityKind = 'attack' | 'heal' | 'steal';
@@ -23,6 +45,17 @@ export interface TileData extends Point {
   terrain: TerrainType;
 }
 
+export interface FactionProfile {
+  id: FactionId;
+  displayName: string;
+  motto: string;
+  summary: string;
+  palette: readonly string[];
+  techLanguage: string;
+  materialLanguage: string;
+  sourceArtPaths: readonly string[];
+}
+
 export interface UnitAbility {
   id: string;
   name: string;
@@ -39,6 +72,8 @@ export interface UnitAbility {
 
 export interface UnitBlueprint {
   id: string;
+  factionId: FactionId;
+  roleId: UnitRoleId;
   name: string;
   className: string;
   team: Team;

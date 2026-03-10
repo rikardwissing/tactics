@@ -69,12 +69,12 @@
         {
           "height": 32,
           "id": 1,
-          "name": "Alden Spawn",
+          "name": "House Marshal Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "alden"
+              "value": "the-order-house-marshal"
             }
           ],
           "rotation": 0,
@@ -87,12 +87,12 @@
         {
           "height": 32,
           "id": 2,
-          "name": "Mira Spawn",
+          "name": "Squire Operative Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "mira"
+              "value": "the-order-squire-operative"
             }
           ],
           "rotation": 0,
@@ -105,12 +105,12 @@
         {
           "height": 32,
           "id": 3,
-          "name": "Serin Spawn",
+          "name": "Banner Surgeon Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "serin"
+              "value": "the-order-banner-surgeon"
             }
           ],
           "rotation": 0,
@@ -123,12 +123,12 @@
         {
           "height": 32,
           "id": 4,
-          "name": "Vark Spawn",
+          "name": "Tide Legionary Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "vark"
+              "value": "myrmidons-tide-legionary"
             }
           ],
           "rotation": 0,
@@ -141,12 +141,12 @@
         {
           "height": 32,
           "id": 5,
-          "name": "Nyx Spawn",
+          "name": "Hunter Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "nyx"
+              "value": "myrmidons-hunter"
             }
           ],
           "rotation": 0,
@@ -159,12 +159,12 @@
         {
           "height": 32,
           "id": 6,
-          "name": "Sable Spawn",
+          "name": "Spectre Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "sable"
+              "value": "myrmidons-spectre"
             }
           ],
           "rotation": 0,
@@ -485,7 +485,7 @@
     {
       "name": "objective",
       "type": "string",
-      "value": "Drive the Ashen Host from the ridge before they encircle the altar."
+      "value": "Drive the Myrmidons from the ridge before they encircle the altar."
     },
     {
       "name": "shortObjective",
@@ -510,7 +510,7 @@
     {
       "name": "titleFlavor",
       "type": "string",
-      "value": "Reclaim the altar ridge before the gravebound line closes."
+      "value": "Secure the altar ridge before the deepborn line closes."
     }
   ],
   "renderorder": "right-down",
