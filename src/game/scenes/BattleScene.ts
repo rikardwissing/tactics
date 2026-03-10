@@ -51,9 +51,7 @@ import {
   UI_TEXT_DAMAGE_CRITICAL,
   UI_TEXT_DISPLAY_CENTER,
   UI_TEXT_LABEL,
-  UI_TEXT_LABEL_CENTER,
   UI_TEXT_TITLE,
-  UI_TEXT_TITLE_CENTER,
   UI_TEXT_WORLD_BARK,
   UI_TEXT_WORLD_LABEL
 } from './components/UiTextStyles';
@@ -393,6 +391,7 @@ export class BattleScene extends Phaser.Scene {
   private terrainTileImages: Phaser.GameObjects.Image[] = [];
   private wallGraphics: Phaser.GameObjects.Graphics[] = [];
   private highlightOverlays: Phaser.GameObjects.Graphics[] = [];
+  private introOverlayShade!: Phaser.GameObjects.Rectangle;
   private uiGraphics!: Phaser.GameObjects.Graphics;
   private actionMenuStack!: BattleActionMenuStack;
   private turnOrderPanel!: TurnOrderPanel;
@@ -401,6 +400,8 @@ export class BattleScene extends Phaser.Scene {
   private mapPlaqueMetaText!: Phaser.GameObjects.Text;
   private mapObjectiveTagText!: Phaser.GameObjects.Text;
   private mapObjectiveText!: Phaser.GameObjects.Text;
+  private mapIntroArt!: Phaser.GameObjects.Image;
+  private mapIntroArtMask!: Phaser.GameObjects.Graphics;
   private mapIntroEyebrowText!: Phaser.GameObjects.Text;
   private mapIntroTitleText!: Phaser.GameObjects.Text;
   private mapIntroMetaText!: Phaser.GameObjects.Text;
@@ -457,6 +458,10 @@ export class BattleScene extends Phaser.Scene {
   private pendingFactionMottoId: FactionId | null = null;
   private factionMottoSound: Phaser.Sound.BaseSound | null = null;
   private mapIntroBounds = new Phaser.Geom.Rectangle();
+  private mapIntroArtBounds = new Phaser.Geom.Rectangle();
+  private mapIntroArtImageBounds = new Phaser.Geom.Rectangle();
+  private mapIntroTextBounds = new Phaser.Geom.Rectangle();
+  private mapIntroEyebrowBounds = new Phaser.Geom.Rectangle();
   private mapObjectiveBoxBounds = new Phaser.Geom.Rectangle();
   private detailBodyBoxBounds = new Phaser.Geom.Rectangle();
   private detailHealthBarBounds = new Phaser.Geom.Rectangle();
@@ -621,6 +626,9 @@ export class BattleScene extends Phaser.Scene {
     this.boardGraphics = this.add.graphics();
     this.lightShadowGraphics = this.add.graphics();
     this.highlightGraphics = this.add.graphics();
+    this.introOverlayShade = this.add
+      .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, UI_COLOR_OVERLAY, 0)
+      .setScrollFactor(0);
     this.uiGraphics = this.add.graphics();
     this.actionMenuStack = new BattleActionMenuStack(this, {
       onCreateObject: (object) => {
@@ -630,6 +638,7 @@ export class BattleScene extends Phaser.Scene {
     this.boardGraphics.setDepth(40);
     this.lightShadowGraphics.setDepth(45);
     this.highlightGraphics.setDepth(90);
+    this.introOverlayShade.setDepth(91);
     this.uiGraphics.setDepth(860).setScrollFactor(0);
     this.ambientOverlay = this.add
       .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x102746, 0)
@@ -1054,6 +1063,7 @@ export class BattleScene extends Phaser.Scene {
       this.mapPlaqueMetaText,
       this.mapObjectiveTagText,
       this.mapObjectiveText,
+      this.mapIntroArtMask,
       this.mapIntroEyebrowText,
       this.mapIntroTitleText,
       this.mapIntroMetaText,
@@ -1673,13 +1683,17 @@ export class BattleScene extends Phaser.Scene {
 
     this.mapObjectiveText = this.add.text(0, 0, this.level.objective, UI_TEXT_BODY);
 
-    this.mapIntroEyebrowText = this.add.text(0, 0, '', UI_TEXT_LABEL_CENTER).setOrigin(0.5, 0);
+    this.mapIntroArt = this.add.image(0, 0, 'title-backdrop').setOrigin(0.5).setVisible(false);
+    this.mapIntroArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
+    this.mapIntroArt.setMask(this.mapIntroArtMask.createGeometryMask());
 
-    this.mapIntroTitleText = this.add.text(0, 0, this.level.name, UI_TEXT_TITLE_CENTER).setOrigin(0.5, 0);
+    this.mapIntroEyebrowText = this.add.text(0, 0, '', UI_TEXT_LABEL).setOrigin(0, 0.5);
 
-    this.mapIntroMetaText = this.add.text(0, 0, '', UI_TEXT_BODY_CENTER).setOrigin(0.5, 0);
+    this.mapIntroTitleText = this.add.text(0, 0, this.level.name, UI_TEXT_TITLE).setOrigin(0, 0);
 
-    this.mapIntroFlavorText = this.add.text(0, 0, '', UI_TEXT_BODY_CENTER).setOrigin(0.5, 0);
+    this.mapIntroMetaText = this.add.text(0, 0, '', UI_TEXT_BODY).setOrigin(0, 0);
+
+    this.mapIntroFlavorText = this.add.text(0, 0, '', UI_TEXT_BODY).setOrigin(0, 0);
 
     this.logLabelText = this.add.text(0, 0, 'BATTLE LOG', UI_TEXT_LABEL);
 
@@ -1733,6 +1747,8 @@ export class BattleScene extends Phaser.Scene {
       this.mapPlaqueMetaText,
       this.mapObjectiveTagText,
       this.mapObjectiveText,
+      this.mapIntroArt,
+      this.mapIntroArtMask,
       this.mapIntroEyebrowText,
       this.mapIntroTitleText,
       this.mapIntroMetaText,
@@ -1791,6 +1807,9 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(width / 2, height / 2)
       .setDisplaySize(width * 1.18, height * 1.18);
     this.backdropShade
+      .setPosition(width / 2, height / 2)
+      .setSize(width * 1.22, height * 1.22);
+    this.introOverlayShade
       .setPosition(width / 2, height / 2)
       .setSize(width * 1.22, height * 1.22);
     this.ambientOverlay
@@ -2237,41 +2256,99 @@ export class BattleScene extends Phaser.Scene {
     const hudVisible = this.battleIntroPhase === 'hud';
     const controlPaddingX = 12;
     const controlPaddingY = 6;
-    const introMargin = UI_SCREEN_MARGIN;
-    const introMaxWidth = width <= 640 ? width - introMargin * 2 : 460;
-    const introWidth = Phaser.Math.Clamp(width - introMargin * 2, 280, introMaxWidth);
-    const introInnerWidth = Math.max(180, introWidth - UI_PANEL_CONTENT_INSET * 2 - UI_PANEL_GAP);
-    const introY = Math.max(22, Math.round(height * 0.1));
+    const introMargin = width <= 540 ? 18 : 28;
+    const portraitIntro = height >= width;
+    const shortLandscapeIntro = width > height && height < 620;
+    const introTextInsetX = 18;
+    const introTextInsetY = 18;
+    const introTextGap = UI_PANEL_TIGHT_GAP;
+    const introGap = portraitIntro ? 12 : 18;
+    const introGroupWidth = Phaser.Math.Clamp(
+      width - introMargin * 2,
+      320,
+      portraitIntro ? 400 : shortLandscapeIntro ? 760 : 900
+    );
+    const introArtWidth = portraitIntro
+      ? introGroupWidth
+      : Phaser.Math.Clamp(Math.round(introGroupWidth * (shortLandscapeIntro ? 0.6 : 0.62)), 420, 600);
+    const introArtHeight = portraitIntro
+      ? Phaser.Math.Clamp(Math.round(height * 0.24), 168, 208)
+      : shortLandscapeIntro
+        ? 164
+        : 196;
+    const introTextWidth = portraitIntro
+      ? Math.min(introArtWidth - 24, 360)
+      : Phaser.Math.Clamp(introGroupWidth - introArtWidth - introGap, 270, 340);
+    const introTextInnerWidth = Math.max(180, introTextWidth - introTextInsetX * 2);
 
-    this.mapIntroMetaText.setWordWrapWidth(introInnerWidth, true);
-    this.mapIntroFlavorText.setWordWrapWidth(introInnerWidth, true);
+    this.mapIntroMetaText.setWordWrapWidth(introTextInnerWidth, true);
+    this.mapIntroFlavorText.setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
 
-    const introHeight = Math.ceil(
-      UI_PLAQUE_HEADER_HEIGHT +
-      UI_PANEL_CONTENT_INSET +
-      this.mapIntroEyebrowText.height +
-      UI_PANEL_MICRO_GAP +
+    const eyebrowWidth = Phaser.Math.Clamp(this.mapIntroEyebrowText.width + 28, 132, introTextInnerWidth);
+    const eyebrowHeight = Math.max(24, this.mapIntroEyebrowText.height + 10);
+    const summaryBoxHeight = Math.max(34, this.mapIntroFlavorText.height + UI_PANEL_COMPACT_INSET * 2);
+    const introTextHeight = Math.ceil(
+      introTextInsetY +
+      eyebrowHeight +
+      introTextGap +
       this.mapIntroTitleText.height +
-      UI_PANEL_GAP +
+      UI_PANEL_MICRO_GAP +
       this.mapIntroMetaText.height +
-      UI_PANEL_COMPACT_GAP +
-      this.mapIntroFlavorText.height +
-      UI_PANEL_CONTENT_INSET
+      UI_PANEL_GAP +
+      summaryBoxHeight +
+      introTextInsetY
+    );
+    const introGroupHeight = portraitIntro
+      ? introArtHeight + introGap + introTextHeight
+      : Math.max(introArtHeight, introTextHeight);
+    const introTop = Phaser.Math.Clamp(
+      Math.round(height * (portraitIntro ? 0.11 : 0.14)) + this.mapIntroOffsetY,
+      36 + this.mapIntroOffsetY,
+      Math.max(36 + this.mapIntroOffsetY, height - introGroupHeight - 48)
+    );
+    const introLeft = Math.round((width - introGroupWidth) * 0.5);
+
+    if (portraitIntro) {
+      this.mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
+      this.mapIntroTextBounds.setTo(
+        Math.round((width - introTextWidth) * 0.5),
+        this.mapIntroArtBounds.bottom + introGap,
+        introTextWidth,
+        introTextHeight
+      );
+    } else {
+      this.mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
+      this.mapIntroTextBounds.setTo(
+        this.mapIntroArtBounds.right + introGap,
+        Math.round(introTop + Math.max(0, (introArtHeight - introTextHeight) * 0.5)),
+        introTextWidth,
+        introTextHeight
+      );
+    }
+
+    const introGroupLeft = Math.min(this.mapIntroArtBounds.x, this.mapIntroTextBounds.x);
+    const introGroupTop = Math.min(this.mapIntroArtBounds.y, this.mapIntroTextBounds.y);
+    const introGroupRight = Math.max(this.mapIntroArtBounds.right, this.mapIntroTextBounds.right);
+    const introGroupBottom = Math.max(this.mapIntroArtBounds.bottom, this.mapIntroTextBounds.bottom);
+    this.mapIntroArtImageBounds.setTo(
+      this.mapIntroArtBounds.x,
+      this.mapIntroArtBounds.y,
+      this.mapIntroArtBounds.width,
+      this.mapIntroArtBounds.height
+    );
+    this.mapIntroBounds.setTo(
+      introGroupLeft,
+      introGroupTop,
+      introGroupRight - introGroupLeft,
+      introGroupBottom - introGroupTop
     );
 
-    this.mapIntroBounds.setTo(
-      Math.round((width - introWidth) / 2),
-      Math.max(introY, this.playAreaRect.y + 18),
-      introWidth,
-      introHeight
-    );
-    const introTop = this.mapIntroBounds.y + this.mapIntroOffsetY;
-    const introGrid = createUiSubGrid(
-      new Phaser.Geom.Rectangle(this.mapIntroBounds.x, introTop, this.mapIntroBounds.width, this.mapIntroBounds.height),
+    const introTextGrid = createUiSubGrid(
+      this.mapIntroTextBounds,
       1,
-      UI_PANEL_CONTENT_INSET + UI_PANEL_MINI_GAP,
-      UI_PANEL_CONTENT_INSET,
-      UI_PANEL_GAP
+      introTextInsetX,
+      introTextInsetY,
+      introTextGap
     );
     const headerPanel = new Phaser.Geom.Rectangle(
       this.headerRect.x + this.mapPlaqueOffsetX,
@@ -2343,29 +2420,69 @@ export class BattleScene extends Phaser.Scene {
         .setVisible(hudVisible && this.headerMenuOpen);
     }
 
-    const introEyebrowBand = introGrid.band(introGrid.content.y, this.mapIntroEyebrowText.height);
-    const introTitleBand = introGrid.band(introEyebrowBand.bottom + UI_PANEL_MICRO_GAP, this.mapIntroTitleText.height);
-    const introMetaBand = introGrid.band(introTitleBand.bottom + UI_PANEL_GAP, this.mapIntroMetaText.height);
-    const introFlavorBand = introGrid.band(introMetaBand.bottom + UI_PANEL_COMPACT_GAP, this.mapIntroFlavorText.height);
+    this.mapIntroEyebrowBounds.setTo(
+      introTextGrid.content.x,
+      introTextGrid.content.y,
+      eyebrowWidth,
+      eyebrowHeight
+    );
+    const introTitleBand = introTextGrid.band(this.mapIntroEyebrowBounds.bottom + introTextGap, this.mapIntroTitleText.height);
+    const introMetaBand = introTextGrid.band(introTitleBand.bottom + UI_PANEL_MICRO_GAP, this.mapIntroMetaText.height);
+    this.mapObjectiveBoxBounds.setTo(
+      introTextGrid.content.x,
+      introMetaBand.bottom + UI_PANEL_GAP,
+      introTextGrid.content.width,
+      summaryBoxHeight
+    );
+    const introFlavorBand = introTextGrid.band(
+      this.mapObjectiveBoxBounds.y + UI_PANEL_COMPACT_INSET,
+      this.mapIntroFlavorText.height
+    );
+
+    const introFrame = this.mapIntroArt.frame;
+    if (introFrame) {
+      const artVisible = this.mapIntroAlpha > 0.01;
+      this.mapIntroArt
+        .setCrop(0, 0, introFrame.width, introFrame.height)
+        .setDisplaySize(this.mapIntroArtImageBounds.width, this.mapIntroArtImageBounds.height)
+        .setPosition(this.mapIntroArtImageBounds.centerX, this.mapIntroArtImageBounds.centerY)
+        .setAlpha(this.mapIntroAlpha)
+        .setTint(0xffffff)
+        .setVisible(artVisible);
+      this.mapIntroArtMask.clear();
+      this.mapIntroArtMask.setPosition(this.mapIntroArtImageBounds.x, this.mapIntroArtImageBounds.y);
+      this.mapIntroArtMask.fillStyle(0xffffff, 1);
+      this.mapIntroArtMask.fillRoundedRect(
+        0,
+        0,
+        this.mapIntroArtImageBounds.width,
+        this.mapIntroArtImageBounds.height,
+        24
+      );
+    }
 
     this.mapIntroEyebrowText
-      .setPosition(introEyebrowBand.centerX, introEyebrowBand.y)
+      .setOrigin(0, 0.5)
+      .setPosition(this.mapIntroEyebrowBounds.x + 14, this.mapIntroEyebrowBounds.centerY)
       .setAlpha(this.mapIntroAlpha)
       .setVisible(introVisible);
     this.mapIntroTitleText
-      .setPosition(introTitleBand.centerX, introTitleBand.y)
+      .setOrigin(0, 0)
+      .setPosition(introTextGrid.content.x, introTitleBand.y)
       .setAlpha(this.mapIntroAlpha)
       .setVisible(introVisible);
     this.mapIntroMetaText
-      .setPosition(introMetaBand.centerX, introMetaBand.y)
+      .setOrigin(0, 0)
+      .setPosition(introTextGrid.content.x, introMetaBand.y)
       .setAlpha(this.mapIntroAlpha)
       .setVisible(introVisible)
-      .setWordWrapWidth(introGrid.content.width - UI_PANEL_GAP, true);
+      .setWordWrapWidth(introTextInnerWidth, true);
     this.mapIntroFlavorText
-      .setPosition(introFlavorBand.centerX, introFlavorBand.y)
+      .setOrigin(0, 0)
+      .setPosition(this.mapObjectiveBoxBounds.x + UI_PANEL_COMPACT_INSET, introFlavorBand.y)
       .setAlpha(this.mapIntroAlpha)
       .setVisible(introVisible)
-      .setWordWrapWidth(introGrid.content.width - UI_PANEL_CONTENT_INSET, true);
+      .setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
   }
 
   private startMapTitleSequence(): void {
@@ -2449,8 +2566,8 @@ export class BattleScene extends Phaser.Scene {
     return (this.level.titlePrefix ?? this.level.encounterType ?? 'Battle Report').toUpperCase();
   }
 
-  private getMapIntroMeta(timeOfDayLabel: string): string {
-    const parts = [this.level.region, timeOfDayLabel, this.level.encounterType]
+  private getMapIntroMeta(): string {
+    const parts = [this.level.region, this.level.encounterType]
       .filter((value): value is string => Boolean(value));
     return parts.join('  •  ');
   }
@@ -5707,7 +5824,7 @@ export class BattleScene extends Phaser.Scene {
     this.mapObjectiveText.setText(this.level.shortObjective ?? this.level.objective).setVisible(false);
     this.mapIntroEyebrowText.setText(this.getMapIntroEyebrow());
     this.mapIntroTitleText.setText(this.level.name);
-    this.mapIntroMetaText.setText(this.getMapIntroMeta(timeOfDayLabel));
+    this.mapIntroMetaText.setText(this.getMapIntroMeta());
     this.mapIntroFlavorText.setText(this.getMapIntroSummary());
     this.headerMenuTitleText.setText('PAUSED');
     this.autoBattleToggleText.setText('MENU');
@@ -5868,27 +5985,70 @@ export class BattleScene extends Phaser.Scene {
 
   private drawMapTitleIntro(): void {
     if (this.mapIntroAlpha <= 0.01) {
+      this.mapIntroArt.setVisible(false);
+      this.introOverlayShade.setAlpha(0);
       return;
     }
 
-    const panel = new Phaser.Geom.Rectangle(
-      this.mapIntroBounds.x,
-      this.mapIntroBounds.y + this.mapIntroOffsetY,
-      this.mapIntroBounds.width,
-      this.mapIntroBounds.height
-    );
     const alpha = this.mapIntroAlpha;
 
-    BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
-      accentColor: UI_COLOR_ACCENT_WARM,
-      alpha,
-      headerHeight: UI_PLAQUE_HEADER_HEIGHT,
-      radius: 28,
-      headerAlpha: 0.68,
-      sideRuleAlpha: 0.12,
-      dividerAlpha: 0.2,
-      shineAlpha: 0.08
+    this.introOverlayShade.setFillStyle(UI_COLOR_OVERLAY, 0.44 * alpha);
+
+    BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapIntroArtBounds, {
+      fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+      fillAlpha: 0,
+      strokeAlpha: 0.3 * alpha,
+      radius: 24
     });
+    this.uiGraphics.fillStyle(UI_COLOR_OVERLAY, 0.02 * alpha);
+    this.uiGraphics.fillRoundedRect(
+      this.mapIntroArtBounds.x,
+      this.mapIntroArtBounds.bottom - Math.round(this.mapIntroArtBounds.height * 0.34),
+      this.mapIntroArtBounds.width,
+      Math.round(this.mapIntroArtBounds.height * 0.34),
+      0
+    );
+
+    this.uiGraphics.fillStyle(UI_COLOR_PANEL_SHADOW, 0.3 * alpha);
+    this.uiGraphics.fillRoundedRect(
+      this.mapIntroTextBounds.x + 8,
+      this.mapIntroTextBounds.y + 14,
+      this.mapIntroTextBounds.width,
+      this.mapIntroTextBounds.height,
+      24
+    );
+    BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapIntroTextBounds, {
+      fillColor: UI_COLOR_PANEL_SURFACE,
+      fillAlpha: 0.94 * alpha,
+      strokeAlpha: 0.26 * alpha,
+      radius: 22
+    });
+
+    this.uiGraphics.fillStyle(UI_COLOR_ACCENT_WARM, 0.3 * alpha);
+    this.uiGraphics.fillRoundedRect(
+      this.mapIntroTextBounds.x + 16,
+      this.mapIntroTextBounds.y + 16,
+      5,
+      this.mapIntroTextBounds.height - 32,
+      2
+    );
+
+    BattleUiChrome.drawPill(this.uiGraphics, this.mapIntroEyebrowBounds, {
+      fillColor: UI_COLOR_ACCENT_WARM,
+      strokeColor: UI_COLOR_PANEL_BORDER,
+      fillAlpha: 0.9 * alpha,
+      strokeAlpha: 0.34 * alpha,
+      radius: 14
+    });
+
+    if (this.mapObjectiveBoxBounds.width > 0 && this.mapObjectiveBoxBounds.height > 0) {
+      BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapObjectiveBoxBounds, {
+        fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+        fillAlpha: 0.92 * alpha,
+        strokeAlpha: 0.24 * alpha,
+        radius: UI_INSET_RADIUS
+      });
+    }
   }
 
   private drawDetailPlaque(focusUnit: BattleUnit | null): void {

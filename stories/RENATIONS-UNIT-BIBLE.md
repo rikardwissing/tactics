@@ -4,18 +4,19 @@ This document defines the phase 1 faction roster, the first playable slice, and 
 
 ## First Playable Slice
 
-- Player faction: The Order
+- Player faction: The Children of the Prophecy
 - Enemy faction: The Myrmidons
-- Current battle implementation: 3 vs 3 infantry-scale roster using renamed unit identities, and all six visible battle units now use approved Renations art
+- Current battle implementation: 3 vs 3 infantry-scale roster using renamed unit identities, with The Children of the Prophecy fielding the live player trio against The Myrmidons
 - Latest Myrmidon revisions: `Hunter` uses the approved squad-aligned remake derived from the current `Tide Legionary` and `Spectre`, and `Spectre` uses the approved ammo-belt-free remake
+- Latest Children revisions: `Aevum Guardian` uses the approved bare-chest staff remake based on the concept-closer version; `Memory Keeper` uses the approved identity-preserve support remake; `Mirage Seer` uses the approved Guardian-pixelation controller remake
 
 Current runtime mapping for the current prototype:
 
 | Runtime unit | Current runtime sprite asset |
 | --- | --- |
-| The Order House Marshal | `src/assets/game/units/the-order-house-marshal.png` |
-| The Order Squire Operative | `src/assets/game/units/the-order-squire-operative.png` |
-| The Order Banner Surgeon | `src/assets/game/units/the-order-banner-surgeon.png` |
+| The Children of the Prophecy Aevum Guardian | `src/assets/game/units/children-of-the-prophecy-aevum-guardian.png` |
+| The Children of the Prophecy Mirage Seer | `src/assets/game/units/children-of-the-prophecy-mirage-seer.png` |
+| The Children of the Prophecy Memory Keeper | `src/assets/game/units/children-of-the-prophecy-memory-keeper.png` |
 | The Myrmidons Tide Legionary | `src/assets/game/units/myrmidons-tide-legionary.png` |
 | The Myrmidons Hunter | `src/assets/game/units/myrmidons-hunter.png` |
 | The Myrmidons Spectre | `src/assets/game/units/myrmidons-spectre.png` |
@@ -26,6 +27,8 @@ Approved anchor assets promoted but not yet battle-integrated:
 - `src/assets/game/units/children-of-the-prophecy-aevum-guardian.png`
 - `src/assets/game/units/time-travelers-scavenger-marksman.png`
 - `src/assets/game/units/time-travelers-chronomedic.png`
+- `src/assets/game/units/children-of-the-prophecy-mirage-seer.png`
+- `src/assets/game/units/children-of-the-prophecy-memory-keeper.png`
 
 ## Factions
 

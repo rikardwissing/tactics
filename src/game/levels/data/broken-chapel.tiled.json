@@ -69,12 +69,12 @@
         {
           "height": 32,
           "id": 1,
-          "name": "Aion Trooper Spawn",
+          "name": "Aevum Guardian Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "time-travelers-aion-trooper"
+              "value": "children-of-the-prophecy-aevum-guardian"
             }
           ],
           "rotation": 0,
@@ -87,12 +87,12 @@
         {
           "height": 32,
           "id": 2,
-          "name": "Scavenger Marksman Spawn",
+          "name": "Mirage Seer Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "time-travelers-scavenger-marksman"
+              "value": "children-of-the-prophecy-mirage-seer"
             }
           ],
           "rotation": 0,
@@ -105,12 +105,12 @@
         {
           "height": 32,
           "id": 3,
-          "name": "Chronomedic Spawn",
+          "name": "Memory Keeper Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "time-travelers-chronomedic"
+              "value": "children-of-the-prophecy-memory-keeper"
             }
           ],
           "rotation": 0,

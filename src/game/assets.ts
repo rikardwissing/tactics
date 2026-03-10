@@ -14,6 +14,14 @@ const timeTravelersScavengerMarksman = new URL(
   import.meta.url
 ).href;
 const childrenOfTheProphecyAevumGuardian = new URL('../assets/game/units/children-of-the-prophecy-aevum-guardian.png', import.meta.url).href;
+const childrenOfTheProphecyMirageSeer = new URL(
+  '../assets/game/units/children-of-the-prophecy-mirage-seer.png',
+  import.meta.url
+).href;
+const childrenOfTheProphecyMemoryKeeper = new URL(
+  '../assets/game/units/children-of-the-prophecy-memory-keeper.png',
+  import.meta.url
+).href;
 const factionMottoTimeTravelers = new URL('../assets/game/voices/faction-motto-time-travelers.mp3', import.meta.url).href;
 const factionMottoMyrmidons = new URL('../assets/game/voices/faction-motto-myrmidons.mp3', import.meta.url).href;
 const factionMottoTheOrder = new URL('../assets/game/voices/faction-motto-the-order.mp3', import.meta.url).href;
@@ -56,6 +64,8 @@ export const IMAGE_ASSETS = [
   { key: 'time-travelers-chronomedic', url: timeTravelersChronomedic },
   { key: 'time-travelers-scavenger-marksman', url: timeTravelersScavengerMarksman },
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
+  { key: 'children-of-the-prophecy-mirage-seer', url: childrenOfTheProphecyMirageSeer },
+  { key: 'children-of-the-prophecy-memory-keeper', url: childrenOfTheProphecyMemoryKeeper },
   { key: 'the-order-breacher-strike', url: theOrderBreacherStrike },
   { key: 'the-order-relay-lance', url: theOrderRelayLance },
   { key: 'the-order-tracer-volley', url: theOrderTracerVolley },
