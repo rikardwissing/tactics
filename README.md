@@ -1,6 +1,6 @@
-# Crimson Tactics
+# RENATIONS Tactics
 
-A small fantasy tactics prototype built with Phaser 3, TypeScript, and Vite.
+RENATIONS Tactics is a moody fantasy tactics prototype built with Phaser 3, TypeScript, and Vite.
 
 The game is an isometric skirmish focused on elevation, turn order, movement, abilities, loot, lighting, and battlefield presentation. The current playable battle takes place on a ruined chapel ridge with controllable camera pan, zoom, rotation, time-of-day changes, and a menu-driven player turn flow.
 
@@ -109,5 +109,5 @@ The deployed site target is:
 
 ## Notes
 
-- The battle scene is large and renderer-heavy for a prototype. Production builds work, but bundle size is still on the heavy side.
+- The battle scene is large and renderer-heavy for the current prototype. Production builds work, but bundle size is still on the heavy side.
 - The current art and generation workflow rules are documented in [AGENTS.md](/Users/rikardwissing/Projects/tactics/AGENTS.md) and [SKILLS.md](/Users/rikardwissing/Projects/tactics/SKILLS.md).

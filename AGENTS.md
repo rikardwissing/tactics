@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project
-- `crimson-tactics` is a TypeScript + Vite + Phaser 3 tactics prototype.
+- `renations-tactics` is a TypeScript + Vite + Phaser 3 tactics prototype.
 - The main gameplay scene is [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
 - Runtime art belongs in [`src/assets/game`](src/assets/game), not in `output/`.
 

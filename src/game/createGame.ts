@@ -11,7 +11,7 @@ export function createGame(
     parent,
     width: initialSize.width,
     height: initialSize.height,
-    backgroundColor: '#12070d',
+    backgroundColor: '#14080d',
     pixelArt: true,
     render: {
       antialias: true,

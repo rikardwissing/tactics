@@ -1,6 +1,7 @@
 :root {
-  color: #f6ebc6;
-  background: #09070c;
+  color: #f6ebd6;
+  background:
+    radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
   font-family: "Palatino Linotype", "Book Antiqua", Baskerville, serif;
 }
 
@@ -22,7 +23,9 @@ body {
   min-height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
-  color: #f6ebc6;
+  color: #f6ebd6;
+  background:
+    radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
 }
 
 #app {
@@ -40,15 +43,37 @@ body {
   width: 100%;
   height: 100%;
   padding: 0;
-  background: transparent;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(204, 146, 92, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(42, 20, 25, 0.7) 0%, rgba(6, 4, 7, 0.88) 100%);
 }
 
 .game-shell::before {
-  content: none;
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 231, 190, 0.05), transparent 18%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 232, 199, 0.018) 0,
+      rgba(255, 232, 199, 0.018) 2px,
+      transparent 2px,
+      transparent 10px
+    );
+  opacity: 0.65;
 }
 
 .game-shell::after {
-  content: none;
+  content: "";
+  position: absolute;
+  inset: 14px;
+  pointer-events: none;
+  border: 1px solid rgba(224, 182, 116, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 240, 211, 0.04),
+    0 0 40px rgba(0, 0, 0, 0.18);
 }
 
 .game-root {
@@ -57,7 +82,7 @@ body {
   height: 100%;
   border-radius: 0;
   overflow: hidden;
-  background: transparent;
+  background: linear-gradient(180deg, rgba(23, 11, 16, 0.28), rgba(9, 6, 10, 0.08));
   touch-action: none;
   user-select: none;
   z-index: 0;

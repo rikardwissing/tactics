@@ -546,7 +546,7 @@ export class BattleScene extends Phaser.Scene {
   private resultOverlayShade?: Phaser.GameObjects.Rectangle;
   private resultOverlayTitle?: Phaser.GameObjects.Text;
   private resultOverlayBody?: Phaser.GameObjects.Text;
-  private rng = new Phaser.Math.RandomDataGenerator(['crimson-tactics']);
+  private rng = new Phaser.Math.RandomDataGenerator(['renations-tactics']);
 
   constructor() {
     super('battle');
