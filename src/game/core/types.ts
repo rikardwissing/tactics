@@ -92,6 +92,8 @@ export interface UnitBlueprint {
   attackName: string;
   attackText: string;
   spriteDisplayHeight: number;
+  spriteOffsetX?: number;
+  spriteOffsetY?: number;
   idleStyle: IdleStyle;
   attackStyle: AttackStyle;
   effectKey: CombatEffectId;

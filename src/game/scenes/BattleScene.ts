@@ -2143,7 +2143,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutDetailPanelSection(): void {
-    if (!this.showDetailPanel) {
+    if (!this.showDetailPanel || this.isBattleIntroActive()) {
       this.detailBodyBoxBounds.setTo(0, 0, 0, 0);
       this.detailHealthBarBounds.setTo(0, 0, 0, 0);
       for (const bounds of this.detailStatChipBounds) {
@@ -2248,14 +2248,28 @@ export class BattleScene extends Phaser.Scene {
 
   private layoutMapTitleSection(width: number, height: number): void {
     const introVisible = this.mapIntroAlpha > 0.01;
-    const headerInset = UI_PANEL_HEADER_INSET;
-    const introWidth = Phaser.Math.Clamp(
-      width * 0.58,
-      280,
-      520
+    const hudVisible = this.battleIntroPhase === 'hud';
+    const introMargin = UI_SCREEN_MARGIN;
+    const introMaxWidth = width <= 640 ? width - introMargin * 2 : 460;
+    const introWidth = Phaser.Math.Clamp(width - introMargin * 2, 280, introMaxWidth);
+    const introInnerWidth = Math.max(180, introWidth - UI_PANEL_CONTENT_INSET * 2 - UI_PANEL_GAP);
+    const introY = Math.max(22, Math.round(height * 0.1));
+
+    this.mapIntroMetaText.setWordWrapWidth(introInnerWidth, true);
+    this.mapIntroFlavorText.setWordWrapWidth(introInnerWidth, true);
+
+    const introHeight = Math.ceil(
+      UI_PLAQUE_HEADER_HEIGHT +
+      UI_PANEL_CONTENT_INSET +
+      this.mapIntroEyebrowText.height +
+      UI_PANEL_MICRO_GAP +
+      this.mapIntroTitleText.height +
+      UI_PANEL_GAP +
+      this.mapIntroMetaText.height +
+      UI_PANEL_COMPACT_GAP +
+      this.mapIntroFlavorText.height +
+      UI_PANEL_CONTENT_INSET
     );
-    const introHeight = 172;
-    const introY = Math.max(24, Math.round(height * 0.11));
 
     this.mapIntroBounds.setTo(
       Math.round((width - introWidth) / 2),
@@ -2271,32 +2285,40 @@ export class BattleScene extends Phaser.Scene {
       UI_PANEL_CONTENT_INSET,
       UI_PANEL_GAP
     );
-    const plaqueContentBounds = BattleUiChrome.getContentBounds(this.headerRect, 'narrow');
+    const headerPanel = new Phaser.Geom.Rectangle(
+      this.headerRect.x + this.mapPlaqueOffsetX,
+      this.headerRect.y,
+      this.headerRect.width,
+      this.headerRect.height
+    );
+    const plaqueContentBounds = BattleUiChrome.getContentBounds(headerPanel, 'narrow');
     const plaqueGrid = createUiSubGrid(plaqueContentBounds, 1, 0, 0, UI_PANEL_MINI_GAP);
 
     this.mapPlaqueEyebrowText
       .setPosition(plaqueContentBounds.x, plaqueContentBounds.y)
-      .setAlpha(1)
+      .setAlpha(this.mapPlaqueAlpha)
       .setVisible(false);
-    BattleUiChrome.layoutHeaderTitle(this.mapPlaqueTitleText, this.headerRect, 'narrow');
-    this.mapPlaqueTitleText.setAlpha(1).setVisible(true);
+    BattleUiChrome.layoutHeaderTitle(this.mapPlaqueTitleText, headerPanel, 'narrow');
+    this.mapPlaqueTitleText
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
     this.mapPlaqueMetaText
       .setPosition(plaqueGrid.content.x, plaqueGrid.content.y)
-      .setAlpha(1)
-      .setVisible(true);
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
     this.mapObjectiveText
       .setPosition(plaqueGrid.content.x, this.mapPlaqueMetaText.y + this.mapPlaqueMetaText.height + plaqueGrid.gutter)
       .setWordWrapWidth(plaqueGrid.content.width, true)
-      .setAlpha(1)
-      .setVisible(true);
+      .setAlpha(this.mapPlaqueAlpha)
+      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
     this.mapObjectiveTagText.setVisible(false);
     this.mapObjectiveBoxBounds.setTo(0, 0, 0, 0);
     this.autoBattleToggleBounds.setTo(0, 0, 0, 0);
     this.headerMenuButtonBounds.setTo(
-      this.headerRect.x,
-      this.headerRect.y,
-      this.headerRect.width,
-      this.headerRect.height
+      hudVisible ? headerPanel.x : 0,
+      hudVisible ? headerPanel.y : 0,
+      hudVisible ? headerPanel.width : 0,
+      hudVisible ? headerPanel.height : 0
     );
     this.autoBattleToggleText.setVisible(false);
     const menuPanelWidth = 248;
@@ -2312,7 +2334,7 @@ export class BattleScene extends Phaser.Scene {
     );
     const menuContentBounds = BattleUiChrome.getContentBounds(this.headerMenuPanelBounds, 'narrow');
     const menuGrid = createUiSubGrid(menuContentBounds, 1, 0, 0, optionGap);
-    BattleUiChrome.layoutHeaderTitle(this.headerMenuTitleText, this.headerMenuPanelBounds, 'narrow').setVisible(this.headerMenuOpen);
+    BattleUiChrome.layoutHeaderTitle(this.headerMenuTitleText, this.headerMenuPanelBounds, 'narrow').setVisible(hudVisible && this.headerMenuOpen);
 
     for (const [index, text] of this.headerMenuOptionTexts.entries()) {
       const optionBounds = this.headerMenuOptionBounds[index];
@@ -2321,7 +2343,7 @@ export class BattleScene extends Phaser.Scene {
       text
         .setPosition(optionBounds.x + UI_PANEL_COMPACT_INSET, optionBounds.centerY)
         .setOrigin(0, 0.5)
-        .setVisible(this.headerMenuOpen);
+        .setVisible(hudVisible && this.headerMenuOpen);
     }
 
     const introEyebrowBand = introGrid.band(introGrid.content.y, 18);
@@ -2350,6 +2372,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private startMapTitleSequence(): void {
+    this.battleIntroPhase = 'intro';
     this.mapIntroAlpha = 0;
     this.mapIntroOffsetY = 18;
     this.mapPlaqueAlpha = 0;
@@ -2372,17 +2395,28 @@ export class BattleScene extends Phaser.Scene {
             targets: this,
             mapIntroAlpha: 0,
             mapIntroOffsetY: -14,
-            mapPlaqueAlpha: 1,
-            mapPlaqueOffsetX: 0,
+            mapPlaqueAlpha: 0,
+            mapPlaqueOffsetX: -20,
             duration: MAP_TITLE_OUTRO_DURATION,
             ease: 'Cubic.easeInOut',
             onUpdate: () => this.applyMapTitlePresentation(),
             onComplete: () => {
               this.mapIntroAlpha = 0;
               this.mapIntroOffsetY = -14;
-              this.mapPlaqueAlpha = 1;
-              this.mapPlaqueOffsetX = 0;
-              this.applyMapTitlePresentation();
+              this.battleIntroPhase = 'hud';
+              this.tweens.add({
+                targets: this,
+                mapPlaqueAlpha: 1,
+                mapPlaqueOffsetX: 0,
+                duration: 220,
+                ease: 'Cubic.easeOut',
+                onUpdate: () => this.applyMapTitlePresentation(),
+                onComplete: () => {
+                  this.mapPlaqueAlpha = 1;
+                  this.mapPlaqueOffsetX = 0;
+                  this.applyMapTitlePresentation();
+                }
+              });
             }
           });
         });
@@ -2422,6 +2456,16 @@ export class BattleScene extends Phaser.Scene {
     const parts = [this.level.region, timeOfDayLabel, this.level.encounterType]
       .filter((value): value is string => Boolean(value));
     return parts.join('  •  ');
+  }
+
+  private getMapIntroSummary(): string {
+    const shortObjective = this.level.shortObjective ?? this.level.objective;
+    const flavor = this.level.titleFlavor?.trim() ?? '';
+    if (!flavor) {
+      return shortObjective;
+    }
+
+    return flavor.length <= shortObjective.length ? flavor : shortObjective;
   }
 
   private layoutHudControls(margin: number, width: number, height: number): void {
@@ -2540,6 +2584,7 @@ export class BattleScene extends Phaser.Scene {
       const sprite = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
       sprite.displayHeight = unit.spriteDisplayHeight;
       sprite.scaleX = sprite.scaleY;
+      sprite.setPosition(unit.spriteOffsetX ?? 0, unit.spriteOffsetY ?? 0);
 
       const hpBack = this.add.rectangle(0, sprite.y - unit.spriteDisplayHeight - 12, 60, 8, 0x12070d, 0.92);
       const hpFill = this.add.rectangle(-29, sprite.y - unit.spriteDisplayHeight - 12, 56, 4, 0x65d99e, 1).setOrigin(0, 0.5);
@@ -3694,20 +3739,21 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private isPointerOverUi(x: number, y: number): boolean {
-    const staticPanels = [
-      this.headerRect,
-      ...(this.showDetailPanel ? [this.uiPanels.topRight] : []),
-      ...(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible ? [this.uiPanels.portrait] : []),
-      ...(this.headerMenuOpen ? [this.headerMenuPanelBounds] : []),
-      ...(this.mapIntroAlpha > 0.01
-        ? [new Phaser.Geom.Rectangle(
-            this.mapIntroBounds.x,
-            this.mapIntroBounds.y + this.mapIntroOffsetY,
-            this.mapIntroBounds.width,
-            this.mapIntroBounds.height
-          )]
-        : [])
-    ];
+    const staticPanels = this.isBattleIntroActive()
+      ? (this.mapIntroAlpha > 0.01
+          ? [new Phaser.Geom.Rectangle(
+              this.mapIntroBounds.x,
+              this.mapIntroBounds.y + this.mapIntroOffsetY,
+              this.mapIntroBounds.width,
+              this.mapIntroBounds.height
+            )]
+          : [new Phaser.Geom.Rectangle(0, 0, this.scale.width, this.scale.height)])
+      : [
+          this.headerRect,
+          ...(this.showDetailPanel ? [this.uiPanels.topRight] : []),
+          ...(this.showDetailPanel && this.showPortraitPanel && this.portrait.visible ? [this.uiPanels.portrait] : []),
+          ...(this.headerMenuOpen ? [this.headerMenuPanelBounds] : [])
+        ];
 
     if (staticPanels.some((panel) => panel.contains(x, y))) {
       return true;
@@ -3771,6 +3817,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private shouldShowActionMenu(): boolean {
+    if (this.isBattleIntroActive()) {
+      return false;
+    }
+
     const activeUnit = this.getActiveUnit();
     return !!activeUnit && activeUnit.team === 'player' && this.isPlayerTurnPhase();
   }
@@ -5651,6 +5701,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private refreshUi(): void {
+    const hudVisible = this.battleIntroPhase === 'hud';
     const timeOfDayLabel = TIME_OF_DAY_CONFIG[this.timeOfDay].label;
     this.mapPlaqueEyebrowText.setText(this.getMapPlaqueEyebrow());
     this.mapPlaqueTitleText.setText(this.getMapPlaqueHeaderTitle());
@@ -5660,7 +5711,7 @@ export class BattleScene extends Phaser.Scene {
     this.mapIntroEyebrowText.setText(this.getMapIntroEyebrow());
     this.mapIntroTitleText.setText(this.level.name);
     this.mapIntroMetaText.setText(this.getMapIntroMeta(timeOfDayLabel));
-    this.mapIntroFlavorText.setText(this.level.titleFlavor ?? this.level.objective);
+    this.mapIntroFlavorText.setText(this.getMapIntroSummary());
     this.headerMenuTitleText.setText('PAUSED');
     this.headerMenuOptionTexts[0]?.setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`);
     this.headerMenuOptionTexts[1]?.setText(`AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`);
@@ -5671,6 +5722,7 @@ export class BattleScene extends Phaser.Scene {
       ? [activeUnit, ...projectTurnOrder(this.units, this.visibleTurnOrderCount - 1)]
       : projectTurnOrder(this.units, this.visibleTurnOrderCount);
     this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, true);
+    this.turnOrderPanel.setVisible(hudVisible && this.showTimelinePanel);
 
     this.hudViewModel = this.buildHudViewModel();
     const focusUnit = this.getDetailFocusUnit();
@@ -5723,7 +5775,7 @@ export class BattleScene extends Phaser.Scene {
     this.layoutDetailPanelSection();
     this.logText.setText(this.logLines.slice(0, this.visibleLogLines).join('\n')).setVisible(false);
     this.actionMenuStack.setPanels(this.buildActionMenuPanels());
-    this.actionMenuStack.setVisible(this.shouldShowActionMenu());
+    this.actionMenuStack.setVisible(hudVisible && this.shouldShowActionMenu());
     this.drawUiPanels();
     this.actionMenuStack.draw();
   }
@@ -5736,7 +5788,7 @@ export class BattleScene extends Phaser.Scene {
     const focusUnit = this.getDetailFocusUnit();
     this.drawDetailPlaque(focusUnit);
 
-    if (this.showDetailPanel && this.showPortraitPanel && this.detailPanelAlpha > 0.01) {
+    if (!this.isBattleIntroActive() && this.showDetailPanel && this.showPortraitPanel && this.detailPanelAlpha > 0.01) {
       BattleUiChrome.drawPanelShell(
         this.uiGraphics,
         this.uiPanels.portrait,
@@ -5757,10 +5809,19 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawMapTitlePlaque(): void {
-    const panel = this.headerRect;
+    if (this.battleIntroPhase !== 'hud' || this.mapPlaqueAlpha <= 0.01) {
+      return;
+    }
+
+    const panel = new Phaser.Geom.Rectangle(
+      this.headerRect.x + this.mapPlaqueOffsetX,
+      this.headerRect.y,
+      this.headerRect.width,
+      this.headerRect.height
+    );
     BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
       accentColor: UI_COLOR_ACCENT_WARM,
-      alpha: 1,
+      alpha: this.mapPlaqueAlpha,
       headerHeight: UI_NARROW_PLAQUE_HEADER_HEIGHT,
       radius: 24,
       headerAlpha: 0.74,
@@ -5823,7 +5884,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private drawDetailPlaque(focusUnit: BattleUnit | null): void {
-    if (!this.showDetailPanel || this.detailPanelAlpha <= 0.01) {
+    if (this.isBattleIntroActive() || !this.showDetailPanel || this.detailPanelAlpha <= 0.01) {
       return;
     }
 

@@ -8,6 +8,11 @@ const myrmidonsTideLegionary = new URL('../assets/game/units/myrmidons-tide-legi
 const myrmidonsHunter = new URL('../assets/game/units/myrmidons-hunter.png', import.meta.url).href;
 const myrmidonsSpectre = new URL('../assets/game/units/myrmidons-spectre.png', import.meta.url).href;
 const timeTravelersAionTrooper = new URL('../assets/game/units/time-travelers-aion-trooper.png', import.meta.url).href;
+const timeTravelersChronomedic = new URL('../assets/game/units/time-travelers-chronomedic.png', import.meta.url).href;
+const timeTravelersScavengerMarksman = new URL(
+  '../assets/game/units/time-travelers-scavenger-marksman.png',
+  import.meta.url
+).href;
 const childrenOfTheProphecyAevumGuardian = new URL('../assets/game/units/children-of-the-prophecy-aevum-guardian.png', import.meta.url).href;
 const factionMottoTimeTravelers = new URL('../assets/game/voices/faction-motto-time-travelers.mp3', import.meta.url).href;
 const factionMottoMyrmidons = new URL('../assets/game/voices/faction-motto-myrmidons.mp3', import.meta.url).href;
@@ -37,7 +42,7 @@ const obstacleRubbleBarricade = new URL('../assets/game/props/obstacle-rubble-ba
 const lightTorch = new URL('../assets/game/props/light-torch.png', import.meta.url).href;
 const sanctumBrazier = new URL('../assets/game/props/sanctum-brazier.png', import.meta.url).href;
 
-export const DEFAULT_UNIT_IMAGE_KEY = 'the-order-house-marshal' as const;
+export const DEFAULT_UNIT_IMAGE_KEY = 'time-travelers-aion-trooper' as const;
 
 export const IMAGE_ASSETS = [
   { key: 'title-backdrop', url: titleBackdrop },
@@ -48,6 +53,8 @@ export const IMAGE_ASSETS = [
   { key: 'myrmidons-hunter', url: myrmidonsHunter },
   { key: 'myrmidons-spectre', url: myrmidonsSpectre },
   { key: 'time-travelers-aion-trooper', url: timeTravelersAionTrooper },
+  { key: 'time-travelers-chronomedic', url: timeTravelersChronomedic },
+  { key: 'time-travelers-scavenger-marksman', url: timeTravelersScavengerMarksman },
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
   { key: 'the-order-breacher-strike', url: theOrderBreacherStrike },
   { key: 'the-order-relay-lance', url: theOrderRelayLance },

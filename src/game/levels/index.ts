@@ -64,6 +64,14 @@ export function createLevelUnits(level: LevelDefinition): BattleUnit[] {
     return {
       ...blueprint,
       spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_SPRITE_SCALE),
+      spriteOffsetX:
+        typeof blueprint.spriteOffsetX === 'number'
+          ? Math.round(blueprint.spriteOffsetX * UNIT_SPRITE_SCALE)
+          : undefined,
+      spriteOffsetY:
+        typeof blueprint.spriteOffsetY === 'number'
+          ? Math.round(blueprint.spriteOffsetY * UNIT_SPRITE_SCALE)
+          : undefined,
       x,
       y,
       hp: blueprint.maxHp,

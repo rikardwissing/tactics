@@ -69,12 +69,12 @@
         {
           "height": 32,
           "id": 1,
-          "name": "House Marshal Spawn",
+          "name": "Aion Trooper Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "the-order-house-marshal"
+              "value": "time-travelers-aion-trooper"
             }
           ],
           "rotation": 0,
@@ -87,12 +87,12 @@
         {
           "height": 32,
           "id": 2,
-          "name": "Squire Operative Spawn",
+          "name": "Scavenger Marksman Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "the-order-squire-operative"
+              "value": "time-travelers-scavenger-marksman"
             }
           ],
           "rotation": 0,
@@ -105,12 +105,12 @@
         {
           "height": 32,
           "id": 3,
-          "name": "Banner Surgeon Spawn",
+          "name": "Chronomedic Spawn",
           "properties": [
             {
               "name": "blueprintId",
               "type": "string",
-              "value": "the-order-banner-surgeon"
+              "value": "time-travelers-chronomedic"
             }
           ],
           "rotation": 0,
