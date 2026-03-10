@@ -21,7 +21,6 @@ import {
   UI_PANEL_CONTENT_GAP,
   UI_PANEL_CONTENT_INSET,
   UI_PANEL_GAP,
-  UI_PANEL_HEADER_INSET,
   UI_PANEL_MINI_GAP,
   UI_PANEL_MICRO_GAP,
   UI_PANEL_TIGHT_GAP,
@@ -200,6 +199,7 @@ const BASE_ACTION_MENU_PANELS = {
   sub: new Phaser.Geom.Rectangle(1038, 498, 286, 222)
 } as const;
 
+const MAP_PLAQUE_FIXED_WIDTH = BASE_UI_PANELS.topLeft.width;
 const DETAIL_PANEL_FIXED_WIDTH = 352;
 const DETAIL_PANEL_MIN_WIDTH = 260;
 const DETAIL_PANEL_PORTRAIT_WIDTH = 74;
@@ -400,6 +400,8 @@ export class BattleScene extends Phaser.Scene {
   private mapPlaqueMetaText!: Phaser.GameObjects.Text;
   private mapObjectiveTagText!: Phaser.GameObjects.Text;
   private mapObjectiveText!: Phaser.GameObjects.Text;
+  private mapPlaqueArt!: Phaser.GameObjects.Image;
+  private mapPlaqueArtMask!: Phaser.GameObjects.Graphics;
   private mapIntroArt!: Phaser.GameObjects.Image;
   private mapIntroArtMask!: Phaser.GameObjects.Graphics;
   private mapIntroEyebrowText!: Phaser.GameObjects.Text;
@@ -1058,11 +1060,14 @@ export class BattleScene extends Phaser.Scene {
     return [
       this.uiGraphics,
       ...this.actionMenuStack.getDisplayObjects(),
+      this.mapPlaqueArt,
+      this.mapPlaqueArtMask,
       this.mapPlaqueEyebrowText,
       this.mapPlaqueTitleText,
       this.mapPlaqueMetaText,
       this.mapObjectiveTagText,
       this.mapObjectiveText,
+      this.mapIntroArt,
       this.mapIntroArtMask,
       this.mapIntroEyebrowText,
       this.mapIntroTitleText,
@@ -1683,6 +1688,10 @@ export class BattleScene extends Phaser.Scene {
 
     this.mapObjectiveText = this.add.text(0, 0, this.level.objective, UI_TEXT_BODY);
 
+    this.mapPlaqueArt = this.add.image(0, 0, 'title-backdrop').setOrigin(0.5).setVisible(false);
+    this.mapPlaqueArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
+    this.mapPlaqueArt.setMask(this.mapPlaqueArtMask.createGeometryMask());
+
     this.mapIntroArt = this.add.image(0, 0, 'title-backdrop').setOrigin(0.5).setVisible(false);
     this.mapIntroArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
     this.mapIntroArt.setMask(this.mapIntroArtMask.createGeometryMask());
@@ -1740,6 +1749,15 @@ export class BattleScene extends Phaser.Scene {
     );
 
     this.createHudControls();
+
+    const plaqueBackgroundElements = [
+      this.mapPlaqueArt,
+      this.mapPlaqueArtMask
+    ];
+
+    for (const element of plaqueBackgroundElements) {
+      element.setDepth(859).setScrollFactor(0);
+    }
 
     const uiElements = [
       this.mapPlaqueEyebrowText,
@@ -1847,16 +1865,12 @@ export class BattleScene extends Phaser.Scene {
     const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
     const turnOrderWidth = avatarSize + 28;
 
-    const stackedTopPanels = grid.columns < 12;
-    const headerColumnSpan = stackedTopPanels ? grid.columns : 7;
     const detailPanelWidth = this.getResolvedDetailPanelWidth(width);
-    const headerWidth = grid.column(0, headerColumnSpan, 0, 0).width;
+    const stackedTopPanels = this.shouldStackTopPanels(width, height, detailPanelWidth);
+    const headerWidth = stackedTopPanels ? grid.content.width : MAP_PLAQUE_FIXED_WIDTH;
     const plaqueHeight = this.getTargetMapPlaqueHeight(headerWidth, height);
 
-    {
-      const headerRect = grid.column(0, headerColumnSpan, margin, plaqueHeight);
-      this.headerRect.setTo(headerRect.x, headerRect.y, headerRect.width, headerRect.height);
-    }
+    this.headerRect.setTo(grid.content.x, margin, headerWidth, plaqueHeight);
     this.uiPanels.topLeft.setTo(this.headerRect.x, this.headerRect.y, this.headerRect.width, this.headerRect.height);
     const detailHeight = this.getTargetDetailPanelHeight(detailPanelWidth, height);
     const detailRect = new Phaser.Geom.Rectangle(
@@ -1948,10 +1962,11 @@ export class BattleScene extends Phaser.Scene {
   private syncDynamicDetailPanelHeight(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    const margin = UI_SCREEN_MARGIN;
+    const grid = createUiGrid(width, height);
+    const margin = grid.margin;
     const contentGap = UI_PANEL_GAP;
     const detailPanelWidth = this.getResolvedDetailPanelWidth(width);
-    const stackedTopPanels = width < height;
+    const stackedTopPanels = this.shouldStackTopPanels(width, height, detailPanelWidth);
     const detailHeight = this.getTargetDetailPanelHeight(detailPanelWidth, height);
     const detailY = stackedTopPanels ? this.headerRect.bottom + contentGap : margin;
 
@@ -1967,10 +1982,10 @@ export class BattleScene extends Phaser.Scene {
       : Math.max(this.headerRect.bottom, this.uiPanels.topRight.bottom);
 
     this.playAreaRect.setTo(
-      margin,
+      grid.content.x,
       topContentBottom + contentGap,
-      Math.max(48, width - margin * 2),
-      Math.max(48, height - margin - (topContentBottom + contentGap))
+      Math.max(48, grid.content.width),
+      Math.max(48, grid.content.bottom - (topContentBottom + contentGap))
     );
 
     const avatarSize = 38;
@@ -2015,6 +2030,15 @@ export class BattleScene extends Phaser.Scene {
     const baseHeight = 96;
 
     return Math.max(baseHeight, this.getMapPlaqueRequiredHeight(panelWidth));
+  }
+
+  private shouldStackTopPanels(viewportWidth: number, viewportHeight: number, detailPanelWidth: number): boolean {
+    const grid = createUiGrid(viewportWidth, viewportHeight);
+    if (grid.columns < 12) {
+      return true;
+    }
+
+    return MAP_PLAQUE_FIXED_WIDTH + detailPanelWidth + UI_PANEL_GAP > grid.content.width;
   }
 
   private getResolvedDetailPanelWidth(viewportWidth: number): number {
@@ -2254,8 +2278,6 @@ export class BattleScene extends Phaser.Scene {
   private layoutMapTitleSection(width: number, height: number): void {
     const introVisible = this.mapIntroAlpha > 0.01;
     const hudVisible = this.battleIntroPhase === 'hud';
-    const controlPaddingX = 12;
-    const controlPaddingY = 6;
     const introMargin = width <= 540 ? 18 : 28;
     const portraitIntro = height >= width;
     const shortLandscapeIntro = width > height && height < 620;
@@ -2379,15 +2401,14 @@ export class BattleScene extends Phaser.Scene {
     this.mapObjectiveTagText.setVisible(false);
     this.mapObjectiveBoxBounds.setTo(0, 0, 0, 0);
     this.autoBattleToggleText
-      .setPosition(headerPanel.right - UI_PANEL_HEADER_INSET, BattleUiChrome.getHeaderCenterY(headerPanel, 'narrow'))
-      .setAlpha(this.mapPlaqueAlpha)
-      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
-    const menuTextBounds = this.autoBattleToggleText.getBounds();
+      .setPosition(0, 0)
+      .setAlpha(0)
+      .setVisible(false);
     this.headerMenuButtonBounds.setTo(
-      hudVisible ? menuTextBounds.x - controlPaddingX : 0,
-      hudVisible ? menuTextBounds.y - controlPaddingY : 0,
-      hudVisible ? menuTextBounds.width + controlPaddingX * 2 : 0,
-      hudVisible ? menuTextBounds.height + controlPaddingY * 2 : 0
+      hudVisible ? headerPanel.x : 0,
+      hudVisible ? headerPanel.y : 0,
+      hudVisible ? headerPanel.width : 0,
+      hudVisible ? headerPanel.height : 0
     );
     this.autoBattleToggleBounds.setTo(
       this.headerMenuButtonBounds.x,
@@ -5827,7 +5848,7 @@ export class BattleScene extends Phaser.Scene {
     this.mapIntroMetaText.setText(this.getMapIntroMeta());
     this.mapIntroFlavorText.setText(this.getMapIntroSummary());
     this.headerMenuTitleText.setText('PAUSED');
-    this.autoBattleToggleText.setText('MENU');
+    this.autoBattleToggleText.setText('');
     this.headerMenuOptionTexts[0]?.setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`);
     this.headerMenuOptionTexts[1]?.setText(`AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`);
     this.headerMenuOptionTexts[2]?.setText('RESTART');
@@ -5925,6 +5946,7 @@ export class BattleScene extends Phaser.Scene {
 
   private drawMapTitlePlaque(): void {
     if (this.battleIntroPhase !== 'hud' || this.mapPlaqueAlpha <= 0.01) {
+      this.mapPlaqueArt.setVisible(false);
       return;
     }
 
@@ -5934,25 +5956,23 @@ export class BattleScene extends Phaser.Scene {
       this.headerRect.width,
       this.headerRect.height
     );
+    BattleUiChrome.applyPanelBackgroundImage(this.mapPlaqueArt, this.mapPlaqueArtMask, panel, {
+      alpha: this.mapPlaqueAlpha,
+      radius: 24,
+      inset: 2,
+      visible: true
+    });
     BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
       accentColor: UI_COLOR_ACCENT_WARM,
       alpha: this.mapPlaqueAlpha,
       headerHeight: UI_NARROW_PLAQUE_HEADER_HEIGHT,
       radius: 24,
+      surfaceAlpha: 0.3,
+      innerSurfaceAlpha: 0.3,
       headerAlpha: 0.74,
       sideRuleAlpha: 0.14,
       dividerAlpha: 0.22
     });
-
-    if (this.headerMenuButtonBounds.width > 0) {
-      BattleUiChrome.drawPill(this.uiGraphics, this.headerMenuButtonBounds, {
-        fillColor: this.headerMenuOpen ? UI_COLOR_ACCENT_WARM : UI_COLOR_PANEL_SURFACE_ALT,
-        strokeColor: UI_COLOR_PANEL_BORDER,
-        fillAlpha: 0.92 * this.mapPlaqueAlpha,
-        strokeAlpha: 0.38 * this.mapPlaqueAlpha,
-        radius: 14
-      });
-    }
 
     if (this.headerMenuOpen) {
       this.uiGraphics.fillStyle(UI_COLOR_OVERLAY, 0.56);

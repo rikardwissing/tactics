@@ -87,6 +87,9 @@ export interface UiPlaqueShellOptions {
   alpha?: number;
   headerHeight?: number;
   radius?: number;
+  renderHeaderBackground?: boolean;
+  surfaceAlpha?: number;
+  innerSurfaceAlpha?: number;
   headerAlpha?: number;
   sideRuleAlpha?: number;
   shineAlpha?: number;
@@ -107,6 +110,13 @@ export interface UiPillOptions {
   fillAlpha?: number;
   strokeAlpha?: number;
   radius?: number;
+}
+
+export interface UiPanelBackgroundImageOptions {
+  alpha?: number;
+  radius?: number;
+  inset?: number;
+  visible?: boolean;
 }
 
 export class BattleUiChrome {
@@ -165,6 +175,9 @@ export class BattleUiChrome {
       alpha = 1,
       headerHeight = UI_PLAQUE_HEADER_HEIGHT,
       radius = UI_PLAQUE_RADIUS,
+      renderHeaderBackground = true,
+      surfaceAlpha = 0.96,
+      innerSurfaceAlpha = 0.96,
       headerAlpha = 0.54,
       sideRuleAlpha = 0.24,
       shineAlpha = 0.08,
@@ -173,12 +186,14 @@ export class BattleUiChrome {
   ): void {
     graphics.fillStyle(UI_COLOR_PANEL_SHADOW, 0.32 * alpha);
     graphics.fillRoundedRect(panel.x + 4, panel.y + 6, panel.width, panel.height, radius);
-    graphics.fillStyle(UI_COLOR_PANEL_SURFACE, 0.96 * alpha);
+    graphics.fillStyle(UI_COLOR_PANEL_SURFACE, surfaceAlpha * alpha);
     graphics.fillRoundedRect(panel.x, panel.y, panel.width, panel.height, radius);
-    graphics.fillStyle(UI_COLOR_PANEL_SURFACE_ALT, 0.96 * alpha);
+    graphics.fillStyle(UI_COLOR_PANEL_SURFACE_ALT, innerSurfaceAlpha * alpha);
     graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, panel.height - 4, Math.max(8, radius - 2));
-    graphics.fillStyle(accentColor, headerAlpha * alpha);
-    graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
+    if (renderHeaderBackground) {
+      graphics.fillStyle(accentColor, headerAlpha * alpha);
+      graphics.fillRoundedRect(panel.x + 2, panel.y + 2, panel.width - 4, Math.min(headerHeight, panel.height - 4), Math.max(8, radius - 2));
+    }
     graphics.fillStyle(accentColor, sideRuleAlpha * alpha);
     graphics.fillRoundedRect(panel.x + 6, panel.y + 10, 8, panel.height - 20, 4);
     graphics.fillStyle(UI_COLOR_PANEL_SHINE, shineAlpha * alpha);
@@ -242,5 +257,48 @@ export class BattleUiChrome {
       sideRuleAlpha: 0.24,
       dividerAlpha: 0.24
     });
+  }
+
+  static applyPanelBackgroundImage(
+    image: Phaser.GameObjects.Image,
+    mask: Phaser.GameObjects.Graphics,
+    panel: Phaser.Geom.Rectangle,
+    {
+      alpha = 1,
+      radius = UI_PLAQUE_RADIUS,
+      inset = 2,
+      visible = true
+    }: UiPanelBackgroundImageOptions = {}
+  ): void {
+    const width = Math.max(0, panel.width - inset * 2);
+    const height = Math.max(0, panel.height - inset * 2);
+    const x = panel.x + inset;
+    const y = panel.y + inset;
+    const frame = image.frame;
+
+    if (!visible || width <= 0 || height <= 0 || !frame) {
+      image.setVisible(false);
+      mask.setVisible(false);
+      return;
+    }
+
+    const coverScale = Math.max(width / Math.max(1, frame.width), height / Math.max(1, frame.height));
+    const displayWidth = frame.width * coverScale;
+    const displayHeight = frame.height * coverScale;
+
+    image
+      .setDisplaySize(displayWidth, displayHeight)
+      .setPosition(x + width * 0.5, y + height * 0.5)
+      .setCrop(0, 0, frame.width, frame.height)
+      .setAlpha(alpha)
+      .setTint(0xffffff)
+      .setVisible(true);
+
+    mask.clear();
+    mask.setPosition(x, y);
+    mask.fillStyle(0xffffff, 1);
+    mask.fillRoundedRect(0, 0, width, height, Math.max(8, radius - inset));
+    mask.setAlpha(0);
+    mask.setVisible(false);
   }
 }
