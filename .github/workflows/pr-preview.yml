@@ -1,0 +1,52 @@
+name: Deploy PR preview
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        if: github.event.action != 'closed'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Setup Node
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: npm install
+
+      - name: Build preview
+        if: github.event.action != 'closed'
+        env:
+          VITE_BASE_PATH: /tactics/pr-preview/pr-${{ github.event.pull_request.number }}/
+        run: npm run build
+
+      - name: Deploy PR preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ${{ github.event.action == 'closed' && '.' || 'dist' }}
+          preview-branch: gh-pages
+          umbrella-dir: pr-preview
