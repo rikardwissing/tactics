@@ -78,7 +78,6 @@ export interface UnitBlueprint {
   name: string;
   className: string;
   turnStartCatchPhrase: string;
-  team: Team;
   spriteKey: string;
   accentColor: number;
   maxHp: number;
@@ -102,7 +101,10 @@ export interface UnitBlueprint {
   dropQuantity?: number;
 }
 
-export interface BattleUnit extends Point, UnitBlueprint {
+export interface BattleUnit extends Point, Omit<UnitBlueprint, 'id'> {
+  id: string;
+  blueprintId: UnitBlueprint['id'];
+  team: Team;
   hp: number;
   ct: number;
   alive: boolean;

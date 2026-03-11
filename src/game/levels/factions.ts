@@ -3,7 +3,7 @@ import { FactionId, FactionProfile } from '../core/types';
 export const FACTION_PROFILES: Record<FactionId, FactionProfile> = {
   'time-travelers': {
     id: 'time-travelers',
-    displayName: 'The Time Travelers',
+    displayName: 'Time Travelers',
     motto: 'From time\'s edge, we rebuild.',
     summary: 'Stranded scientists from the failed Aion jump who rebuild with scavenged future tech and hard-won survival doctrine.',
     palette: ['weathered steel', 'oxidized teal', 'faded hazard orange', 'cold reactor white'],
@@ -13,7 +13,7 @@ export const FACTION_PROFILES: Record<FactionId, FactionProfile> = {
   },
   myrmidons: {
     id: 'myrmidons',
-    displayName: 'The Myrmidons',
+    displayName: 'Myrmidons',
     motto: 'From the deep, we rise.',
     summary: 'Deep-ocean descendants adapted beyond baseline humanity, armed with amphibious weapons, ritual warforms, and brine-bred discipline.',
     palette: ['sea green', 'kelp black', 'brine cyan', 'rust leather'],
@@ -37,7 +37,7 @@ export const FACTION_PROFILES: Record<FactionId, FactionProfile> = {
   },
   'children-of-the-prophecy': {
     id: 'children-of-the-prophecy',
-    displayName: 'The Children of the Prophecy',
+    displayName: 'Children of Prophecy',
     motto: 'We are the guardians of Aevum.',
     summary: 'An ascetic psychic order that returns from isolation with ritual discipline, visionary doctrine, and reality-bending mental power.',
     palette: ['sun-faded sand', 'bone white', 'ember red', 'dusty umber'],

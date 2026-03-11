@@ -4,9 +4,9 @@ This document defines the phase 1 faction roster, the first playable slice, and 
 
 ## First Playable Slice
 
-- Player faction: The Children of the Prophecy
-- Enemy faction: The Myrmidons
-- Current battle implementation: 3 vs 3 infantry-scale roster using renamed unit identities, with The Children of the Prophecy fielding the live player trio against The Myrmidons
+- Player faction: Children of Prophecy
+- Enemy faction: Myrmidons
+- Current battle implementation: 3 vs 3 infantry-scale roster using renamed unit identities, with the Children of Prophecy fielding the live player trio against the Myrmidons
 - Latest Myrmidon revisions: `Hunter` uses the approved squad-aligned remake derived from the current `Tide Legionary` and `Spectre`, and `Spectre` uses the approved ammo-belt-free remake
 - Latest Children revisions: `Aevum Guardian` uses the approved bare-chest staff remake based on the concept-closer version; `Memory Keeper` uses the approved identity-preserve support remake; `Mirage Seer` uses the approved Guardian-pixelation controller remake
 
@@ -14,12 +14,12 @@ Current runtime mapping for the current prototype:
 
 | Runtime unit | Current runtime sprite asset |
 | --- | --- |
-| The Children of the Prophecy Aevum Guardian | `src/assets/game/units/children-of-the-prophecy-aevum-guardian.png` |
-| The Children of the Prophecy Mirage Seer | `src/assets/game/units/children-of-the-prophecy-mirage-seer.png` |
-| The Children of the Prophecy Memory Keeper | `src/assets/game/units/children-of-the-prophecy-memory-keeper.png` |
-| The Myrmidons Tide Legionary | `src/assets/game/units/myrmidons-tide-legionary.png` |
-| The Myrmidons Hunter | `src/assets/game/units/myrmidons-hunter.png` |
-| The Myrmidons Spectre | `src/assets/game/units/myrmidons-spectre.png` |
+| Children of Prophecy Aevum Guardian | `src/assets/game/units/children-of-the-prophecy-aevum-guardian.png` |
+| Children of Prophecy Mirage Seer | `src/assets/game/units/children-of-the-prophecy-mirage-seer.png` |
+| Children of Prophecy Memory Keeper | `src/assets/game/units/children-of-the-prophecy-memory-keeper.png` |
+| Myrmidons Tide Legionary | `src/assets/game/units/myrmidons-tide-legionary.png` |
+| Myrmidons Hunter | `src/assets/game/units/myrmidons-hunter.png` |
+| Myrmidons Spectre | `src/assets/game/units/myrmidons-spectre.png` |
 
 Approved anchor assets promoted but not yet battle-integrated:
 
@@ -32,7 +32,7 @@ Approved anchor assets promoted but not yet battle-integrated:
 
 ## Factions
 
-### The Time Travelers
+### Time Travelers
 
 - Anchor unit: `Aion Trooper`
 - Motto: `From time's edge, we rebuild.`
@@ -48,7 +48,7 @@ Approved anchor assets promoted but not yet battle-integrated:
 | Scavenger Marksman | ranged | lean marksman frame, long rifle, patched expedition gear | derived from faction concept |
 | Paradox Warden | elite | heavier chrono armor, towering reactor core, shielded stance | derived from faction concept |
 
-### The Myrmidons
+### Myrmidons
 
 - Anchor unit: `Hunter`
 - Motto: `From the deep, we rise.`
@@ -80,7 +80,7 @@ Approved anchor assets promoted but not yet battle-integrated:
 | Relic Marksman | ranged | precision rifle, rigid noble posture, heavier optics rig | derived from faction concept |
 | Palatine Enforcer | elite | dense plate mass, shock baton or hammer profile, heavy authority stance | derived from faction concept |
 
-### The Children of the Prophecy
+### Children of Prophecy
 
 - Anchor unit: `Aevum Guardian`
 - Motto: `We are the guardians of Aevum.`

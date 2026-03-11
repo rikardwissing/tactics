@@ -38,6 +38,17 @@ export const UI_TEXT_TITLE = withDefaults({
   fontStyle: 'bold'
 });
 
+export const UI_TEXT_PANEL_TITLE = withDefaults({
+  fontSize: '24px',
+  fontStyle: 'bold'
+});
+
+export const UI_TEXT_PANEL_SUBTITLE = withDefaults({
+  fontSize: '12px',
+  fontStyle: 'bold',
+  letterSpacing: 1.4
+});
+
 export const UI_TEXT_TITLE_CENTER = withDefaults({
   fontSize: '18px',
   fontStyle: 'bold',

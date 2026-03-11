@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { BattleScene } from './scenes/BattleScene';
+import { SetupScene } from './scenes/SetupScene';
 
 export function createGame(
   parent: string,
@@ -22,6 +23,6 @@ export function createGame(
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    scene: [BootScene, BattleScene]
+    scene: [BootScene, SetupScene, BattleScene]
   });
 }

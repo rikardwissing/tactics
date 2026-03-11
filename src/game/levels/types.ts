@@ -1,5 +1,5 @@
 import { ItemId } from '../core/items';
-import { TerrainType } from '../core/types';
+import { Team, TerrainType } from '../core/types';
 
 export type MapPropAssetId =
   | 'obstacle-rubble-barricade'
@@ -8,6 +8,15 @@ export type MapPropAssetId =
 
 export interface UnitPlacement {
   blueprintId: string;
+  team: Team;
+  x: number;
+  y: number;
+}
+
+export interface PlayerDeploymentSlot {
+  id: string;
+  placementIndex: number;
+  defaultBlueprintId: string;
   x: number;
   y: number;
 }
@@ -31,6 +40,7 @@ export interface LevelDefinition {
   id: string;
   name: string;
   objective: string;
+  backdropAssetId?: string;
   shortObjective?: string;
   titlePrefix?: string;
   region?: string;

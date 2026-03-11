@@ -1,13 +1,14 @@
 import Phaser from 'phaser';
 import { DEFAULT_UNIT_IMAGE_KEY, FACTION_MOTTO_AUDIO_KEYS } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
+import type { BattleSetup } from '../battleSetup';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
 import { CombatEffectDefinition, CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
 import { AttackStyle, BattleUnit, FactionId, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
-import { createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
+import { createDefaultBattleSetup, createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
 import { ActionMenuPanelDescriptor, BattleActionMenuStack } from './components/BattleActionMenuStack';
@@ -70,7 +71,7 @@ type Phase =
 
 type MenuAction = 'move' | 'abilities' | 'items' | 'wait';
 type UiLayoutMode = 'portrait' | 'landscape' | 'wide';
-type HeaderMenuAction = 'auto' | 'audio' | 'restart';
+type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup';
 type InspectionTarget =
   | { kind: 'unit'; unitId: string }
   | { kind: 'tile'; x: number; y: number }
@@ -374,6 +375,7 @@ const MAP_TITLE_INTRO_HOLD = 880;
 const MAP_TITLE_OUTRO_DURATION = 360;
 export class BattleScene extends Phaser.Scene {
   private level: LevelDefinition = CURRENT_LEVEL;
+  private battleSetup: BattleSetup = createDefaultBattleSetup(CURRENT_LEVEL);
   private map: TileData[] = [];
   private units: BattleUnit[] = [];
   private chests: ChestState[] = [];
@@ -552,8 +554,13 @@ export class BattleScene extends Phaser.Scene {
     super('battle');
   }
 
-  init(data?: { levelId?: string }): void {
-    this.level = data?.levelId ? getLevel(data.levelId) : CURRENT_LEVEL;
+  private getLevelBackdropImageKey(): string {
+    return this.level.backdropAssetId ?? 'title-backdrop';
+  }
+
+  init(data?: { setup?: BattleSetup }): void {
+    this.battleSetup = data?.setup ?? createDefaultBattleSetup(CURRENT_LEVEL);
+    this.level = getLevel(this.battleSetup.levelId);
   }
 
   create(): void {
@@ -565,7 +572,7 @@ export class BattleScene extends Phaser.Scene {
     this.worldCamera = this.cameras.main;
     this.uiCamera = undefined;
     this.map = createLevelMap(this.level);
-    this.units = createLevelUnits(this.level);
+    this.units = createLevelUnits(this.level, this.battleSetup.playerAssignments);
     this.chests = this.level.chests.map((chest) => ({ ...chest, opened: false }));
     this.views.clear();
     this.chestViews.clear();
@@ -621,7 +628,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.input.addPointer(2);
 
-    this.backdropImage = this.add.image(this.scale.width / 2, this.scale.height / 2, 'title-backdrop').setScrollFactor(0);
+    this.backdropImage = this.add.image(this.scale.width / 2, this.scale.height / 2, this.getLevelBackdropImageKey()).setScrollFactor(0);
     this.backdropShade = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x12070d, 0.58).setScrollFactor(0);
     this.createLightTexture();
 
@@ -827,7 +834,22 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'animating';
     this.input.enabled = false;
     this.input.keyboard?.removeAllListeners();
-    this.scene.restart({ levelId: this.level.id });
+    this.scene.restart({ setup: this.battleSetup });
+  }
+
+  private returnToSetup(): void {
+    if (this.restarting) {
+      return;
+    }
+
+    this.setPauseMenuOpen(false);
+    this.clearTurnStartCatchPhrase();
+    this.restarting = true;
+    this.busy = true;
+    this.phase = 'animating';
+    this.input.enabled = false;
+    this.input.keyboard?.removeAllListeners();
+    this.scene.start('setup', { setup: this.battleSetup });
   }
 
   private isBattleIntroActive(): boolean {
@@ -1691,11 +1713,11 @@ export class BattleScene extends Phaser.Scene {
 
     this.mapObjectiveText = this.add.text(0, 0, this.level.objective, UI_TEXT_BODY);
 
-    this.mapPlaqueArt = this.add.image(0, 0, 'title-backdrop').setOrigin(0.5).setVisible(false);
+    this.mapPlaqueArt = this.add.image(0, 0, this.getLevelBackdropImageKey()).setOrigin(0.5).setVisible(false);
     this.mapPlaqueArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
     this.mapPlaqueArt.setMask(this.mapPlaqueArtMask.createGeometryMask());
 
-    this.mapIntroArt = this.add.image(0, 0, 'title-backdrop').setOrigin(0.5).setVisible(false);
+    this.mapIntroArt = this.add.image(0, 0, this.getLevelBackdropImageKey()).setOrigin(0.5).setVisible(false);
     this.mapIntroArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
     this.mapIntroArt.setMask(this.mapIntroArtMask.createGeometryMask());
 
@@ -1743,7 +1765,7 @@ export class BattleScene extends Phaser.Scene {
 
     this.logText = this.add.text(0, 0, '', UI_TEXT_BODY);
 
-    this.headerMenuOptionTexts = Array.from({ length: 3 }, () =>
+    this.headerMenuOptionTexts = Array.from({ length: 4 }, () =>
       this.add.text(0, 0, '', UI_TEXT_ACTION).setVisible(false)
     );
 
@@ -4168,7 +4190,7 @@ export class BattleScene extends Phaser.Scene {
       return true;
     }
 
-    const actions: HeaderMenuAction[] = ['auto', 'audio', 'restart'];
+    const actions: HeaderMenuAction[] = ['auto', 'audio', 'restart', 'setup'];
     for (const [index, bounds] of this.headerMenuOptionBounds.entries()) {
       if (bounds.contains(x, y)) {
         await this.executeHeaderMenuAction(actions[index]);
@@ -4195,6 +4217,9 @@ export class BattleScene extends Phaser.Scene {
       }
       case 'restart':
         this.restartBattle();
+        return;
+      case 'setup':
+        this.returnToSetup();
         return;
       default:
         return;
@@ -5867,6 +5892,7 @@ export class BattleScene extends Phaser.Scene {
     this.headerMenuOptionTexts[0]?.setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`);
     this.headerMenuOptionTexts[1]?.setText(`AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`);
     this.headerMenuOptionTexts[2]?.setText('RESTART');
+    this.headerMenuOptionTexts[3]?.setText('SETUP');
 
     const activeUnit = this.getActiveUnit();
     const queue = activeUnit

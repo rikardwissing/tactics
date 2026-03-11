@@ -97,7 +97,7 @@ Each house seeks land, power, and dominion over the reborn Earth.
 
 ---
 
-# Children of the Prophecy
+# Children of Prophecy
 
 **Motto:** *“We are the guardians of Aevum.”*
 
@@ -124,4 +124,4 @@ They believed this transformation marked the next step in human evolution.
 
 When they finally returned to the surface, they discovered that humanity had begun rebuilding once again.
 
-Now the **Children of the Prophecy** walk the wastelands, determined to guide the new world and prevent the mistakes of the past from repeating.
+Now the **Children of Prophecy** walk the wastelands, determined to guide the new world and prevent the mistakes of the past from repeating.

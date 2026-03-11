@@ -1,5 +1,5 @@
 import { ItemId } from '../core/items';
-import { TerrainType } from '../core/types';
+import { Team, TerrainType } from '../core/types';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement, UnitPlacement } from './types';
 
 type TiledPropertyValue = string | number | boolean;
@@ -113,9 +113,14 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
 
   const placements: UnitPlacement[] = placementsLayer.objects.map((object) => {
     const blueprintId = getProperty(object.properties, 'blueprintId');
+    const team = getProperty(object.properties, 'team');
 
     if (typeof blueprintId !== 'string' || !blueprintId) {
       throw new Error(`Placement object ${object.id} is missing a blueprintId property.`);
+    }
+
+    if (team !== 'player' && team !== 'enemy') {
+      throw new Error(`Placement object ${object.id} is missing a valid team property.`);
     }
 
     const x = Math.round(object.x / map.tilewidth);
@@ -123,6 +128,7 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
 
     return {
       blueprintId,
+      team: team as Team,
       x,
       y
     };
@@ -167,6 +173,7 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
   const levelId = getProperty(map.properties, 'levelId');
   const displayName = getProperty(map.properties, 'displayName');
   const objective = getProperty(map.properties, 'objective');
+  const backdropAssetId = getProperty(map.properties, 'backdropAssetId');
   const shortObjective = getProperty(map.properties, 'shortObjective');
   const titlePrefix = getProperty(map.properties, 'titlePrefix');
   const region = getProperty(map.properties, 'region');
@@ -181,6 +188,7 @@ export function parseTiledLevel(map: TiledMap): LevelDefinition {
     id: levelId,
     name: displayName,
     objective,
+    backdropAssetId: typeof backdropAssetId === 'string' ? backdropAssetId : undefined,
     shortObjective: typeof shortObjective === 'string' ? shortObjective : undefined,
     titlePrefix: typeof titlePrefix === 'string' ? titlePrefix : undefined,
     region: typeof region === 'string' ? region : undefined,

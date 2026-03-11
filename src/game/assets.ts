@@ -1,12 +1,18 @@
 import type { FactionId } from './core/types';
 
 const titleBackdrop = new URL('../assets/game/backdrops/title-backdrop.png', import.meta.url).href;
+const setupWarCouncilBackdrop = new URL('../assets/game/backdrops/setup-war-council.png', import.meta.url).href;
+const renationsGlobalBackdrop = new URL('../assets/game/backdrops/renations-global-backdrop.png', import.meta.url).href;
+const brokenChapelBackdrop = new URL('../assets/game/backdrops/broken-chapel-backdrop.png', import.meta.url).href;
+const ashenCausewayBackdrop = new URL('../assets/game/backdrops/ashen-causeway-backdrop.png', import.meta.url).href;
+const renationsTacticsLogo = new URL('../assets/game/renations-tactics-logo.png', import.meta.url).href;
 const theOrderHouseMarshal = new URL('../assets/game/units/the-order-house-marshal.png', import.meta.url).href;
 const theOrderSquireOperative = new URL('../assets/game/units/the-order-squire-operative.png', import.meta.url).href;
 const theOrderBannerSurgeon = new URL('../assets/game/units/the-order-banner-surgeon.png', import.meta.url).href;
 const myrmidonsTideLegionary = new URL('../assets/game/units/myrmidons-tide-legionary.png', import.meta.url).href;
 const myrmidonsHunter = new URL('../assets/game/units/myrmidons-hunter.png', import.meta.url).href;
 const myrmidonsSpectre = new URL('../assets/game/units/myrmidons-spectre.png', import.meta.url).href;
+const setupPlaceholderUnit = new URL('../assets/game/units/setup-placeholder-unit.png', import.meta.url).href;
 const timeTravelersAionTrooper = new URL('../assets/game/units/time-travelers-aion-trooper.png', import.meta.url).href;
 const timeTravelersChronomedic = new URL('../assets/game/units/time-travelers-chronomedic.png', import.meta.url).href;
 const timeTravelersScavengerMarksman = new URL(
@@ -51,15 +57,22 @@ const lightTorch = new URL('../assets/game/props/light-torch.png', import.meta.u
 const sanctumBrazier = new URL('../assets/game/props/sanctum-brazier.png', import.meta.url).href;
 
 export const DEFAULT_UNIT_IMAGE_KEY = 'time-travelers-aion-trooper' as const;
+export const SETUP_PLACEHOLDER_UNIT_IMAGE_KEY = 'setup-slot-placeholder' as const;
 
 export const IMAGE_ASSETS = [
   { key: 'title-backdrop', url: titleBackdrop },
+  { key: 'setup-war-council-backdrop', url: setupWarCouncilBackdrop },
+  { key: 'renations-global-backdrop', url: renationsGlobalBackdrop },
+  { key: 'broken-chapel-backdrop', url: brokenChapelBackdrop },
+  { key: 'ashen-causeway-backdrop', url: ashenCausewayBackdrop },
+  { key: 'renations-tactics-logo', url: renationsTacticsLogo },
   { key: 'the-order-house-marshal', url: theOrderHouseMarshal },
   { key: 'the-order-squire-operative', url: theOrderSquireOperative },
   { key: 'the-order-banner-surgeon', url: theOrderBannerSurgeon },
   { key: 'myrmidons-tide-legionary', url: myrmidonsTideLegionary },
   { key: 'myrmidons-hunter', url: myrmidonsHunter },
   { key: 'myrmidons-spectre', url: myrmidonsSpectre },
+  { key: 'setup-slot-placeholder', url: setupPlaceholderUnit },
   { key: 'time-travelers-aion-trooper', url: timeTravelersAionTrooper },
   { key: 'time-travelers-chronomedic', url: timeTravelersChronomedic },
   { key: 'time-travelers-scavenger-marksman', url: timeTravelersScavengerMarksman },

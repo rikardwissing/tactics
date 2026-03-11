@@ -1,15 +1,23 @@
+import type { BattleSetup } from '../battleSetup';
 import { BattleUnit, TileData } from '../core/types';
+import ashenCausewayTiledMap from './data/ashen-causeway.tiled.json';
 import brokenChapelTiledMap from './data/broken-chapel.tiled.json';
 import { parseTiledLevel } from './tiled';
 import { getUnitBlueprint } from './unitBlueprints';
-import { LevelDefinition } from './types';
+import { LevelDefinition, PlayerDeploymentSlot } from './types';
 
 const UNIT_SPRITE_SCALE = 0.8;
 
+function createBattleUnitId(levelId: string, placementIndex: number, blueprintId: string): string {
+  return `${levelId}:${placementIndex}:${blueprintId}`;
+}
+
+const ashenCausewayLevel = parseTiledLevel(ashenCausewayTiledMap);
 const brokenChapelLevel = parseTiledLevel(brokenChapelTiledMap);
 
 const LEVELS = {
-  [brokenChapelLevel.id]: brokenChapelLevel
+  [brokenChapelLevel.id]: brokenChapelLevel,
+  [ashenCausewayLevel.id]: ashenCausewayLevel
 } as const;
 
 export type LevelId = keyof typeof LEVELS;
@@ -25,6 +33,37 @@ export function getLevel(levelId: string): LevelDefinition {
   }
 
   return level;
+}
+
+export function getAllLevels(): LevelDefinition[] {
+  return Object.values(LEVELS);
+}
+
+export function getPlayerDeploymentSlots(level: LevelDefinition): PlayerDeploymentSlot[] {
+  return level.placements.flatMap((placement, placementIndex) => {
+    if (placement.team !== 'player') {
+      return [];
+    }
+
+    return [{
+      id: `player-slot-${placementIndex}`,
+      placementIndex,
+      defaultBlueprintId: placement.blueprintId,
+      x: placement.x,
+      y: placement.y
+    }];
+  });
+}
+
+export function createDefaultBattleSetup(levelOrId: LevelDefinition | string = CURRENT_LEVEL.id): BattleSetup {
+  const level = typeof levelOrId === 'string' ? getLevel(levelOrId) : levelOrId;
+
+  return {
+    levelId: level.id,
+    playerAssignments: Object.fromEntries(
+      getPlayerDeploymentSlots(level).map((slot) => [slot.id, slot.defaultBlueprintId])
+    )
+  };
 }
 
 export function createLevelMap(level: LevelDefinition): TileData[] {
@@ -48,21 +87,39 @@ export function createLevelMap(level: LevelDefinition): TileData[] {
   return map;
 }
 
-export function createLevelUnits(level: LevelDefinition): BattleUnit[] {
+export function createLevelUnits(
+  level: LevelDefinition,
+  playerAssignments: BattleSetup['playerAssignments'] = {}
+): BattleUnit[] {
   const width = getLevelWidth(level);
   const height = getLevelHeight(level);
+  const playerSlotsByPlacementIndex = new Map(
+    getPlayerDeploymentSlots(level).map((slot) => [slot.placementIndex, slot])
+  );
 
   validateLevel(level);
 
-  return level.placements.map(({ blueprintId, x, y }) => {
+  return level.placements.flatMap(({ blueprintId, team, x, y }, placementIndex) => {
     if (x < 0 || x >= width || y < 0 || y >= height) {
       throw new Error(`Unit placement ${blueprintId} is outside the level bounds.`);
     }
 
-    const blueprint = getUnitBlueprint(blueprintId);
+    const playerSlot = playerSlotsByPlacementIndex.get(placementIndex);
+    const resolvedBlueprintId = playerSlot ? playerAssignments[playerSlot.id] : blueprintId;
 
-    return {
-      ...blueprint,
+    if (playerSlot && typeof resolvedBlueprintId !== 'string') {
+      return [];
+    }
+
+    const blueprint = getUnitBlueprint(resolvedBlueprintId);
+
+    const { id: resolvedBlueprintKey, ...blueprintData } = blueprint;
+
+    return [{
+      ...blueprintData,
+      id: createBattleUnitId(level.id, placementIndex, resolvedBlueprintKey),
+      blueprintId: resolvedBlueprintKey,
+      team,
       spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_SPRITE_SCALE),
       spriteOffsetX:
         typeof blueprint.spriteOffsetX === 'number'
@@ -77,7 +134,7 @@ export function createLevelUnits(level: LevelDefinition): BattleUnit[] {
       hp: blueprint.maxHp,
       ct: 0,
       alive: true
-    };
+    }];
   });
 }
 

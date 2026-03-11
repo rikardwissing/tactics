@@ -18,7 +18,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     this.createSharedTextures();
-    this.scene.start('battle');
+    this.scene.start('setup');
   }
 
   private createSharedTextures(): void {

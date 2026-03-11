@@ -8,7 +8,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Aevum Guardian',
     className: 'Ascetic Vanguard',
     turnStartCatchPhrase: 'Aevum endures.',
-    team: 'player',
     spriteKey: 'children-of-the-prophecy-aevum-guardian',
     accentColor: 0xd2b37a,
     maxHp: 88,
@@ -46,7 +45,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Mirage Seer',
     className: 'Vision Caller',
     turnStartCatchPhrase: 'The veil opens.',
-    team: 'player',
     spriteKey: 'children-of-the-prophecy-mirage-seer',
     accentColor: 0x8db6bf,
     maxHp: 68,
@@ -82,7 +80,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Memory Keeper',
     className: 'Relic Keeper',
     turnStartCatchPhrase: 'Hold fast to memory.',
-    team: 'player',
     spriteKey: 'children-of-the-prophecy-memory-keeper',
     accentColor: 0xe0c88f,
     maxHp: 64,
@@ -131,7 +128,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Aion Trooper',
     className: 'Chrono Vanguard',
     turnStartCatchPhrase: 'Anchor locked.',
-    team: 'player',
     spriteKey: 'time-travelers-aion-trooper',
     accentColor: 0x7fbfc1,
     maxHp: 88,
@@ -181,7 +177,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Scavenger Marksman',
     className: 'Expedition Shooter',
     turnStartCatchPhrase: 'I have the angle.',
-    team: 'player',
     spriteKey: 'time-travelers-scavenger-marksman',
     accentColor: 0xc88b4f,
     maxHp: 70,
@@ -229,7 +224,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Chronomedic',
     className: 'Field Restorer',
     turnStartCatchPhrase: 'Stay in phase.',
-    team: 'player',
     spriteKey: 'time-travelers-chronomedic',
     accentColor: 0xe0c88f,
     maxHp: 66,
@@ -278,7 +272,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'House Marshal',
     className: 'Surface Commander',
     turnStartCatchPhrase: 'Hold the line.',
-    team: 'player',
     spriteKey: 'the-order-house-marshal',
     accentColor: 0xc7a35e,
     maxHp: 92,
@@ -326,7 +319,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Squire Operative',
     className: 'Recon Marksman',
     turnStartCatchPhrase: 'Marked and ready.',
-    team: 'player',
     spriteKey: 'the-order-squire-operative',
     accentColor: 0xb55f53,
     maxHp: 72,
@@ -372,7 +364,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Banner Surgeon',
     className: 'Field Medic',
     turnStartCatchPhrase: 'Steady. Breathe.',
-    team: 'player',
     spriteKey: 'the-order-banner-surgeon',
     accentColor: 0xde8b5e,
     maxHp: 64,
@@ -419,7 +410,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Tide Legionary',
     className: 'Shock Infantry',
     turnStartCatchPhrase: 'Break the shore.',
-    team: 'enemy',
     spriteKey: 'myrmidons-tide-legionary',
     accentColor: 0x48a79c,
     maxHp: 84,
@@ -456,7 +446,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Hunter',
     className: 'Amphibious Marksman',
     turnStartCatchPhrase: 'I scent blood.',
-    team: 'enemy',
     spriteKey: 'myrmidons-hunter',
     accentColor: 0x7fc9ba,
     maxHp: 70,
@@ -495,7 +484,6 @@ export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
     name: 'Spectre',
     className: 'Bio-Psionic Raider',
     turnStartCatchPhrase: 'The deep sees.',
-    team: 'enemy',
     spriteKey: 'myrmidons-spectre',
     accentColor: 0x7f9fc8,
     maxHp: 66,
@@ -535,4 +523,8 @@ export function getUnitBlueprint(blueprintId: string): UnitBlueprint {
   }
 
   return blueprint;
+}
+
+export function getAllUnitBlueprints(): UnitBlueprint[] {
+  return Object.values(UNIT_BLUEPRINTS);
 }
