@@ -471,8 +471,9 @@ export class SetupScene extends Phaser.Scene {
   private layoutScene(): void {
     const width = this.scale.width;
     const height = this.scale.height;
+    const isPortrait = height > width;
     const grid = createUiGrid(width, height, this.layoutMode === 'wide' ? 12 : 6);
-    const topY = 8;
+    const topY = isPortrait ? 2 : 8;
 
     this.layoutBackdropCover(width, height);
     this.backdropShade.setSize(width, height);
@@ -499,7 +500,7 @@ export class SetupScene extends Phaser.Scene {
       .setWordWrapWidth(0, true);
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
-    const contentTop = topY + titleLogoBounds.height * titleLogoScale - 16;
+    const contentTop = topY + titleLogoBounds.height * titleLogoScale - (isPortrait ? 8 : 16);
 
     if (this.layoutMode === 'wide') {
       const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
@@ -1345,7 +1346,8 @@ export class SetupScene extends Phaser.Scene {
     this.deploymentSlots = [];
     this.playerAssignments = {};
     this.selectedSlotId = null;
-    this.selectionMenuMode = 'map';
+    const isPortrait = this.scale.height > this.scale.width;
+    this.selectionMenuMode = isPortrait ? null : 'map';
     this.selectionMenuScroll = 0;
     this.selectionMenuPointerId = null;
     this.revealProgress = 0;
