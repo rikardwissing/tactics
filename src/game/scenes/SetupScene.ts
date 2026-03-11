@@ -112,6 +112,8 @@ const SLOT_CARD_VERTICAL_INSET_COMPACT = 4;
 const SLOT_CARD_PORTRAIT_BASE_Y = 6;
 const SLOT_CARD_PORTRAIT_EXTRA_Y = 10;
 const REVEAL_OFFSET_Y = 34;
+const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
+const SETUP_MAP_PANEL_HEIGHT_COMPACT = 164;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
 const SLOT_MARKER_COLORS = [0xcaa56a, 0x61d7c7, 0xe8898f] as const;
 const BASE_FACTION_ORDER: FactionId[] = ['the-order', 'time-travelers', 'children-of-the-prophecy', 'myrmidons'];
@@ -477,7 +479,9 @@ export class SetupScene extends Phaser.Scene {
 
     const titleLogoBounds = this.titleLogoOpaqueBounds
       ?? new Phaser.Geom.Rectangle(0, 0, Math.max(1, this.titleLogo.width), Math.max(1, this.titleLogo.height));
-    const minimumPanelStackHeight = this.layoutMode === 'wide' ? 216 + UI_PANEL_GAP + 280 : 186 + UI_PANEL_GAP + 238;
+    const minimumPanelStackHeight = this.layoutMode === 'wide'
+      ? SETUP_MAP_PANEL_HEIGHT_WIDE + UI_PANEL_GAP + 280
+      : SETUP_MAP_PANEL_HEIGHT_COMPACT + UI_PANEL_GAP + 238;
     const titleLogoMaxWidth = width - UI_SCREEN_MARGIN * 2;
     const titleLogoMaxHeight = Math.max(
       this.layoutMode === 'wide' ? 120 : 96,
@@ -499,7 +503,7 @@ export class SetupScene extends Phaser.Scene {
 
     if (this.layoutMode === 'wide') {
       const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapBounds = grid.column(0, 12, contentTop, 216);
+      const targetMapBounds = grid.column(0, 12, contentTop, SETUP_MAP_PANEL_HEIGHT_WIDE);
       const targetSlotsBounds = grid.column(
         0,
         12,
@@ -519,7 +523,7 @@ export class SetupScene extends Phaser.Scene {
       );
     } else {
       const heroBounds = grid.column(0, 6, contentTop + 8, Math.min(260, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapBounds = grid.column(0, 6, contentTop, 186);
+      const targetMapBounds = grid.column(0, 6, contentTop, SETUP_MAP_PANEL_HEIGHT_COMPACT);
       const targetSlotsBounds = grid.column(
         0,
         6,
