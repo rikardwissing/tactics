@@ -1346,7 +1346,8 @@ export class SetupScene extends Phaser.Scene {
     this.deploymentSlots = [];
     this.playerAssignments = {};
     this.selectedSlotId = null;
-    this.selectionMenuMode = 'map';
+    const isPortrait = this.scale.height > this.scale.width;
+    this.selectionMenuMode = isPortrait ? null : 'map';
     this.selectionMenuScroll = 0;
     this.selectionMenuPointerId = null;
     this.revealProgress = 0;
