@@ -474,7 +474,7 @@ export class SetupScene extends Phaser.Scene {
     const height = this.scale.height;
     const isPortrait = height > width;
     const grid = createUiGrid(width, height, this.layoutMode === 'wide' ? 12 : 6);
-    const topY = isPortrait ? 0 : 4;
+    const topY = this.layoutMode === 'compact' ? (isPortrait ? 0 : 4) : (isPortrait ? 2 : 8);
 
     this.layoutBackdropCover(width, height);
     this.backdropShade.setSize(width, height);
@@ -502,7 +502,7 @@ export class SetupScene extends Phaser.Scene {
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
     const compactLogoOverlap = isPortrait ? 42 : 48;
-    const wideLogoOverlap = isPortrait ? 18 : 24;
+    const wideLogoOverlap = isPortrait ? 8 : 16;
     const contentTop = topY + titleLogoBounds.height * titleLogoScale - (this.layoutMode === 'compact' ? compactLogoOverlap : wideLogoOverlap);
 
     if (this.layoutMode === 'wide') {
