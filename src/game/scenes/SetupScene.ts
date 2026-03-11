@@ -115,6 +115,8 @@ const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const SETUP_MAP_PANEL_HEIGHT_COMPACT = 164;
 const SETUP_MAP_PANEL_HEIGHT_COMPACT_MIN = 128;
+const SETUP_START_BUTTON_HEIGHT_WIDE = 84;
+const SETUP_START_BUTTON_HEIGHT_COMPACT = 78;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
 const SLOT_MARKER_COLORS = [0xcaa56a, 0x61d7c7, 0xe8898f] as const;
 const BASE_FACTION_ORDER: FactionId[] = ['the-order', 'time-travelers', 'children-of-the-prophecy', 'myrmidons'];
@@ -482,8 +484,8 @@ export class SetupScene extends Phaser.Scene {
     const titleLogoBounds = this.titleLogoOpaqueBounds
       ?? new Phaser.Geom.Rectangle(0, 0, Math.max(1, this.titleLogo.width), Math.max(1, this.titleLogo.height));
     const minimumPanelStackHeight = this.layoutMode === 'wide'
-      ? SETUP_MAP_PANEL_HEIGHT_WIDE + UI_PANEL_GAP + 280
-      : SETUP_MAP_PANEL_HEIGHT_COMPACT + UI_PANEL_GAP + 238;
+      ? 360
+      : 308;
     const titleLogoMaxWidth = width - UI_SCREEN_MARGIN * 2;
     const titleLogoMaxHeight = Math.max(
       this.layoutMode === 'wide' ? 120 : 96,
@@ -505,15 +507,19 @@ export class SetupScene extends Phaser.Scene {
     const wideLogoOverlap = isPortrait ? 8 : 16;
     const contentTop = topY + titleLogoBounds.height * titleLogoScale - (this.layoutMode === 'compact' ? compactLogoOverlap : wideLogoOverlap);
 
+    const startButtonHeight = this.layoutMode === 'wide'
+      ? SETUP_START_BUTTON_HEIGHT_WIDE
+      : SETUP_START_BUTTON_HEIGHT_COMPACT;
+    const startButtonY = Math.round(height - UI_SCREEN_MARGIN - startButtonHeight);
+    const panelHeight = Math.max(
+      this.layoutMode === 'wide' ? 220 : 180,
+      startButtonY - UI_PANEL_GAP - contentTop
+    );
+
     if (this.layoutMode === 'wide') {
-      const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapBounds = grid.column(0, 12, contentTop, SETUP_MAP_PANEL_HEIGHT_WIDE);
-      const targetSlotsBounds = grid.column(
-        0,
-        12,
-        targetMapBounds.bottom + UI_PANEL_GAP,
-        Math.max(280, height - targetMapBounds.bottom - UI_PANEL_GAP - UI_SCREEN_MARGIN)
-      );
+      const heroBounds = grid.column(0, 7, contentTop + 8, Math.min(300, panelHeight));
+      const targetMapBounds = grid.column(0, 7, contentTop, panelHeight);
+      const targetSlotsBounds = grid.column(7, 5, contentTop, panelHeight);
 
       this.lerpRect(this.mapPanelBounds, heroBounds, targetMapBounds, this.revealProgress);
       this.setRect(
@@ -526,15 +532,10 @@ export class SetupScene extends Phaser.Scene {
         )
       );
     } else {
-      const heroBounds = grid.column(0, 6, contentTop + 8, Math.min(260, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapPanelHeight = this.getCompactMapPanelHeight();
-      const targetMapBounds = grid.column(0, 6, contentTop, targetMapPanelHeight);
-      const targetSlotsBounds = grid.column(
-        0,
-        6,
-        targetMapBounds.bottom + UI_PANEL_GAP,
-        Math.max(238, height - targetMapBounds.bottom - UI_PANEL_GAP - UI_SCREEN_MARGIN)
-      );
+      const heroBounds = grid.column(0, 3, contentTop + 8, Math.min(260, panelHeight));
+      const targetMapPanelHeight = Math.max(this.getCompactMapPanelHeight(), panelHeight);
+      const targetMapBounds = grid.column(0, 3, contentTop, targetMapPanelHeight);
+      const targetSlotsBounds = grid.column(3, 3, contentTop, panelHeight);
 
       this.lerpRect(this.mapPanelBounds, heroBounds, targetMapBounds, this.revealProgress);
       this.setRect(
@@ -600,10 +601,10 @@ export class SetupScene extends Phaser.Scene {
       Math.max(0, slotsContent.height - actionHeight - UI_PANEL_GAP)
     );
     this.slotActionBounds.setTo(
-      slotsContent.x,
-      this.slotRailBounds.bottom + UI_PANEL_GAP,
-      slotsContent.width,
-      actionHeight
+      Math.round(width * 0.5 - Math.min(640, width - UI_SCREEN_MARGIN * 2) * 0.5),
+      startButtonY,
+      Math.min(640, width - UI_SCREEN_MARGIN * 2),
+      startButtonHeight
     );
 
     this.slotRailMaskGraphics.clear();
