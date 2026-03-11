@@ -80,7 +80,6 @@ interface SelectionItemView {
   titleText: Phaser.GameObjects.Text;
   metaText: Phaser.GameObjects.Text;
   detailText: Phaser.GameObjects.Text;
-  statusText: Phaser.GameObjects.Text;
 }
 
 interface SelectionEntry {
@@ -394,7 +393,6 @@ export class SetupScene extends Phaser.Scene {
     const titleText = this.add.text(0, 0, '', UI_TEXT_TITLE);
     const metaText = this.add.text(0, 0, '', UI_TEXT_LABEL);
     const detailText = this.add.text(0, 0, '', UI_TEXT_BODY);
-    const statusText = this.add.text(0, 0, '', UI_TEXT_LABEL).setOrigin(1, 0);
 
     this.bindPress(hitArea, () => {
       const entryIndex = hitArea.getData('entryIndex') as number | undefined;
@@ -416,7 +414,7 @@ export class SetupScene extends Phaser.Scene {
       this.activateSelectionEntry(entry);
     }, { cancelOnDragDistance: 12 });
 
-    container.add([backgroundImage, background, portrait, titleText, metaText, detailText, statusText, hitArea]);
+    container.add([backgroundImage, background, portrait, titleText, metaText, detailText, hitArea]);
     hitArea.setData('entryIndex', index);
 
     return {
@@ -428,8 +426,7 @@ export class SetupScene extends Phaser.Scene {
       hitArea,
       titleText,
       metaText,
-      detailText,
-      statusText
+      detailText
     };
   }
 
@@ -1077,7 +1074,6 @@ export class SetupScene extends Phaser.Scene {
     item.titleText.setText(entry.title).setColor(primaryColor);
     item.metaText.setText(entry.meta).setColor(secondaryColor);
     item.detailText.setText(entry.detail).setColor(primaryColor);
-    item.statusText.setText(entry.status).setColor(primaryColor);
 
     if (entry.backgroundImageKey) {
       item.backgroundImage.setTexture(entry.backgroundImageKey);
@@ -1110,35 +1106,31 @@ export class SetupScene extends Phaser.Scene {
     }
 
     if (this.selectionMenuMode === 'map') {
-      const statusReserve = 132;
       item.portrait.setVisible(false);
       item.titleText
         .setPosition(20, 16)
-        .setWordWrapWidth(Math.max(0, width - 40 - statusReserve), true);
+        .setWordWrapWidth(Math.max(0, width - 40), true);
       item.metaText
         .setPosition(20, 44)
-        .setWordWrapWidth(Math.max(0, width - 40 - statusReserve), true);
+        .setWordWrapWidth(Math.max(0, width - 40), true);
       item.detailText
         .setPosition(20, 72)
         .setWordWrapWidth(Math.max(0, width - 40), true);
-      item.statusText.setPosition(width - 18, 14);
       return;
     }
 
     const artBounds = new Phaser.Geom.Rectangle(16, 12, this.layoutMode === 'wide' ? 108 : 96, height - 24);
     const textLeft = artBounds.right + 18;
-    const statusReserve = 116;
 
     item.titleText
       .setPosition(textLeft, 14)
-      .setWordWrapWidth(Math.max(0, width - textLeft - statusReserve), true);
+      .setWordWrapWidth(Math.max(0, width - textLeft), true);
     item.metaText
       .setPosition(textLeft, 40)
-      .setWordWrapWidth(Math.max(0, width - textLeft - statusReserve), true);
+      .setWordWrapWidth(Math.max(0, width - textLeft), true);
     item.detailText
       .setPosition(textLeft, 64)
       .setWordWrapWidth(Math.max(0, width - textLeft - 20), true);
-    item.statusText.setPosition(width - 18, 14);
 
     if (entry.portraitImageKey) {
       item.portrait.setTexture(entry.portraitImageKey).setVisible(true).setAlpha(entry.disabled ? 0.58 : 1);
@@ -1199,23 +1191,6 @@ export class SetupScene extends Phaser.Scene {
         radius: 14
       });
     }
-
-    const statusFillColor =
-      entry.status === 'SELECTED'
-        ? entry.accentColor
-        : entry.status === 'AVAILABLE'
-          ? UI_COLOR_SUCCESS
-          : UI_COLOR_ACCENT_DANGER;
-    const statusWidth = Math.max(84, item.statusText.width + 18);
-    const statusBounds = new Phaser.Geom.Rectangle(width - statusWidth - 16, 12, statusWidth, 22);
-    BattleUiChrome.drawPill(item.background, statusBounds, {
-      fillColor: statusFillColor,
-      strokeColor: accentColor,
-      fillAlpha: entry.disabled ? 0.16 : 0.22,
-      strokeAlpha: entry.disabled ? 0.18 : 0.36,
-      radius: 11
-    });
-    item.statusText.setPosition(statusBounds.right - 8, statusBounds.y + 4);
 
     if (selected) {
       item.background.lineStyle(2, UI_COLOR_PANEL_BORDER, 0.68);
