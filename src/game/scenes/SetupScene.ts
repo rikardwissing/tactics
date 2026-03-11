@@ -114,6 +114,7 @@ const SLOT_CARD_PORTRAIT_EXTRA_Y = 10;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const SETUP_MAP_PANEL_HEIGHT_COMPACT = 164;
+const SETUP_MAP_PANEL_HEIGHT_COMPACT_MIN = 128;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
 const SLOT_MARKER_COLORS = [0xcaa56a, 0x61d7c7, 0xe8898f] as const;
 const BASE_FACTION_ORDER: FactionId[] = ['the-order', 'time-travelers', 'children-of-the-prophecy', 'myrmidons'];
@@ -500,7 +501,9 @@ export class SetupScene extends Phaser.Scene {
       .setWordWrapWidth(0, true);
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
-    const contentTop = topY + titleLogoBounds.height * titleLogoScale - (isPortrait ? 8 : 16);
+    const compactLogoOverlap = isPortrait ? 18 : 24;
+    const wideLogoOverlap = isPortrait ? 8 : 16;
+    const contentTop = topY + titleLogoBounds.height * titleLogoScale - (this.layoutMode === 'compact' ? compactLogoOverlap : wideLogoOverlap);
 
     if (this.layoutMode === 'wide') {
       const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
@@ -524,7 +527,8 @@ export class SetupScene extends Phaser.Scene {
       );
     } else {
       const heroBounds = grid.column(0, 6, contentTop + 8, Math.min(260, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapBounds = grid.column(0, 6, contentTop, SETUP_MAP_PANEL_HEIGHT_COMPACT);
+      const targetMapPanelHeight = this.getCompactMapPanelHeight();
+      const targetMapBounds = grid.column(0, 6, contentTop, targetMapPanelHeight);
       const targetSlotsBounds = grid.column(
         0,
         6,
@@ -612,6 +616,18 @@ export class SetupScene extends Phaser.Scene {
         this.slotRailBounds.height
       );
     }
+  }
+
+  private getCompactMapPanelHeight(): number {
+    const contentHeight = this.selectedLevel
+      ? this.mapInfoText.height + this.mapMetaText.height + this.objectiveText.height + UI_PANEL_MINI_GAP + 4
+      : 0;
+    const estimatedPanelHeight = UI_PLAQUE_HEADER_HEIGHT + UI_PANEL_GAP + UI_SCREEN_MARGIN + contentHeight;
+    return Phaser.Math.Clamp(
+      Math.ceil(estimatedPanelHeight),
+      SETUP_MAP_PANEL_HEIGHT_COMPACT_MIN,
+      SETUP_MAP_PANEL_HEIGHT_COMPACT
+    );
   }
 
   private findOpaqueTextureBounds(textureKey: string): Phaser.Geom.Rectangle | null {
