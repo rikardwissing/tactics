@@ -191,6 +191,7 @@ export class SetupScene extends Phaser.Scene {
   private startButtonBounds = new Phaser.Geom.Rectangle();
   private menuPanelBounds = new Phaser.Geom.Rectangle();
   private menuListBounds = new Phaser.Geom.Rectangle();
+  private titleLogoOpaqueBounds: Phaser.Geom.Rectangle | null = null;
 
   constructor() {
     super('setup');
@@ -236,6 +237,7 @@ export class SetupScene extends Phaser.Scene {
     this.menuListMask = new Phaser.Display.Masks.GeometryMask(this, this.menuListMaskGraphics);
 
     this.titleLogo = this.add.image(0, 0, 'renations-tactics-logo').setOrigin(0, 0);
+    this.titleLogoOpaqueBounds = this.findOpaqueTextureBounds('renations-tactics-logo');
     this.subtitleText = this.add.text(0, 0, '', UI_TEXT_BODY).setVisible(false);
     this.statusText = this.add.text(0, 0, '', UI_TEXT_BODY).setVisible(false);
     this.mapPanelTitleText = this.add.text(0, 0, 'BATTLEFIELD', UI_NARROW_HEADER_TITLE_TEXT_STYLE);
@@ -476,19 +478,27 @@ export class SetupScene extends Phaser.Scene {
     this.layoutBackdropCover(width, height);
     this.backdropShade.setSize(width, height);
 
-    const titleLogoMaxWidth = width - 4;
-    const titleLogoMaxHeight = this.layoutMode === 'wide' ? 380 : 280;
-    const titleLogoScale = Math.min(
-      titleLogoMaxWidth / Math.max(1, this.titleLogo.width),
-      titleLogoMaxHeight / Math.max(1, this.titleLogo.height)
+    const titleLogoBounds = this.titleLogoOpaqueBounds
+      ?? new Phaser.Geom.Rectangle(0, 0, Math.max(1, this.titleLogo.width), Math.max(1, this.titleLogo.height));
+    const minimumPanelStackHeight = this.layoutMode === 'wide' ? 216 + UI_PANEL_GAP + 280 : 186 + UI_PANEL_GAP + 238;
+    const titleLogoMaxWidth = width - UI_SCREEN_MARGIN * 2;
+    const titleLogoMaxHeight = Math.max(
+      this.layoutMode === 'wide' ? 120 : 96,
+      height - minimumPanelStackHeight - UI_SCREEN_MARGIN - topY
     );
-    this.titleLogo.setPosition(width / 2, topY).setOrigin(0.5, 0).setScale(titleLogoScale);
+    const titleLogoScale = Math.min(
+      titleLogoMaxWidth / Math.max(1, titleLogoBounds.width),
+      titleLogoMaxHeight / Math.max(1, titleLogoBounds.height)
+    );
+    const titleLogoX = width / 2 - (titleLogoBounds.x + titleLogoBounds.width / 2) * titleLogoScale;
+    const titleLogoY = topY - titleLogoBounds.y * titleLogoScale;
+    this.titleLogo.setPosition(titleLogoX, titleLogoY).setOrigin(0, 0).setScale(titleLogoScale);
     this.subtitleText
       .setPosition(-9999, -9999)
       .setWordWrapWidth(0, true);
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
-    const contentTop = this.titleLogo.y + this.titleLogo.displayHeight - 32;
+    const contentTop = topY + titleLogoBounds.height * titleLogoScale - 16;
 
     if (this.layoutMode === 'wide') {
       const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
@@ -600,6 +610,55 @@ export class SetupScene extends Phaser.Scene {
         this.slotRailBounds.height
       );
     }
+  }
+
+  private findOpaqueTextureBounds(textureKey: string): Phaser.Geom.Rectangle | null {
+    const sourceImage = this.textures.get(textureKey)?.getSourceImage() as CanvasImageSource | undefined;
+    if (!sourceImage) {
+      return null;
+    }
+
+    const dimensions = sourceImage as { width?: number; height?: number };
+    const imageWidth = dimensions.width ?? 0;
+    const imageHeight = dimensions.height ?? 0;
+    if (!imageWidth || !imageHeight) {
+      return null;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = imageWidth;
+    canvas.height = imageHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      return null;
+    }
+
+    ctx.drawImage(sourceImage, 0, 0, imageWidth, imageHeight);
+    const pixels = ctx.getImageData(0, 0, imageWidth, imageHeight).data;
+
+    let minX = imageWidth;
+    let minY = imageHeight;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < imageHeight; y += 1) {
+      const rowOffset = y * imageWidth * 4;
+      for (let x = 0; x < imageWidth; x += 1) {
+        if (pixels[rowOffset + x * 4 + 3] <= 0) {
+          continue;
+        }
+
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+
+    if (maxX < minX || maxY < minY) {
+      return null;
+    }
+
+    return new Phaser.Geom.Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
   }
 
   private layoutBackdropCover(width: number, height: number): void {
