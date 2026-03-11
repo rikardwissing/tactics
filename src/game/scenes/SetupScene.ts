@@ -501,7 +501,7 @@ export class SetupScene extends Phaser.Scene {
       .setWordWrapWidth(0, true);
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
-    const compactLogoOverlap = isPortrait ? 30 : 36;
+    const compactLogoOverlap = isPortrait ? 42 : 48;
     const wideLogoOverlap = isPortrait ? 18 : 24;
     const contentTop = topY + titleLogoBounds.height * titleLogoScale - (this.layoutMode === 'compact' ? compactLogoOverlap : wideLogoOverlap);
 
