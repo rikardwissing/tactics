@@ -1143,7 +1143,7 @@ export class SetupScene extends Phaser.Scene {
         .setScale(portraitScale)
         .setPosition(
           artBounds.centerX + (entry.portraitOffsetX ?? 0) * portraitScale,
-          artBounds.bottom + (entry.portraitOffsetY ?? 0) * portraitScale - 4
+          artBounds.bottom + (entry.portraitOffsetY ?? 0) * portraitScale + 2
         );
     } else {
       item.portrait.setVisible(false);
