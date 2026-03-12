@@ -511,12 +511,10 @@ export class SetupScene extends Phaser.Scene {
       ? SETUP_START_BUTTON_HEIGHT_WIDE
       : SETUP_START_BUTTON_HEIGHT_COMPACT;
     const startButtonY = Math.round(height - UI_SCREEN_MARGIN - startButtonHeight);
-    const panelHeight = Math.max(
-      this.layoutMode === 'wide' ? 220 : 180,
-      startButtonY - UI_PANEL_GAP - contentTop
-    );
+    const panelBottom = startButtonY - UI_PANEL_GAP;
 
     if (this.layoutMode === 'wide') {
+      const panelHeight = Math.max(220, panelBottom - contentTop);
       const heroBounds = grid.column(0, 7, contentTop + 8, Math.min(300, panelHeight));
       const targetMapBounds = grid.column(0, 7, contentTop, panelHeight);
       const targetSlotsBounds = grid.column(7, 5, contentTop, panelHeight);
@@ -532,10 +530,15 @@ export class SetupScene extends Phaser.Scene {
         )
       );
     } else {
-      const heroBounds = grid.column(0, 3, contentTop + 8, Math.min(260, panelHeight));
-      const targetMapPanelHeight = Math.max(this.getCompactMapPanelHeight(), panelHeight);
-      const targetMapBounds = grid.column(0, 3, contentTop, targetMapPanelHeight);
-      const targetSlotsBounds = grid.column(3, 3, contentTop, panelHeight);
+      const heroBounds = grid.column(0, 6, contentTop + 8, Math.min(260, panelBottom - contentTop));
+      const targetMapBounds = grid.column(0, 6, contentTop, this.getCompactMapPanelHeight());
+      const slotsTop = targetMapBounds.bottom + UI_PANEL_GAP;
+      const targetSlotsBounds = grid.column(
+        0,
+        6,
+        slotsTop,
+        Math.max(0, panelBottom - slotsTop)
+      );
 
       this.lerpRect(this.mapPanelBounds, heroBounds, targetMapBounds, this.revealProgress);
       this.setRect(
@@ -593,12 +596,11 @@ export class SetupScene extends Phaser.Scene {
     }
 
     const slotsContent = BattleUiChrome.getContentBounds(this.slotsPanelBounds);
-    const actionHeight = this.layoutMode === 'wide' ? 84 : 80;
     this.slotRailBounds.setTo(
       slotsContent.x,
       slotsContent.y,
       slotsContent.width,
-      Math.max(0, slotsContent.height - actionHeight - UI_PANEL_GAP)
+      slotsContent.height
     );
     this.slotActionBounds.setTo(
       Math.round(width * 0.5 - Math.min(640, width - UI_SCREEN_MARGIN * 2) * 0.5),
