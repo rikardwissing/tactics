@@ -6,7 +6,7 @@ import { parseTiledLevel } from './tiled';
 import { getUnitBlueprint } from './unitBlueprints';
 import { LevelDefinition, PlayerDeploymentSlot } from './types';
 
-const UNIT_SPRITE_SCALE = 0.8;
+export const UNIT_BLUEPRINT_BATTLE_SCALE = 0.8;
 
 function createBattleUnitId(levelId: string, placementIndex: number, blueprintId: string): string {
   return `${levelId}:${placementIndex}:${blueprintId}`;
@@ -120,14 +120,14 @@ export function createLevelUnits(
       id: createBattleUnitId(level.id, placementIndex, resolvedBlueprintKey),
       blueprintId: resolvedBlueprintKey,
       team,
-      spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_SPRITE_SCALE),
+      spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_BLUEPRINT_BATTLE_SCALE),
       spriteOffsetX:
         typeof blueprint.spriteOffsetX === 'number'
-          ? Math.round(blueprint.spriteOffsetX * UNIT_SPRITE_SCALE)
+          ? Math.round(blueprint.spriteOffsetX * UNIT_BLUEPRINT_BATTLE_SCALE)
           : undefined,
       spriteOffsetY:
         typeof blueprint.spriteOffsetY === 'number'
-          ? Math.round(blueprint.spriteOffsetY * UNIT_SPRITE_SCALE)
+          ? Math.round(blueprint.spriteOffsetY * UNIT_BLUEPRINT_BATTLE_SCALE)
           : undefined,
       x,
       y,

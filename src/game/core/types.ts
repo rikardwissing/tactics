@@ -6,6 +6,7 @@ export type FactionId = 'time-travelers' | 'myrmidons' | 'the-order' | 'children
 export type UnitGender = 'male' | 'female';
 export type UnitRoleId =
   | 'aion-trooper'
+  | 'time-lord'
   | 'rift-engineer'
   | 'chronomedic'
   | 'scavenger-marksman'

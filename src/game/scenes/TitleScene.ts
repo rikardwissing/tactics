@@ -18,6 +18,7 @@ export class TitleScene extends Phaser.Scene {
   private logo!: Phaser.GameObjects.Image;
   private subtitleText!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
+  private editorPromptText!: Phaser.GameObjects.Text;
   private embers!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor() {
@@ -25,6 +26,10 @@ export class TitleScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.transitionStarted = false;
+    this.input.enabled = true;
+    this.promptPulseTween = null;
+
     audioDirector.bindScene(this);
     audioDirector.setMusic('title');
     void audioDirector.unlock().catch(() => undefined);
@@ -39,7 +44,7 @@ export class TitleScene extends Phaser.Scene {
     this.frameLines = this.add.graphics();
     this.logo = this.add.image(0, 0, 'renations-tactics-logo').setOrigin(0.5);
     this.subtitleText = this.add
-      .text(0, 0, 'TIME, TIDE, AND HOLY FIRE', {
+      .text(0, 0, 'AFTERFALL', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '20px',
         fontStyle: 'bold',
@@ -62,6 +67,15 @@ export class TitleScene extends Phaser.Scene {
         fontStyle: 'bold',
         color: '#f7edd9',
         letterSpacing: 5
+      })
+      .setOrigin(0.5);
+    this.editorPromptText = this.add
+      .text(0, 0, 'UNIT EDITOR', {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '21px',
+        fontStyle: 'bold',
+        color: '#dfc79b',
+        letterSpacing: 4
       })
       .setOrigin(0.5);
 
@@ -88,19 +102,22 @@ export class TitleScene extends Phaser.Scene {
     this.logo.setDepth(6);
     this.subtitleText.setDepth(7);
     this.promptText.setDepth(8);
+    this.editorPromptText.setDepth(8);
     this.embers.setDepth(9);
 
     this.input.keyboard?.on('keydown-ENTER', this.beginSetup, this);
     this.input.keyboard?.on('keydown-SPACE', this.beginSetup, this);
     this.input.keyboard?.on('keydown-Z', this.beginSetup, this);
-    this.input.on('pointerdown', this.beginSetup, this);
+    this.input.keyboard?.on('keydown-U', this.beginUnitEditor, this);
+    this.promptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginSetup, this);
+    this.editorPromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginUnitEditor, this);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.input.keyboard?.off('keydown-ENTER', this.beginSetup, this);
       this.input.keyboard?.off('keydown-SPACE', this.beginSetup, this);
       this.input.keyboard?.off('keydown-Z', this.beginSetup, this);
-      this.input.off('pointerdown', this.beginSetup, this);
+      this.input.keyboard?.off('keydown-U', this.beginUnitEditor, this);
       this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
       this.promptPulseTween?.stop();
       this.promptPulseTween = null;
@@ -112,6 +129,14 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private beginSetup(): void {
+    this.beginScene('setup');
+  }
+
+  private beginUnitEditor(): void {
+    this.beginScene('unit-editor');
+  }
+
+  private beginScene(sceneKey: 'setup' | 'unit-editor'): void {
     if (this.transitionStarted) {
       return;
     }
@@ -121,7 +146,7 @@ export class TitleScene extends Phaser.Scene {
     this.input.enabled = false;
 
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start('setup');
+      this.scene.start(sceneKey);
     });
     this.cameras.main.fadeOut(700, 12, 6, 10);
   }
@@ -143,6 +168,8 @@ export class TitleScene extends Phaser.Scene {
     this.subtitleText.y += 18;
     this.promptText.setAlpha(0);
     this.promptText.y += 12;
+    this.editorPromptText.setAlpha(0);
+    this.editorPromptText.y += 12;
     this.embers.stop();
   }
 
@@ -216,6 +243,15 @@ export class TitleScene extends Phaser.Scene {
         this.startBackdropDrift();
       }
     });
+
+    this.tweens.add({
+      targets: this.editorPromptText,
+      alpha: 1,
+      y: '-=12',
+      duration: 720,
+      delay: 1910,
+      ease: 'Quad.Out'
+    });
   }
 
   private startBackdropDrift(): void {
@@ -244,8 +280,8 @@ export class TitleScene extends Phaser.Scene {
   private startPromptPulse(): void {
     this.promptPulseTween?.stop();
     this.promptPulseTween = this.tweens.add({
-      targets: this.promptText,
-      alpha: { from: 0.34, to: 1 },
+      targets: [this.promptText, this.editorPromptText],
+      alpha: { from: 0.42, to: 1 },
       duration: 1300,
       yoyo: true,
       repeat: -1,
@@ -286,8 +322,10 @@ export class TitleScene extends Phaser.Scene {
     this.subtitleText.setPosition(centerX, logoY + this.logo.displayHeight * 0.42 + 34);
     this.subtitleText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.016), 14, 20)}px`);
 
-    this.promptText.setPosition(centerX, height * 0.76);
+    this.promptText.setPosition(centerX, height * 0.74);
     this.promptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.019), 18, 26)}px`);
+    this.editorPromptText.setPosition(centerX, height * 0.8);
+    this.editorPromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.016), 16, 22)}px`);
 
     const emitBounds = new Phaser.Geom.Rectangle(width * 0.08, height * 0.16, width * 0.84, height * 0.52);
     this.embers.setPosition(0, 0);

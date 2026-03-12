@@ -126,7 +126,7 @@ class BattleActionMenuButton {
       : active
         ? UI_COLOR_PANEL_BORDER
         : enabled
-          ? UI_COLOR_ACCENT_WARM
+          ? UI_COLOR_SUCCESS
           : UI_COLOR_PANEL_BORDER;
 
     const rowGrid = createUiSubGrid(bounds, 8, 10, 0, 8);

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "apply-unit-patch": "node scripts/apply-unit-blueprint-patch.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

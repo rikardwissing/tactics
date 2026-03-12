@@ -109,6 +109,7 @@ const SLOT_CARD_WIDTH_WIDE = 116;
 const SLOT_CARD_WIDTH_COMPACT = 92;
 const SLOT_CARD_VERTICAL_INSET_WIDE = 6;
 const SLOT_CARD_VERTICAL_INSET_COMPACT = 4;
+const SLOT_CARD_PORTRAIT_BASELINE_INSET = 6;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
@@ -219,7 +220,7 @@ export class SetupScene extends Phaser.Scene {
 
   create(): void {
     audioDirector.bindScene(this);
-    audioDirector.setMusic('title');
+    audioDirector.setMusic('setup');
     void audioDirector.unlock().catch(() => undefined);
 
     this.backdrop = this.add.image(0, 0, 'renations-global-backdrop').setOrigin(0.5);
@@ -783,8 +784,13 @@ export class SetupScene extends Phaser.Scene {
       const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
       const portraitOffsetX = (blueprint?.spriteOffsetX ?? 0) * portraitHeightScale;
       const portraitOffsetY = (blueprint?.spriteOffsetY ?? 0) * portraitHeightScale;
-      view.portrait.setPosition(cardWidth / 2 + portraitOffsetX, cardHeight / 2 + portraitOffsetY);
-      view.portrait.setScale(portraitScale);
+      const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
+      view.portrait
+        .setScale(portraitScale)
+        .setPosition(
+          cardWidth / 2 + portraitOffsetX,
+          portraitBaselineY + portraitOffsetY - portraitDisplayHeight / 2
+        );
 
       view.slotText
         .setPosition(10 + badgeWidth / 2, 10 + badgeHeight / 2)

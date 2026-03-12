@@ -1,533 +1,169 @@
-import { UnitBlueprint } from '../core/types';
+import rawBlueprints from './data/unitBlueprints.json';
+import type { CombatEffectId } from '../core/combatEffects';
+import type { ItemId } from '../core/items';
+import type {
+  AbilityKind,
+  AbilityTarget,
+  AttackStyle,
+  FactionId,
+  IdleStyle,
+  UnitAbility,
+  UnitBlueprint,
+  UnitGender,
+  UnitRoleId
+} from '../core/types';
 
-export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = {
-  'children-of-the-prophecy-aevum-guardian': {
-    id: 'children-of-the-prophecy-aevum-guardian',
-    factionId: 'children-of-the-prophecy',
-    roleId: 'aevum-guardian',
-    gender: 'male',
-    name: 'Aevum Guardian',
-    className: 'Ascetic Vanguard',
-    turnStartCatchPhrase: 'Aevum endures.',
-    spriteKey: 'children-of-the-prophecy-aevum-guardian',
-    accentColor: 0xd2b37a,
-    maxHp: 88,
-    move: 4,
-    speed: 24,
-    attack: 25,
-    defense: 14,
-    rangeMin: 1,
-    rangeMax: 1,
-    jump: 1,
-    attackName: 'Aevum Staff',
-    attackText: 'A disciplined close-quarters strike from the front line.',
-    spriteDisplayHeight: 140,
-    spriteOffsetX: 0,
-    spriteOffsetY: 10,
-    idleStyle: 'warden',
-    attackStyle: 'blade-arc',
-    effectKey: 'the-order-breacher-strike',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Aevum Staff. A disciplined close-quarters strike from the front line.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 1
-      }
-    ]
-  },
-  'children-of-the-prophecy-mirage-seer': {
-    id: 'children-of-the-prophecy-mirage-seer',
-    factionId: 'children-of-the-prophecy',
-    roleId: 'mirage-seer',
-    gender: 'female',
-    name: 'Mirage Seer',
-    className: 'Vision Caller',
-    turnStartCatchPhrase: 'The veil opens.',
-    spriteKey: 'children-of-the-prophecy-mirage-seer',
-    accentColor: 0x8db6bf,
-    maxHp: 68,
-    move: 4,
-    speed: 27,
-    attack: 24,
-    defense: 8,
-    rangeMin: 2,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Mirage Bind',
-    attackText: 'A focused psychic strike from behind the front line.',
-    spriteDisplayHeight: 136,
-    spriteOffsetX: 0,
-    spriteOffsetY: 12,
-    idleStyle: 'priest',
-    attackStyle: 'ash-hex',
-    effectKey: 'myrmidons-phase-lash',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Mirage Bind. A focused psychic strike from behind the front line.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 3
-      }
-    ]
-  },
-  'children-of-the-prophecy-memory-keeper': {
-    id: 'children-of-the-prophecy-memory-keeper',
-    factionId: 'children-of-the-prophecy',
-    roleId: 'memory-keeper',
-    gender: 'female',
-    name: 'Memory Keeper',
-    className: 'Relic Keeper',
-    turnStartCatchPhrase: 'Hold fast to memory.',
-    spriteKey: 'children-of-the-prophecy-memory-keeper',
-    accentColor: 0xe0c88f,
-    maxHp: 64,
-    move: 4,
-    speed: 26,
-    attack: 22,
-    defense: 8,
-    rangeMin: 2,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Relic Pulse',
-    attackText: 'A steady support strike that reaches the second line.',
-    spriteDisplayHeight: 146,
-    spriteOffsetX: 0,
-    spriteOffsetY: 4,
-    idleStyle: 'mage',
-    attackStyle: 'ember-burst',
-    effectKey: 'the-order-cautery-charge',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Relic Pulse. A steady support strike that reaches the second line.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 3
-      },
-      {
-        id: 'heal',
-        name: 'Memory Mend',
-        description: 'Memory Mend. Restore 24 HP to an ally within 3 tiles.',
-        kind: 'heal',
-        target: 'ally',
-        rangeMin: 0,
-        rangeMax: 3,
-        healAmount: 24,
-        effectKey: 'the-order-field-mend'
-      }
-    ]
-  },
-  'time-travelers-aion-trooper': {
-    id: 'time-travelers-aion-trooper',
-    factionId: 'time-travelers',
-    roleId: 'aion-trooper',
-    gender: 'male',
-    name: 'Aion Trooper',
-    className: 'Chrono Vanguard',
-    turnStartCatchPhrase: 'Anchor locked!',
-    spriteKey: 'time-travelers-aion-trooper',
-    accentColor: 0x7fbfc1,
-    maxHp: 88,
-    move: 4,
-    speed: 25,
-    attack: 25,
-    defense: 14,
-    rangeMin: 1,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Chrono Carbine',
-    attackText: 'A steady rifle burst that still threatens at close range.',
-    spriteDisplayHeight: 140,
-    spriteOffsetX: 5,
-    spriteOffsetY: 2,
-    idleStyle: 'warden',
-    attackStyle: 'arrow-flight',
-    effectKey: 'the-order-relay-lance',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Chrono Carbine. A steady rifle burst that can answer near or far threats.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 3
-      },
-      {
-        id: 'throw',
-        name: 'Anchor Spike',
-        description: 'Anchor Spike. Fire a stabilizer round 2 to 4 tiles away.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 4,
-        powerModifier: -5,
-        attackStyle: 'arrow-flight',
-        effectKey: 'the-order-relay-lance'
-      }
-    ]
-  },
-  'time-travelers-scavenger-marksman': {
-    id: 'time-travelers-scavenger-marksman',
-    factionId: 'time-travelers',
-    roleId: 'scavenger-marksman',
-    gender: 'female',
-    name: 'Scavenger Marksman',
-    className: 'Expedition Shooter',
-    turnStartCatchPhrase: 'I have the angle!',
-    spriteKey: 'time-travelers-scavenger-marksman',
-    accentColor: 0xc88b4f,
-    maxHp: 70,
-    move: 5,
-    speed: 29,
-    attack: 23,
-    defense: 9,
-    rangeMin: 2,
-    rangeMax: 4,
-    jump: 1,
-    attackName: 'Scrapline Shot',
-    attackText: 'Long-range rifle pressure with good board reach.',
-    spriteDisplayHeight: 155,
-    spriteOffsetX: 10,
-    spriteOffsetY: 15,
-    idleStyle: 'ranger',
-    attackStyle: 'feather-shot',
-    effectKey: 'the-order-tracer-volley',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Scrapline Shot. Long-range rifle pressure from the back line.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 4
-      },
-      {
-        id: 'steal',
-        name: 'Salvage Sweep',
-        description: 'Salvage Sweep. Slip in close and strip a carried drop before the target falls.',
-        kind: 'steal',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 1,
-        effectKey: 'the-order-strip-gear'
-      }
-    ]
-  },
-  'time-travelers-chronomedic': {
-    id: 'time-travelers-chronomedic',
-    factionId: 'time-travelers',
-    roleId: 'chronomedic',
-    gender: 'female',
-    name: 'Chronomedic',
-    className: 'Field Restorer',
-    turnStartCatchPhrase: 'Stay in phase!',
-    spriteKey: 'time-travelers-chronomedic',
-    accentColor: 0xe0c88f,
-    maxHp: 66,
-    move: 4,
-    speed: 27,
-    attack: 22,
-    defense: 8,
-    rangeMin: 2,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Reactor Pulse',
-    attackText: 'A compact chrono burst for reliable mid-range damage.',
-    spriteDisplayHeight: 146,
-    spriteOffsetX: -1,
-    spriteOffsetY: 6,
-    idleStyle: 'mage',
-    attackStyle: 'ember-burst',
-    effectKey: 'the-order-cautery-charge',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Reactor Pulse. Reliable mid-range chrono discharge.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 3
-      },
-      {
-        id: 'heal',
-        name: 'Rewind Patch',
-        description: 'Rewind Patch. Restore 24 HP to an ally within 3 tiles.',
-        kind: 'heal',
-        target: 'ally',
-        rangeMin: 0,
-        rangeMax: 3,
-        healAmount: 24,
-        effectKey: 'the-order-field-mend'
-      }
-    ]
-  },
-  'the-order-house-marshal': {
-    id: 'the-order-house-marshal',
-    factionId: 'the-order',
-    roleId: 'house-marshal',
-    gender: 'male',
-    name: 'House Marshal',
-    className: 'Surface Commander',
-    turnStartCatchPhrase: 'Hold the line!',
-    spriteKey: 'the-order-house-marshal',
-    accentColor: 0xc7a35e,
-    maxHp: 92,
-    move: 4,
-    speed: 24,
-    attack: 26,
-    defense: 16,
-    rangeMin: 1,
-    rangeMax: 1,
-    jump: 1,
-    attackName: 'Breacher Strike',
-    attackText: 'Heavy close-quarters assault. Strongest on high ground.',
-    spriteDisplayHeight: 140,
-    idleStyle: 'knight',
-    attackStyle: 'blade-arc',
-    effectKey: 'the-order-breacher-strike',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Breacher Strike. Heavy close-quarters assault that thrives on high ground.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 1
-      },
-      {
-        id: 'throw',
-        name: 'Relay Lance',
-        description: 'Relay Lance. Launch a hardened signal spear 2 to 4 tiles away.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 4,
-        powerModifier: -6,
-        attackStyle: 'arrow-flight',
-        effectKey: 'the-order-relay-lance'
-      }
-    ]
-  },
-  'the-order-squire-operative': {
-    id: 'the-order-squire-operative',
-    factionId: 'the-order',
-    roleId: 'squire-operative',
-    gender: 'male',
-    name: 'Squire Operative',
-    className: 'Recon Marksman',
-    turnStartCatchPhrase: 'Marked and ready!',
-    spriteKey: 'the-order-squire-operative',
-    accentColor: 0xb55f53,
-    maxHp: 72,
-    move: 5,
-    speed: 28,
-    attack: 22,
-    defense: 10,
-    rangeMin: 2,
-    rangeMax: 4,
-    jump: 1,
-    attackName: 'Tracer Volley',
-    attackText: 'Long-range burst. Punishes exposed targets.',
-    spriteDisplayHeight: 136,
-    idleStyle: 'archer',
-    attackStyle: 'arrow-flight',
-    effectKey: 'the-order-tracer-volley',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Tracer Volley. Long-range burst for exposed targets.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 4
-      },
-      {
-        id: 'steal',
-        name: 'Strip Gear',
-        description: 'Strip Gear. Slip in close and strip a carried drop before the target falls.',
-        kind: 'steal',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 1,
-        effectKey: 'the-order-strip-gear'
-      }
-    ]
-  },
-  'the-order-banner-surgeon': {
-    id: 'the-order-banner-surgeon',
-    factionId: 'the-order',
-    roleId: 'banner-surgeon',
-    gender: 'male',
-    name: 'Banner Surgeon',
-    className: 'Field Medic',
-    turnStartCatchPhrase: 'Steady. Breathe.',
-    spriteKey: 'the-order-banner-surgeon',
-    accentColor: 0xde8b5e,
-    maxHp: 64,
-    move: 4,
-    speed: 26,
-    attack: 24,
-    defense: 8,
-    rangeMin: 2,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Cautery Charge',
-    attackText: 'Mid-range surgical blast with reliable damage.',
-    spriteDisplayHeight: 146,
-    idleStyle: 'mage',
-    attackStyle: 'ember-burst',
-    effectKey: 'the-order-cautery-charge',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Cautery Charge. Focused mid-range shot for reliable damage.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 3
-      },
-      {
-        id: 'heal',
-        name: 'Field Mend',
-        description: 'Field Mend. Restore 24 HP to an ally within 3 tiles.',
-        kind: 'heal',
-        target: 'ally',
-        rangeMin: 0,
-        rangeMax: 3,
-        healAmount: 24,
-        effectKey: 'the-order-field-mend'
-      }
-    ]
-  },
-  'myrmidons-tide-legionary': {
-    id: 'myrmidons-tide-legionary',
-    factionId: 'myrmidons',
-    roleId: 'tide-legionary',
-    gender: 'male',
-    name: 'Tide Legionary',
-    className: 'Shock Infantry',
-    turnStartCatchPhrase: 'Break the shore!',
-    spriteKey: 'myrmidons-tide-legionary',
-    accentColor: 0x48a79c,
-    maxHp: 84,
-    move: 4,
-    speed: 23,
-    attack: 24,
-    defense: 13,
-    rangeMin: 1,
-    rangeMax: 1,
-    jump: 1,
-    attackName: 'Breaker Cleave',
-    attackText: 'Heavy polearm sweep. Brutal when it closes.',
-    spriteDisplayHeight: 136,
-    idleStyle: 'warden',
-    attackStyle: 'grave-cleave',
-    effectKey: 'myrmidons-breaker-cleave',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Breaker Cleave. Brutal polearm sweep at close range.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 1,
-        rangeMax: 1
-      }
-    ],
-    dropItemId: 'mending-salve'
-  },
-  'myrmidons-hunter': {
-    id: 'myrmidons-hunter',
-    factionId: 'myrmidons',
-    roleId: 'hunter',
-    gender: 'female',
-    name: 'Hunter',
-    className: 'Amphibious Marksman',
-    turnStartCatchPhrase: 'I scent blood.',
-    spriteKey: 'myrmidons-hunter',
-    accentColor: 0x7fc9ba,
-    maxHp: 70,
-    move: 5,
-    speed: 27,
-    attack: 22,
-    defense: 10,
-    rangeMin: 2,
-    rangeMax: 4,
-    jump: 1,
-    attackName: 'Brine Shot',
-    attackText: 'Ranged pressure that softens exposed targets.',
-    spriteDisplayHeight: 146,
-    spriteOffsetX: -8,
-    spriteOffsetY: 15,
-    idleStyle: 'ranger',
-    attackStyle: 'feather-shot',
-    effectKey: 'myrmidons-brine-shot',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Brine Shot. Ranged pressure on exposed targets.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 4
-      }
-    ],
-    dropItemId: 'quick-tonic'
-  },
-  'myrmidons-spectre': {
-    id: 'myrmidons-spectre',
-    factionId: 'myrmidons',
-    roleId: 'spectre',
-    gender: 'male',
-    name: 'Spectre',
-    className: 'Bio-Psionic Raider',
-    turnStartCatchPhrase: 'The deep sees.',
-    spriteKey: 'myrmidons-spectre',
-    accentColor: 0x7f9fc8,
-    maxHp: 66,
-    move: 4,
-    speed: 25,
-    attack: 25,
-    defense: 8,
-    rangeMin: 2,
-    rangeMax: 3,
-    jump: 1,
-    attackName: 'Phase Lash',
-    attackText: 'Psionic strike that spikes from the second line.',
-    spriteDisplayHeight: 150,
-    idleStyle: 'priest',
-    attackStyle: 'ash-hex',
-    effectKey: 'myrmidons-phase-lash',
-    abilities: [
-      {
-        id: 'attack',
-        name: 'Attack',
-        description: 'Phase Lash. Psionic strike from behind the front line.',
-        kind: 'attack',
-        target: 'enemy',
-        rangeMin: 2,
-        rangeMax: 3
-      }
-    ],
-    dropItemId: 'mending-salve'
+const FACTION_IDS = ['time-travelers', 'myrmidons', 'the-order', 'children-of-the-prophecy'] as const satisfies readonly FactionId[];
+const UNIT_GENDERS = ['male', 'female'] as const satisfies readonly UnitGender[];
+const UNIT_ROLE_IDS = [
+  'aion-trooper',
+  'time-lord',
+  'rift-engineer',
+  'chronomedic',
+  'scavenger-marksman',
+  'paradox-warden',
+  'tide-legionary',
+  'hunter',
+  'spectre',
+  'brine-shaper',
+  'reef-champion',
+  'house-marshal',
+  'squire-operative',
+  'banner-surgeon',
+  'relic-marksman',
+  'palatine-enforcer',
+  'aevum-guardian',
+  'mirage-seer',
+  'sand-strider',
+  'memory-keeper',
+  'oracle-lancer'
+] as const satisfies readonly UnitRoleId[];
+const IDLE_STYLES = ['knight', 'archer', 'mage', 'warden', 'ranger', 'priest'] as const satisfies readonly IdleStyle[];
+const ABILITY_KINDS = ['attack', 'heal', 'steal'] as const satisfies readonly AbilityKind[];
+const ABILITY_TARGETS = ['enemy', 'ally'] as const satisfies readonly AbilityTarget[];
+const ATTACK_STYLES = [
+  'blade-arc',
+  'arrow-flight',
+  'ember-burst',
+  'grave-cleave',
+  'feather-shot',
+  'ash-hex'
+] as const satisfies readonly AttackStyle[];
+const COMBAT_EFFECT_IDS = [
+  'the-order-breacher-strike',
+  'the-order-relay-lance',
+  'the-order-tracer-volley',
+  'the-order-cautery-charge',
+  'the-order-field-mend',
+  'the-order-strip-gear',
+  'myrmidons-breaker-cleave',
+  'myrmidons-brine-shot',
+  'myrmidons-phase-lash'
+] as const satisfies readonly CombatEffectId[];
+const ITEM_IDS = ['mending-salve', 'quick-tonic'] as const satisfies readonly ItemId[];
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(`Invalid unit blueprint data: ${message}`);
   }
-};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assertString(value: unknown, label: string): string {
+  assert(typeof value === 'string', `${label} must be a string`);
+  return value;
+}
+
+function assertNumber(value: unknown, label: string): number {
+  assert(typeof value === 'number' && Number.isFinite(value), `${label} must be a finite number`);
+  return value;
+}
+
+function assertOptionalNumber(value: unknown, label: string): number | undefined {
+  assert(value === undefined || (typeof value === 'number' && Number.isFinite(value)), `${label} must be a finite number`);
+  return value as number | undefined;
+}
+
+function assertOptionalString<T extends string>(value: unknown, label: string, allowed: readonly T[]): T | undefined {
+  assert(value === undefined || (typeof value === 'string' && allowed.includes(value as T)), `${label} must be one of ${allowed.join(', ')}`);
+  return value as T | undefined;
+}
+
+function assertEnum<T extends string>(value: unknown, label: string, allowed: readonly T[]): T {
+  assert(typeof value === 'string' && allowed.includes(value as T), `${label} must be one of ${allowed.join(', ')}`);
+  return value as T;
+}
+
+function validateAbility(blueprintId: string, rawAbility: unknown): UnitAbility {
+  assert(isRecord(rawAbility), `${blueprintId} ability must be an object`);
+
+  return {
+    id: assertString(rawAbility.id, `${blueprintId} ability.id`),
+    name: assertString(rawAbility.name, `${blueprintId} ability.name`),
+    description: assertString(rawAbility.description, `${blueprintId} ability.description`),
+    kind: assertEnum(rawAbility.kind, `${blueprintId} ability.kind`, ABILITY_KINDS),
+    target: assertEnum(rawAbility.target, `${blueprintId} ability.target`, ABILITY_TARGETS),
+    rangeMin: assertNumber(rawAbility.rangeMin, `${blueprintId} ability.rangeMin`),
+    rangeMax: assertNumber(rawAbility.rangeMax, `${blueprintId} ability.rangeMax`),
+    powerModifier: assertOptionalNumber(rawAbility.powerModifier, `${blueprintId} ability.powerModifier`),
+    healAmount: assertOptionalNumber(rawAbility.healAmount, `${blueprintId} ability.healAmount`),
+    attackStyle: assertOptionalString(rawAbility.attackStyle, `${blueprintId} ability.attackStyle`, ATTACK_STYLES),
+    effectKey: assertOptionalString(rawAbility.effectKey, `${blueprintId} ability.effectKey`, COMBAT_EFFECT_IDS)
+  };
+}
+
+function validateBlueprint(entryId: string, rawBlueprint: unknown): UnitBlueprint {
+  assert(isRecord(rawBlueprint), `${entryId} must be an object`);
+  assert(Array.isArray(rawBlueprint.abilities), `${entryId}.abilities must be an array`);
+
+  const blueprint: UnitBlueprint = {
+    id: assertString(rawBlueprint.id, `${entryId}.id`),
+    factionId: assertEnum(rawBlueprint.factionId, `${entryId}.factionId`, FACTION_IDS),
+    roleId: assertEnum(rawBlueprint.roleId, `${entryId}.roleId`, UNIT_ROLE_IDS),
+    gender: assertEnum(rawBlueprint.gender, `${entryId}.gender`, UNIT_GENDERS),
+    name: assertString(rawBlueprint.name, `${entryId}.name`),
+    className: assertString(rawBlueprint.className, `${entryId}.className`),
+    turnStartCatchPhrase: assertString(rawBlueprint.turnStartCatchPhrase, `${entryId}.turnStartCatchPhrase`),
+    spriteKey: assertString(rawBlueprint.spriteKey, `${entryId}.spriteKey`),
+    accentColor: assertNumber(rawBlueprint.accentColor, `${entryId}.accentColor`),
+    maxHp: assertNumber(rawBlueprint.maxHp, `${entryId}.maxHp`),
+    move: assertNumber(rawBlueprint.move, `${entryId}.move`),
+    speed: assertNumber(rawBlueprint.speed, `${entryId}.speed`),
+    attack: assertNumber(rawBlueprint.attack, `${entryId}.attack`),
+    defense: assertNumber(rawBlueprint.defense, `${entryId}.defense`),
+    rangeMin: assertNumber(rawBlueprint.rangeMin, `${entryId}.rangeMin`),
+    rangeMax: assertNumber(rawBlueprint.rangeMax, `${entryId}.rangeMax`),
+    jump: assertNumber(rawBlueprint.jump, `${entryId}.jump`),
+    attackName: assertString(rawBlueprint.attackName, `${entryId}.attackName`),
+    attackText: assertString(rawBlueprint.attackText, `${entryId}.attackText`),
+    spriteDisplayHeight: assertNumber(rawBlueprint.spriteDisplayHeight, `${entryId}.spriteDisplayHeight`),
+    spriteOffsetX: assertOptionalNumber(rawBlueprint.spriteOffsetX, `${entryId}.spriteOffsetX`),
+    spriteOffsetY: assertOptionalNumber(rawBlueprint.spriteOffsetY, `${entryId}.spriteOffsetY`),
+    idleStyle: assertEnum(rawBlueprint.idleStyle, `${entryId}.idleStyle`, IDLE_STYLES),
+    attackStyle: assertEnum(rawBlueprint.attackStyle, `${entryId}.attackStyle`, ATTACK_STYLES),
+    effectKey: assertEnum(rawBlueprint.effectKey, `${entryId}.effectKey`, COMBAT_EFFECT_IDS),
+    abilities: rawBlueprint.abilities.map((ability) => validateAbility(entryId, ability)),
+    dropItemId: assertOptionalString(rawBlueprint.dropItemId, `${entryId}.dropItemId`, ITEM_IDS),
+    dropQuantity: assertOptionalNumber(rawBlueprint.dropQuantity, `${entryId}.dropQuantity`)
+  };
+
+  assert(blueprint.id === entryId, `${entryId}.id must match its object key`);
+
+  return blueprint;
+}
+
+function validateBlueprintMap(raw: unknown): Record<string, UnitBlueprint> {
+  assert(isRecord(raw), 'blueprint root must be an object');
+
+  return Object.fromEntries(
+    Object.entries(raw).map(([blueprintId, rawBlueprint]) => [blueprintId, validateBlueprint(blueprintId, rawBlueprint)])
+  );
+}
+
+export const UNIT_BLUEPRINTS: Record<string, UnitBlueprint> = validateBlueprintMap(rawBlueprints);
 
 export function getUnitBlueprint(blueprintId: string): UnitBlueprint {
   const blueprint = UNIT_BLUEPRINTS[blueprintId];

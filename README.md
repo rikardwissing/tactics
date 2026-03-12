@@ -1,6 +1,6 @@
 # RENATIONS Tactics
 
-RENATIONS Tactics is a moody fantasy tactics prototype built with Phaser 3, TypeScript, and Vite.
+RENATIONS Tactics is a science-fantasy tactics game about the factions rising from humanity's ruins, built with Phaser 3, TypeScript, and Vite.
 
 The game is an isometric skirmish focused on elevation, turn order, movement, abilities, loot, lighting, and battlefield presentation. The current playable battle takes place on a ruined chapel ridge with controllable camera pan, zoom, rotation, time-of-day changes, and a menu-driven player turn flow.
 

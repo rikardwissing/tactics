@@ -5,6 +5,8 @@ const setupWarCouncilBackdrop = new URL('../assets/game/backdrops/setup-war-coun
 const renationsGlobalBackdrop = new URL('../assets/game/backdrops/renations-global-backdrop.png', import.meta.url).href;
 const brokenChapelBackdrop = new URL('../assets/game/backdrops/broken-chapel-backdrop.png', import.meta.url).href;
 const ashenCausewayBackdrop = new URL('../assets/game/backdrops/ashen-causeway-backdrop.png', import.meta.url).href;
+const battleResultVictory = new URL('../assets/game/ui/battle-result-victory.png', import.meta.url).href;
+const battleResultDefeat = new URL('../assets/game/ui/battle-result-defeat.png', import.meta.url).href;
 const renationsTacticsLogo = new URL('../assets/game/renations-tactics-logo.png', import.meta.url).href;
 const theOrderHouseMarshal = new URL('../assets/game/units/the-order-house-marshal.png', import.meta.url).href;
 const theOrderSquireOperative = new URL('../assets/game/units/the-order-squire-operative.png', import.meta.url).href;
@@ -14,6 +16,7 @@ const myrmidonsHunter = new URL('../assets/game/units/myrmidons-hunter.png', imp
 const myrmidonsSpectre = new URL('../assets/game/units/myrmidons-spectre.png', import.meta.url).href;
 const setupPlaceholderUnit = new URL('../assets/game/units/setup-placeholder-unit.png', import.meta.url).href;
 const timeTravelersAionTrooper = new URL('../assets/game/units/time-travelers-aion-trooper.png', import.meta.url).href;
+const timeTravelersTimeLord = new URL('../assets/game/units/time-travelers-time-lord.png', import.meta.url).href;
 const timeTravelersChronomedic = new URL('../assets/game/units/time-travelers-chronomedic.png', import.meta.url).href;
 const timeTravelersScavengerMarksman = new URL(
   '../assets/game/units/time-travelers-scavenger-marksman.png',
@@ -54,6 +57,10 @@ const unitTurnStartTimeTravelersScavengerMarksman = new URL(
 ).href;
 const unitTurnStartTimeTravelersChronomedic = new URL(
   '../assets/game/voices/unit-turn-start-time-travelers-chronomedic.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTimeTravelersTimeLord = new URL(
+  '../assets/game/voices/unit-turn-start-time-travelers-time-lord.mp3',
   import.meta.url
 ).href;
 const unitTurnStartTheOrderHouseMarshal = new URL(
@@ -113,6 +120,8 @@ export const IMAGE_ASSETS = [
   { key: 'renations-global-backdrop', url: renationsGlobalBackdrop },
   { key: 'broken-chapel-backdrop', url: brokenChapelBackdrop },
   { key: 'ashen-causeway-backdrop', url: ashenCausewayBackdrop },
+  { key: 'battle-result-victory', url: battleResultVictory },
+  { key: 'battle-result-defeat', url: battleResultDefeat },
   { key: 'renations-tactics-logo', url: renationsTacticsLogo },
   { key: 'the-order-house-marshal', url: theOrderHouseMarshal },
   { key: 'the-order-squire-operative', url: theOrderSquireOperative },
@@ -122,6 +131,7 @@ export const IMAGE_ASSETS = [
   { key: 'myrmidons-spectre', url: myrmidonsSpectre },
   { key: 'setup-slot-placeholder', url: setupPlaceholderUnit },
   { key: 'time-travelers-aion-trooper', url: timeTravelersAionTrooper },
+  { key: 'time-travelers-time-lord', url: timeTravelersTimeLord },
   { key: 'time-travelers-chronomedic', url: timeTravelersChronomedic },
   { key: 'time-travelers-scavenger-marksman', url: timeTravelersScavengerMarksman },
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
@@ -175,6 +185,7 @@ export const AUDIO_ASSETS = [
     url: unitTurnStartTimeTravelersScavengerMarksman
   },
   { key: 'unit-turn-start-time-travelers-chronomedic', url: unitTurnStartTimeTravelersChronomedic },
+  { key: 'unit-turn-start-time-travelers-time-lord', url: unitTurnStartTimeTravelersTimeLord },
   { key: 'unit-turn-start-the-order-house-marshal', url: unitTurnStartTheOrderHouseMarshal },
   { key: 'unit-turn-start-the-order-squire-operative', url: unitTurnStartTheOrderSquireOperative },
   { key: 'unit-turn-start-the-order-banner-surgeon', url: unitTurnStartTheOrderBannerSurgeon },
@@ -197,6 +208,7 @@ export const UNIT_TURN_START_AUDIO_KEYS: Partial<Record<string, (typeof AUDIO_AS
   'time-travelers-aion-trooper': 'unit-turn-start-time-travelers-aion-trooper',
   'time-travelers-scavenger-marksman': 'unit-turn-start-time-travelers-scavenger-marksman',
   'time-travelers-chronomedic': 'unit-turn-start-time-travelers-chronomedic',
+  'time-travelers-time-lord': 'unit-turn-start-time-travelers-time-lord',
   'the-order-house-marshal': 'unit-turn-start-the-order-house-marshal',
   'the-order-squire-operative': 'unit-turn-start-the-order-squire-operative',
   'the-order-banner-surgeon': 'unit-turn-start-the-order-banner-surgeon',

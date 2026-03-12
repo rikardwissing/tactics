@@ -4,7 +4,7 @@
 This file lists the common project workflows for contributors and agents working in this repo.
 
 ## Style Guardrails
-- Match the existing game: moody fantasy tactics, painterly pixel-art-inspired presentation, ecclesiastical ruin setting, warm firelight against cool stone and moss.
+- Match the existing game: science-fantasy tactics about the factions rising from humanity's ruins, painterly pixel-art-inspired presentation, ecclesiastical ruin setting, warm firelight against cool stone and moss.
 - Favor restrained, dramatic, old-world fantasy over flashy JRPG spell spam or generic mobile-fantasy polish.
 - Units must stay readable on the battlefield at small scale, with clean silhouettes and strong color separation.
 - Terrain must look like part of the board surface.
@@ -52,7 +52,7 @@ This file lists the common project workflows for contributors and agents working
 - use the approved state as the reference for the next states
 - review the derived states before promotion
 - Prompt for the project style explicitly:
-- moody fantasy tactics
+- science-fantasy tactics about the factions rising from humanity's ruins
 - painterly pixel-art-inspired rendering
 - grounded isometric readability
 - ruined chapel / moss / stone / ember-lit atmosphere

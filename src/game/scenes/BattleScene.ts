@@ -4,6 +4,15 @@ import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
 import { CombatEffectDefinition, CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
+import {
+  DEFAULT_UNIT_GROUND_OFFSET_Y,
+  getBasePlanePoint,
+  getTileDepth as getSharedTileDepth,
+  getTileTopPoints as getSharedTileTopPoints,
+  getUnitGroundPoint as getSharedUnitGroundPoint,
+  getRotatedGridPoint as getSharedRotatedGridPoint,
+  isoToScreenPoint
+} from '../core/isometric';
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
@@ -41,7 +50,8 @@ import {
   UI_COLOR_PANEL_SURFACE,
   UI_COLOR_PANEL_SURFACE_ALT,
   UI_COLOR_SUCCESS,
-  UI_COLOR_TEXT
+  UI_COLOR_TEXT,
+  UI_COLOR_TEXT_DISABLED
 } from './components/UiColors';
 import {
   UI_TEXT_ACTION,
@@ -77,6 +87,7 @@ type InspectionTarget =
   | { kind: 'tile'; x: number; y: number }
   | { kind: 'mission' };
 type BattleIntroPhase = 'intro' | 'hud';
+type ResultOverlayAction = 'retry' | 'setup';
 
 interface UnitView {
   container: Phaser.GameObjects.Container;
@@ -141,6 +152,13 @@ interface DockActionEntry {
   label: string;
   enabled: boolean;
   active: boolean;
+}
+
+interface ResultOverlayButtonView {
+  action: ResultOverlayAction;
+  labelText: Phaser.GameObjects.Text;
+  detailText: Phaser.GameObjects.Text;
+  bounds: Phaser.Geom.Rectangle;
 }
 
 interface BattleHudViewModel {
@@ -367,7 +385,7 @@ const TIME_OF_DAY_CONFIG: Record<
 };
 
 const WORLD_EDGE_BASE_LEVEL = 1;
-const UNIT_GROUND_OFFSET_Y = 6;
+const UNIT_GROUND_OFFSET_Y = DEFAULT_UNIT_GROUND_OFFSET_Y;
 const UNIT_FOOTPRINT_OFFSET_Y = -4;
 const SOFT_LIGHT_TEXTURE_KEY = 'soft-light';
 const MAP_TITLE_INTRO_DURATION = 320;
@@ -546,9 +564,17 @@ export class BattleScene extends Phaser.Scene {
   private touchTapOrigin = new Phaser.Math.Vector2();
   private pinchStartDistance = 0;
   private pinchStartZoom = DEFAULT_BOARD_ZOOM;
+  private resultOverlayResult: 'Victory' | 'Defeat' | null = null;
   private resultOverlayShade?: Phaser.GameObjects.Rectangle;
+  private resultOverlayPanel?: Phaser.GameObjects.Graphics;
+  private resultOverlayArt?: Phaser.GameObjects.Image;
+  private resultOverlayArtMask?: Phaser.GameObjects.Graphics;
+  private resultOverlayEyebrow?: Phaser.GameObjects.Text;
   private resultOverlayTitle?: Phaser.GameObjects.Text;
   private resultOverlayBody?: Phaser.GameObjects.Text;
+  private resultOverlayHint?: Phaser.GameObjects.Text;
+  private resultOverlayButtons: ResultOverlayButtonView[] = [];
+  private resultOverlayPanelBounds = new Phaser.Geom.Rectangle();
   private rng = new Phaser.Math.RandomDataGenerator(['renations-tactics']);
 
   constructor() {
@@ -567,6 +593,7 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     audioDirector.bindScene(this);
     audioDirector.setMusic('battle');
+    audioDirector.setBattleAmbience(this.timeOfDay);
     void audioDirector.unlock().catch(() => undefined);
 
     this.restarting = false;
@@ -609,9 +636,17 @@ export class BattleScene extends Phaser.Scene {
     this.pendingTouchTap = false;
     this.pinchStartDistance = 0;
     this.pinchStartZoom = DEFAULT_BOARD_ZOOM;
+    this.resultOverlayResult = null;
     this.resultOverlayShade = undefined;
+    this.resultOverlayPanel = undefined;
+    this.resultOverlayArt = undefined;
+    this.resultOverlayArtMask = undefined;
+    this.resultOverlayEyebrow = undefined;
     this.resultOverlayTitle = undefined;
     this.resultOverlayBody = undefined;
+    this.resultOverlayHint = undefined;
+    this.resultOverlayButtons = [];
+    this.resultOverlayPanelBounds.setTo(0, 0, 0, 0);
     this.mapIntroAlpha = 0;
     this.mapIntroOffsetY = 18;
     this.mapPlaqueAlpha = 0;
@@ -789,6 +824,10 @@ export class BattleScene extends Phaser.Scene {
     });
     this.input.keyboard?.on('keydown-ESC', () => {
       if (this.isBattleIntroActive()) {
+        return;
+      }
+      if (this.phase === 'complete') {
+        this.returnToSetup();
         return;
       }
       this.setPauseMenuOpen(!this.headerMenuOpen);
@@ -1698,6 +1737,7 @@ export class BattleScene extends Phaser.Scene {
   private cycleTimeOfDay(): void {
     const currentIndex = TIME_OF_DAY_ORDER.indexOf(this.timeOfDay);
     this.timeOfDay = TIME_OF_DAY_ORDER[(currentIndex + 1) % TIME_OF_DAY_ORDER.length];
+    audioDirector.setBattleAmbience(this.timeOfDay);
     this.applyTimeOfDay();
     this.pushLog(`Scene shifts to ${TIME_OF_DAY_CONFIG[this.timeOfDay].label.toLowerCase()}.`);
     this.refreshUi();
@@ -2547,14 +2587,7 @@ export class BattleScene extends Phaser.Scene {
     this.mapPlaqueAlpha = 0;
     this.mapPlaqueOffsetX = -20;
     this.applyMapTitlePresentation();
-    this.time.delayedCall(MAP_TITLE_INTRO_DURATION + 120, () => {
-      if (this.phase === 'complete') {
-        return;
-      }
 
-      const actor = pickNextActor(this.units);
-      this.playFactionMotto(actor.factionId);
-    });
 
     this.tweens.add({
       targets: this,
@@ -2665,29 +2698,233 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private layoutResultOverlay(): void {
-    if (!this.resultOverlayShade || !this.resultOverlayTitle || !this.resultOverlayBody) {
+    if (
+      !this.resultOverlayShade ||
+      !this.resultOverlayPanel ||
+      !this.resultOverlayArt ||
+      !this.resultOverlayArtMask ||
+      !this.resultOverlayEyebrow ||
+      !this.resultOverlayTitle ||
+      !this.resultOverlayBody ||
+      !this.resultOverlayHint ||
+      this.resultOverlayButtons.length !== 2 ||
+      !this.resultOverlayResult
+    ) {
       return;
     }
 
     const width = this.scale.width;
     const height = this.scale.height;
-    const grid = createUiGrid(width, height);
-    const resultBand = createUiSubGrid(
-      new Phaser.Geom.Rectangle(grid.content.x, grid.content.y + Math.round(grid.content.height * 0.3), grid.content.width, 180),
-      1,
-      0,
-      0,
-      UI_PANEL_GAP
+    const grid = createUiGrid(width, height, width >= height ? 12 : 4);
+    const portraitLayout = height > width;
+    const panelWidth = portraitLayout
+      ? Math.min(grid.content.width, 430)
+      : Math.min(grid.content.width, 920);
+    const panelHeight = portraitLayout
+      ? Math.min(grid.content.height, 610)
+      : Math.min(grid.content.height, 430);
+    const panelX = Math.round(grid.content.centerX - panelWidth / 2);
+    const panelY = Math.round(grid.content.centerY - panelHeight / 2);
+    const panelBounds = this.resultOverlayPanelBounds.setTo(panelX, panelY, Math.round(panelWidth), Math.round(panelHeight));
+    const contentGrid = createUiSubGrid(panelBounds, 1, 22, 18, 18);
+    const buttonAreaY = portraitLayout ? panelBounds.bottom - 166 : panelBounds.bottom - 98;
+    const artTop = contentGrid.content.y + 72;
+    const artHeight = portraitLayout ? 170 : Math.max(148, buttonAreaY - artTop - 14);
+    const artWidth = portraitLayout ? contentGrid.content.width : Math.round(Math.min(330, panelBounds.width * 0.38));
+    const artBounds = new Phaser.Geom.Rectangle(
+      contentGrid.content.x,
+      artTop,
+      Math.round(artWidth),
+      Math.round(artHeight)
     );
+    const copyX = portraitLayout ? panelBounds.centerX : artBounds.right + 22;
+    const copyWidth = portraitLayout
+      ? contentGrid.content.width
+      : Math.max(180, panelBounds.right - 22 - copyX);
+    const copyTop = portraitLayout ? artBounds.bottom + 18 : artBounds.y + 8;
+    const bodyY = copyTop + 78;
+    const hintY = portraitLayout ? panelBounds.bottom - 102 : panelBounds.bottom - 68;
+    const buttonHeight = portraitLayout ? 60 : 74;
+    const buttonGap = 14;
+    const buttonWidth = portraitLayout
+      ? contentGrid.content.width
+      : Math.floor((copyWidth - buttonGap) / 2);
+    const buttonX = portraitLayout ? contentGrid.content.x : copyX;
+    const accentColor = this.resultOverlayResult === 'Victory' ? UI_COLOR_ACCENT_WARM : UI_COLOR_ACCENT_DANGER;
 
     this.resultOverlayShade
       .setPosition(width / 2, height / 2)
       .setSize(width, height);
+
+    this.resultOverlayPanel.clear();
+    BattleUiChrome.drawPanelShell(this.resultOverlayPanel, panelBounds, 1, 38, 24, accentColor);
+    BattleUiChrome.drawInsetBox(this.resultOverlayPanel, artBounds, {
+      fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+      fillAlpha: 0.94,
+      strokeColor: UI_COLOR_PANEL_BORDER,
+      strokeAlpha: 0.28,
+      radius: 18
+    });
+
+    this.resultOverlayArtMask.clear();
+    this.resultOverlayArtMask.fillStyle(0xffffff, 1);
+    this.resultOverlayArtMask.fillRoundedRect(
+      artBounds.x + 2,
+      artBounds.y + 2,
+      artBounds.width - 4,
+      artBounds.height - 4,
+      16
+    );
+
+    this.coverImageBounds(this.resultOverlayArt, artBounds, 1.06);
+    this.resultOverlayArt
+      .setVisible(true)
+      .setAlpha(this.resultOverlayResult === 'Victory' ? 0.74 : 0.54)
+      .setTint(this.resultOverlayResult === 'Victory' ? 0xf0d8a2 : 0xb98696);
+
+    const buttonDescriptors = this.getResultOverlayButtonDescriptors();
+    for (const [index, button] of this.resultOverlayButtons.entries()) {
+      const descriptor = buttonDescriptors[index];
+      const row = portraitLayout ? index : 0;
+      const column = portraitLayout ? 0 : index;
+      button.bounds.setTo(
+        buttonX + column * (buttonWidth + buttonGap),
+        buttonAreaY + row * (buttonHeight + 12),
+        buttonWidth,
+        buttonHeight
+      );
+
+      BattleUiChrome.drawPill(this.resultOverlayPanel, button.bounds, {
+        fillColor: descriptor.fillColor,
+        strokeColor: descriptor.strokeColor,
+        fillAlpha: descriptor.fillAlpha,
+        strokeAlpha: 0.56,
+        radius: 16
+      });
+
+      button.labelText
+        .setText(descriptor.label)
+        .setPosition(button.bounds.centerX, button.bounds.y + 18)
+        .setColor(UI_COLOR_TEXT);
+      button.detailText
+        .setText(descriptor.detail)
+        .setPosition(button.bounds.centerX, button.bounds.bottom - 16)
+        .setColor(descriptor.detailColor)
+        .setWordWrapWidth(button.bounds.width - 22, true);
+    }
+
+    this.resultOverlayEyebrow
+      .setText(this.resultOverlayResult === 'Victory' ? 'MISSION SECURED' : 'MISSION BROKEN')
+      .setPosition(copyX, copyTop)
+      .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
+      .setColor(this.resultOverlayResult === 'Victory' ? '#f0d8a2' : '#e7a4ab');
     this.resultOverlayTitle
-      .setPosition(resultBand.content.centerX, resultBand.content.y);
+      .setPosition(copyX, copyTop + 28)
+      .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
+      .setStyle({
+        align: portraitLayout ? 'center' : 'left',
+        color: this.resultOverlayResult === 'Victory' ? '#f7edd9' : '#f3d9de'
+      });
     this.resultOverlayBody
-      .setPosition(resultBand.content.centerX, resultBand.content.y + 50)
-      .setWordWrapWidth(Math.min(resultBand.content.width, 560), true);
+      .setPosition(copyX, bodyY)
+      .setOrigin(portraitLayout ? 0.5 : 0, 0)
+      .setStyle({ align: portraitLayout ? 'center' : 'left' })
+      .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 360), true);
+    this.resultOverlayHint
+      .setPosition(copyX, hintY)
+      .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
+      .setColor(UI_COLOR_TEXT_DISABLED)
+      .setStyle({ align: portraitLayout ? 'center' : 'left' })
+      .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 340), true);
+  }
+
+  private getResultOverlayButtonDescriptors(): Array<{
+    action: ResultOverlayAction;
+    label: string;
+    detail: string;
+    fillColor: number;
+    strokeColor: number;
+    fillAlpha: number;
+    detailColor: string;
+  }> {
+    if (this.resultOverlayResult === 'Victory') {
+      return [
+        {
+          action: 'retry',
+          label: 'RETRY BATTLE',
+          detail: 'Run the deployment again from the opening turn.',
+          fillColor: UI_COLOR_ACCENT_NEUTRAL,
+          strokeColor: UI_COLOR_PANEL_BORDER,
+          fillAlpha: 0.82,
+          detailColor: UI_COLOR_TEXT_DISABLED
+        },
+        {
+          action: 'setup',
+          label: 'MAP SELECT',
+          detail: 'Return to the war council and choose the next field.',
+          fillColor: UI_COLOR_SUCCESS,
+          strokeColor: UI_COLOR_PANEL_BORDER,
+          fillAlpha: 0.3,
+          detailColor: UI_COLOR_TEXT
+        }
+      ];
+    }
+
+    return [
+      {
+        action: 'retry',
+        label: 'RETRY BATTLE',
+        detail: 'Re-form the column and make another push immediately.',
+        fillColor: UI_COLOR_ACCENT_DANGER,
+        strokeColor: UI_COLOR_DANGER,
+        fillAlpha: 0.48,
+        detailColor: UI_COLOR_TEXT
+      },
+      {
+        action: 'setup',
+        label: 'MAP SELECT',
+        detail: 'Stand down to map select and choose a different deployment.',
+        fillColor: UI_COLOR_ACCENT_COOL,
+        strokeColor: UI_COLOR_PANEL_BORDER,
+        fillAlpha: 0.82,
+        detailColor: UI_COLOR_TEXT_DISABLED
+      }
+    ];
+  }
+
+  private handleResultOverlayPointer(x: number, y: number): void {
+    for (const button of this.resultOverlayButtons) {
+      if (!button.bounds.contains(x, y)) {
+        continue;
+      }
+
+      audioDirector.playUiConfirm();
+      this.executeResultOverlayAction(button.action);
+      return;
+    }
+  }
+
+  private executeResultOverlayAction(action: ResultOverlayAction): void {
+    if (action === 'retry') {
+      this.restartBattle();
+      return;
+    }
+
+    this.returnToSetup();
+  }
+
+  private coverImageBounds(
+    image: Phaser.GameObjects.Image,
+    bounds: Phaser.Geom.Rectangle,
+    overscan = 1
+  ): void {
+    const textureSource = image.texture.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
+    const textureWidth = textureSource.width || 1;
+    const textureHeight = textureSource.height || 1;
+    const scale = Math.max(bounds.width / textureWidth, bounds.height / textureHeight) * overscan;
+
+    image.setPosition(bounds.centerX, bounds.centerY);
+    image.setScale(scale);
   }
 
   private configureCamera(centerOnBoard = false): void {
@@ -3512,24 +3749,23 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getBasePlanePoint(tile: Point): Phaser.Math.Vector2 {
-    const visualPoint = this.getRotatedGridPoint(tile);
-    const boardX = (visualPoint.x - visualPoint.y) * (TILE_WIDTH / 2);
-    const boardY = (visualPoint.x + visualPoint.y) * (TILE_HEIGHT / 2);
+    const point = getBasePlanePoint(tile, {
+      origin: this.origin,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      rotationStep: this.boardRotationStep
+    });
 
-    return new Phaser.Math.Vector2(this.origin.x + boardX, this.origin.y + boardY);
+    return new Phaser.Math.Vector2(point.x, point.y);
   }
 
   private getRotatedGridPoint(tile: Point): Point {
-    switch (this.boardRotationStep % 4) {
-      case 1:
-        return { x: this.gridHeight - 1 - tile.y, y: tile.x };
-      case 2:
-        return { x: this.gridWidth - 1 - tile.x, y: this.gridHeight - 1 - tile.y };
-      case 3:
-        return { x: tile.y, y: this.gridWidth - 1 - tile.x };
-      default:
-        return { x: tile.x, y: tile.y };
-    }
+    return getSharedRotatedGridPoint(tile, {
+      origin: this.origin,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      rotationStep: this.boardRotationStep
+    });
   }
 
   private getFacingAdjustedDirection(direction: Point): Point {
@@ -3548,27 +3784,45 @@ export class BattleScene extends Phaser.Scene {
 
   private isoToScreen(tile: Point & { height?: number }): Phaser.Math.Vector2 {
     const tileHeight = tile.height ?? getTile(this.map, tile.x, tile.y)?.height ?? 0;
-    const point = this.getBasePlanePoint(tile);
-
-    return new Phaser.Math.Vector2(
-      point.x,
-      point.y - tileHeight * ELEVATION_STEP
+    const point = isoToScreenPoint(
+      tile,
+      {
+        origin: this.origin,
+        gridWidth: this.gridWidth,
+        gridHeight: this.gridHeight,
+        rotationStep: this.boardRotationStep
+      },
+      tileHeight
     );
+
+    return new Phaser.Math.Vector2(point.x, point.y);
   }
 
   private getTileTopPoints(tile: Point & { height?: number }): Phaser.Math.Vector2[] {
-    const center = this.isoToScreen(tile);
-    return [
-      new Phaser.Math.Vector2(center.x, center.y - TILE_HEIGHT / 2),
-      new Phaser.Math.Vector2(center.x + TILE_WIDTH / 2, center.y),
-      new Phaser.Math.Vector2(center.x, center.y + TILE_HEIGHT / 2),
-      new Phaser.Math.Vector2(center.x - TILE_WIDTH / 2, center.y)
-    ];
+    return getSharedTileTopPoints(
+      tile,
+      {
+        origin: this.origin,
+        gridWidth: this.gridWidth,
+        gridHeight: this.gridHeight,
+        rotationStep: this.boardRotationStep
+      },
+      tile.height ?? getTile(this.map, tile.x, tile.y)?.height ?? 0
+    ).map((point) => new Phaser.Math.Vector2(point.x, point.y));
   }
 
   private getTileDepth(tile: Point & { height?: number }): number {
     const tileHeight = tile.height ?? getTile(this.map, tile.x, tile.y)?.height ?? 0;
-    return this.isoToScreen({ ...tile, height: tileHeight }).y + tileHeight * ELEVATION_STEP;
+    return getSharedTileDepth(
+      { ...tile, height: tileHeight },
+      {
+        origin: this.origin,
+        gridWidth: this.gridWidth,
+        gridHeight: this.gridHeight,
+        rotationStep: this.boardRotationStep
+      },
+      tileHeight
+    );
   }
 
   private getHighlightDepth(tile: TileData): number {
@@ -3914,6 +4168,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private isPointerOverUi(x: number, y: number): boolean {
+    if (this.phase === 'complete' && this.resultOverlayPanelBounds.contains(x, y)) {
+      return true;
+    }
+
     const staticPanels = this.isBattleIntroActive()
       ? (this.mapIntroAlpha > 0.01
           ? [new Phaser.Geom.Rectangle(
@@ -4546,7 +4804,7 @@ export class BattleScene extends Phaser.Scene {
 
   private async handlePointerDown(pointer: Phaser.Input.Pointer): Promise<void> {
     if (this.phase === 'complete') {
-      this.restartBattle();
+      this.handleResultOverlayPointer(pointer.x, pointer.y);
       return;
     }
 
@@ -5561,9 +5819,6 @@ export class BattleScene extends Phaser.Scene {
           effect.spin ?? 0,
           effect.additive ?? false
         );
-        if (effect.burstTint !== undefined) {
-          this.emitSupportBurst(impactPoint.x, impactPoint.y, effect.burstTint);
-        }
         break;
       case 'impact-arc':
       case 'impact-burst':
@@ -5577,8 +5832,7 @@ export class BattleScene extends Phaser.Scene {
           effect.peakScale,
           effect.duration,
           effect.additive ?? false,
-          effect.endScaleMultiplier ?? 1.15,
-          effect.burstTint
+          effect.endScaleMultiplier ?? 1.15
         );
         break;
       case 'transfer': {
@@ -5647,13 +5901,9 @@ export class BattleScene extends Phaser.Scene {
     peakScale: number,
     duration: number,
     additive: boolean,
-    endScaleMultiplier = 1.15,
-    burstTint?: number
+    endScaleMultiplier = 1.15
   ): Promise<void> {
     if (!key) {
-      if (burstTint !== undefined) {
-        this.emitSupportBurst(impactPoint.x, impactPoint.y, burstTint);
-      }
       await this.wait(duration * 0.85);
       return;
     }
@@ -5687,9 +5937,6 @@ export class BattleScene extends Phaser.Scene {
             duration: duration * 0.55,
             ease: 'Quad.easeOut',
             onComplete: () => {
-              if (burstTint !== undefined) {
-                this.emitSupportBurst(impactPoint.x, impactPoint.y, burstTint);
-              }
               effect.destroy();
               resolve();
             }
@@ -5719,9 +5966,7 @@ export class BattleScene extends Phaser.Scene {
         effect.additive ?? false
       );
     } else {
-      this.emitSupportBurst(launchPoint.x, launchPoint.y, effect.burstTint ?? 0xf0d27d);
       await this.wait(effect.duration * 0.45);
-      this.emitSupportBurst(impactPoint.x, impactPoint.y, effect.burstTint ?? 0xf0d27d);
       await this.wait(effect.duration * 0.3);
     }
   }
@@ -5739,33 +5984,13 @@ export class BattleScene extends Phaser.Scene {
         effect.peakScale,
         effect.duration,
         effect.additive ?? false,
-        effect.endScaleMultiplier ?? 1.2,
-        effect.burstTint
+        effect.endScaleMultiplier ?? 1.2
       );
       return;
     }
 
-    this.emitSupportBurst(impactPoint.x - 10, impactPoint.y + 6, 0x6bd7c8);
     await this.wait(effect.duration * 0.18);
-    this.emitSupportBurst(impactPoint.x + 12, impactPoint.y - 10, effect.burstTint ?? 0xdcbf70);
     await this.wait(effect.duration * 0.5);
-  }
-
-  private emitSupportBurst(x: number, y: number, tint: number): void {
-    const particles = this.registerWorldObject(this.add.particles(x, y, 'spark', {
-      speed: { min: 18, max: 110 },
-      lifespan: 460,
-      quantity: 16,
-      scale: { start: 1.6, end: 0 },
-      alpha: { start: 0.85, end: 0 },
-      tint: [tint, 0xf8f0c8, 0xffffff],
-      blendMode: 'ADD',
-      emitting: false
-    }));
-
-    particles.setDepth(961);
-    particles.explode(16, x, y);
-    this.time.delayedCall(500, () => particles.destroy());
   }
 
   private async flashUnitSprite(target: BattleUnit, tint: number): Promise<void> {
@@ -5843,9 +6068,11 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'complete';
     this.busy = true;
     this.activeUnitId = null;
+    this.setPauseMenuOpen(false);
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes.clear();
     this.clearTurnStartCatchPhrase();
+    this.resultOverlayResult = result;
     if (result === 'Victory') {
       audioDirector.playVictory();
     } else {
@@ -5858,23 +6085,68 @@ export class BattleScene extends Phaser.Scene {
       .rectangle(0, 0, this.scale.width, this.scale.height, UI_COLOR_OVERLAY, 0.62)
       .setDepth(1000)
       .setScrollFactor(0));
+    this.resultOverlayPanel = this.registerUiObject(this.add.graphics().setDepth(1001).setScrollFactor(0));
+    this.resultOverlayArt = this.registerUiObject(this.add
+      .image(0, 0, result === 'Victory' ? 'battle-result-victory' : 'battle-result-defeat')
+      .setDepth(1002)
+      .setScrollFactor(0));
+    this.resultOverlayArtMask = this.registerUiObject(this.add.graphics().setVisible(false).setDepth(1002).setScrollFactor(0));
+    this.resultOverlayArt.setMask(this.resultOverlayArtMask.createGeometryMask());
+    this.resultOverlayEyebrow = this.registerUiObject(this.add
+      .text(0, 0, '', UI_TEXT_LABEL)
+      .setDepth(1003)
+      .setScrollFactor(0));
     this.resultOverlayTitle = this.registerUiObject(this.add
       .text(0, 0, result.toUpperCase(), UI_TEXT_DISPLAY_CENTER)
-      .setOrigin(0.5)
-      .setDepth(1001)
+      .setOrigin(0, 0.5)
+      .setDepth(1003)
       .setScrollFactor(0));
     this.resultOverlayBody = this.registerUiObject(this.add
       .text(
         0,
         0,
         result === 'Victory'
-          ? 'The chapel ridge is yours.\nTap or click to battle again.'
-          : `The altar falls to ${this.getFactionDisplayNameForTeam('enemy')}.\nTap or click to try again.`,
-        UI_TEXT_BODY_CENTER
+          ? `${this.level.name} holds under your banner.\nChoose another battlefield or run the operation again from deployment.`
+          : `The altar falls to ${this.getFactionDisplayNameForTeam('enemy')}.\nRetry the assault immediately or withdraw to map select.`,
+        UI_TEXT_BODY
       )
-      .setOrigin(0.5)
-      .setDepth(1001)
+      .setOrigin(0, 0)
+      .setDepth(1003)
       .setScrollFactor(0));
+    this.resultOverlayHint = this.registerUiObject(this.add
+      .text(0, 0, 'Shortcut keys: R to retry, Esc for map select.', UI_TEXT_LABEL)
+      .setDepth(1003)
+      .setScrollFactor(0));
+    this.resultOverlayButtons = [
+      {
+        action: 'retry',
+        labelText: this.registerUiObject(this.add
+          .text(0, 0, '', UI_TEXT_ACTION)
+          .setOrigin(0.5, 0)
+          .setDepth(1003)
+          .setScrollFactor(0)),
+        detailText: this.registerUiObject(this.add
+          .text(0, 0, '', UI_TEXT_BODY_CENTER)
+          .setOrigin(0.5, 1)
+          .setDepth(1003)
+          .setScrollFactor(0)),
+        bounds: new Phaser.Geom.Rectangle()
+      },
+      {
+        action: 'setup',
+        labelText: this.registerUiObject(this.add
+          .text(0, 0, '', UI_TEXT_ACTION)
+          .setOrigin(0.5, 0)
+          .setDepth(1003)
+          .setScrollFactor(0)),
+        detailText: this.registerUiObject(this.add
+          .text(0, 0, '', UI_TEXT_BODY_CENTER)
+          .setOrigin(0.5, 1)
+          .setDepth(1003)
+          .setScrollFactor(0)),
+        bounds: new Phaser.Geom.Rectangle()
+      }
+    ];
     this.layoutResultOverlay();
   }
 

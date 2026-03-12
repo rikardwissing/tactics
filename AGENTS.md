@@ -6,7 +6,7 @@
 - Runtime art belongs in [`src/assets/game`](src/assets/game), not in `output/`.
 
 ## Style Direction
-- The game should read as a moody fantasy tactics RPG in the vein of classic late-90s / early-2000s strategy games, not generic mobile fantasy.
+- The game should read as a science-fantasy tactics RPG about the factions rising from humanity's ruins, in the vein of classic late-90s / early-2000s strategy games rather than generic mobile fantasy.
 - Visual tone: solemn, martial, ecclesiastical, ember-lit, slightly tragic.
 - Rendering target: stylized 2D painterly pixel-art-inspired sprites and terrain, not photorealism, glossy 3D, anime key art, or cartoon slapstick.
 - Camera feel: elevated isometric battlefield with readable silhouettes and grounded objects.
