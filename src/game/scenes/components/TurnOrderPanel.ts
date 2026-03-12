@@ -22,6 +22,7 @@ interface TurnOrderRow {
   accentTween?: Phaser.Tweens.Tween;
   avatarTextureKey: string | null;
   avatarRenderSize: number;
+  avatarUsesCrop: boolean;
   unitId: string | null;
   team: BattleUnit['team'] | null;
   visible: boolean;
@@ -140,6 +141,7 @@ export class TurnOrderPanel {
         accentTween: undefined,
         avatarTextureKey: null,
         avatarRenderSize: 0,
+        avatarUsesCrop: false,
         unitId: null,
         team: null,
         visible: false,
@@ -262,7 +264,11 @@ export class TurnOrderPanel {
       };
 
       if (row.visible && row.unitId && row.avatarTextureKey && row.avatarRenderSize !== this.avatarSize) {
-        this.applyFaceCrop(row);
+        if (row.avatarUsesCrop) {
+          this.applyFaceCrop(row);
+        } else {
+          this.applyPortraitFit(row);
+        }
       }
     }
 
@@ -374,6 +380,28 @@ export class TurnOrderPanel {
     row.border.setVisible(visible);
     row.avatar.setVisible(visible && row.unitId !== null);
     this.syncPulse(row);
+  }
+
+  private getPortraitTextureKey(spriteKey: string): string | null {
+    const portraitKey = `${spriteKey}-portrait`;
+    return this.scene.textures.exists(portraitKey) ? portraitKey : null;
+  }
+
+  private applyPortraitFit(row: TurnOrderRow): void {
+    const avatar = row.avatar;
+    const frame = avatar.frame;
+    if (!frame) {
+      avatar.setCrop();
+      avatar.setDisplayOrigin(0, 0);
+      avatar.setScale(1);
+      row.avatarRenderSize = 0;
+      return;
+    }
+
+    avatar.setCrop();
+    avatar.setDisplayOrigin(0, 0);
+    avatar.setScale(this.avatarSize / Math.max(1, frame.width));
+    row.avatarRenderSize = this.avatarSize;
   }
 
   private applyFaceCrop(row: TurnOrderRow): void {
@@ -582,6 +610,7 @@ export class TurnOrderPanel {
     if (!row.visible) {
       row.avatarTextureKey = null;
       row.avatarRenderSize = 0;
+      row.avatarUsesCrop = false;
       row.avatar.setVisible(false).clearTint().setAlpha(0);
       row.glow.clear().setVisible(false);
       return;
@@ -593,14 +622,20 @@ export class TurnOrderPanel {
       row.glow.clear().setVisible(false);
       row.avatarTextureKey = null;
       row.avatarRenderSize = 0;
+      row.avatarUsesCrop = false;
       row.avatar.setVisible(false).clearTint().setAlpha(0);
       this.applyRowInteractionState(row, false);
       return;
     }
 
     const borderColor = entry.team === 'player' ? UI_COLOR_ACCENT_COOL : UI_COLOR_DANGER;
+    const portraitTextureKey = this.getPortraitTextureKey(entry.spriteKey);
+    const avatarTextureKey = portraitTextureKey ?? entry.spriteKey;
+    const avatarUsesCrop = portraitTextureKey === null;
     const needsAvatarRefresh =
-      row.avatarTextureKey !== entry.spriteKey || row.avatarRenderSize !== this.avatarSize;
+      row.avatarTextureKey !== avatarTextureKey ||
+      row.avatarRenderSize !== this.avatarSize ||
+      row.avatarUsesCrop !== avatarUsesCrop;
 
     row.backing.setFillStyle(UI_COLOR_PANEL_SURFACE, entry.isCurrentTurn ? 0.95 : 0.9);
     row.border.setStrokeStyle(entry.isCurrentTurn ? 3 : 2, borderColor, entry.isCurrentTurn ? 1 : 0.92);
@@ -610,9 +645,14 @@ export class TurnOrderPanel {
       .setAlpha(entry.isCurrentTurn ? 1 : 0.95);
 
     if (needsAvatarRefresh) {
-      row.avatar.setTexture(entry.spriteKey);
-      row.avatarTextureKey = entry.spriteKey;
-      this.applyFaceCrop(row);
+      row.avatar.setTexture(avatarTextureKey);
+      row.avatarTextureKey = avatarTextureKey;
+      row.avatarUsesCrop = avatarUsesCrop;
+      if (avatarUsesCrop) {
+        this.applyFaceCrop(row);
+      } else {
+        this.applyPortraitFit(row);
+      }
     }
 
     this.applyRowInteractionState(row, false);

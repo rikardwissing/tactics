@@ -35,6 +35,50 @@ const childrenOfTheProphecyMemoryKeeper = new URL(
   '../assets/game/units/children-of-the-prophecy-memory-keeper.png',
   import.meta.url
 ).href;
+const theOrderHouseMarshalPortrait = new URL('../assets/game/portraits/the-order-house-marshal-portrait.png', import.meta.url)
+  .href;
+const theOrderSquireOperativePortrait = new URL(
+  '../assets/game/portraits/the-order-squire-operative-portrait.png',
+  import.meta.url
+).href;
+const theOrderBannerSurgeonPortrait = new URL(
+  '../assets/game/portraits/the-order-banner-surgeon-portrait.png',
+  import.meta.url
+).href;
+const myrmidonsTideLegionaryPortrait = new URL(
+  '../assets/game/portraits/myrmidons-tide-legionary-portrait.png',
+  import.meta.url
+).href;
+const myrmidonsHunterPortrait = new URL('../assets/game/portraits/myrmidons-hunter-portrait.png', import.meta.url).href;
+const myrmidonsSpectrePortrait = new URL('../assets/game/portraits/myrmidons-spectre-portrait.png', import.meta.url).href;
+const timeTravelersAionTrooperPortrait = new URL(
+  '../assets/game/portraits/time-travelers-aion-trooper-portrait.png',
+  import.meta.url
+).href;
+const timeTravelersTimeLordPortrait = new URL(
+  '../assets/game/portraits/time-travelers-time-lord-portrait.png',
+  import.meta.url
+).href;
+const timeTravelersChronomedicPortrait = new URL(
+  '../assets/game/portraits/time-travelers-chronomedic-portrait.png',
+  import.meta.url
+).href;
+const timeTravelersScavengerMarksmanPortrait = new URL(
+  '../assets/game/portraits/time-travelers-scavenger-marksman-portrait.png',
+  import.meta.url
+).href;
+const childrenOfTheProphecyAevumGuardianPortrait = new URL(
+  '../assets/game/portraits/children-of-the-prophecy-aevum-guardian-portrait.png',
+  import.meta.url
+).href;
+const childrenOfTheProphecyMirageSeerPortrait = new URL(
+  '../assets/game/portraits/children-of-the-prophecy-mirage-seer-portrait.png',
+  import.meta.url
+).href;
+const childrenOfTheProphecyMemoryKeeperPortrait = new URL(
+  '../assets/game/portraits/children-of-the-prophecy-memory-keeper-portrait.png',
+  import.meta.url
+).href;
 const factionMottoTimeTravelers = new URL('../assets/game/voices/faction-motto-time-travelers.mp3', import.meta.url).href;
 const factionMottoMyrmidons = new URL('../assets/game/voices/faction-motto-myrmidons.mp3', import.meta.url).href;
 const factionMottoTheOrder = new URL('../assets/game/voices/faction-motto-the-order.mp3', import.meta.url).href;
@@ -150,6 +194,28 @@ export const IMAGE_ASSETS = [
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
   { key: 'children-of-the-prophecy-mirage-seer', url: childrenOfTheProphecyMirageSeer },
   { key: 'children-of-the-prophecy-memory-keeper', url: childrenOfTheProphecyMemoryKeeper },
+  { key: 'the-order-house-marshal-portrait', url: theOrderHouseMarshalPortrait },
+  { key: 'the-order-squire-operative-portrait', url: theOrderSquireOperativePortrait },
+  { key: 'the-order-banner-surgeon-portrait', url: theOrderBannerSurgeonPortrait },
+  { key: 'myrmidons-tide-legionary-portrait', url: myrmidonsTideLegionaryPortrait },
+  { key: 'myrmidons-hunter-portrait', url: myrmidonsHunterPortrait },
+  { key: 'myrmidons-spectre-portrait', url: myrmidonsSpectrePortrait },
+  { key: 'time-travelers-aion-trooper-portrait', url: timeTravelersAionTrooperPortrait },
+  { key: 'time-travelers-time-lord-portrait', url: timeTravelersTimeLordPortrait },
+  { key: 'time-travelers-chronomedic-portrait', url: timeTravelersChronomedicPortrait },
+  { key: 'time-travelers-scavenger-marksman-portrait', url: timeTravelersScavengerMarksmanPortrait },
+  {
+    key: 'children-of-the-prophecy-aevum-guardian-portrait',
+    url: childrenOfTheProphecyAevumGuardianPortrait
+  },
+  {
+    key: 'children-of-the-prophecy-mirage-seer-portrait',
+    url: childrenOfTheProphecyMirageSeerPortrait
+  },
+  {
+    key: 'children-of-the-prophecy-memory-keeper-portrait',
+    url: childrenOfTheProphecyMemoryKeeperPortrait
+  },
   { key: 'sanctified-arc', url: sanctifiedArc },
   { key: 'chrono-ranged', url: chronoRanged },
   { key: 'psychic-sigil', url: psychicSigil },
