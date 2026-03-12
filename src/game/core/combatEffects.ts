@@ -127,6 +127,10 @@ export interface CombatEffectTravel {
   trailTint?: readonly number[];
   trailScaleStart?: number;
   trailScaleEnd?: number;
+  burstCount?: number;
+  burstDelay?: number;
+  spread?: number;
+  alphaFalloff?: number;
 }
 
 export interface CombatEffectImpact {
@@ -1328,6 +1332,17 @@ export const COMBAT_EFFECT_DEFINITIONS = {
     telegraph: {
       anchor: 'source',
       duration: 96,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.arc,
+        tint: 0xe4c77e,
+        alpha: 0.66,
+        startScale: 0.14,
+        endScale: 0.36,
+        duration: 96,
+        additive: true,
+        rotationOffset: -0.26,
+        spin: 0.28
+      },
       ring: {
         tint: 0xe4c77e,
         alpha: 0.2,
@@ -1359,15 +1374,15 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 158,
       sprite: {
-        textureKey: 'sanctified-arc',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.arc,
         tint: 0xe6c779,
         alpha: 0.96,
-        startScale: 0.24,
-        endScale: 0.78,
+        startScale: 0.2,
+        endScale: 0.68,
         duration: 158,
         additive: true,
-        rotationOffset: 0.06,
-        spin: 0.16
+        rotationOffset: -0.18,
+        spin: 0.34
       },
       ring: {
         tint: 0x7e2e2c,
@@ -1399,6 +1414,17 @@ export const COMBAT_EFFECT_DEFINITIONS = {
     afterglow: {
       anchor: 'target',
       duration: 126,
+      sprite: {
+        textureKey: 'sanctified-arc',
+        tint: 0xe4c77e,
+        alpha: 0.46,
+        startScale: 0.16,
+        endScale: 0.34,
+        duration: 126,
+        additive: true,
+        rotationOffset: 0.08,
+        spin: 0.14
+      },
       ring: {
         tint: 0x7e2e2c,
         alpha: 0.12,
@@ -1424,6 +1450,16 @@ export const COMBAT_EFFECT_DEFINITIONS = {
     telegraph: {
       anchor: 'source',
       duration: 92,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.ring,
+        tint: 0xf0d7a1,
+        alpha: 0.62,
+        startScale: 0.12,
+        endScale: 0.28,
+        duration: 92,
+        additive: true,
+        spin: 0.16
+      },
       ring: {
         tint: 0xf0d7a1,
         alpha: 0.18,
@@ -1455,15 +1491,15 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 146,
       sprite: {
-        textureKey: 'sanctified-arc',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.bloom,
         tint: 0xf0d7a1,
         alpha: 0.92,
-        startScale: 0.22,
-        endScale: 0.68,
+        startScale: 0.18,
+        endScale: 0.5,
         duration: 146,
         additive: true,
-        rotationOffset: 0.04,
-        spin: 0.14
+        rotationOffset: 0.02,
+        spin: 0.18
       },
       ring: {
         tint: 0xc96f42,
@@ -1491,12 +1527,58 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         gravityY: 82,
         blendMode: 'ADD'
       }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 116,
+      sprite: {
+        textureKey: 'sanctified-arc',
+        tint: 0xf0d7a1,
+        alpha: 0.4,
+        startScale: 0.14,
+        endScale: 0.32,
+        duration: 116,
+        additive: true,
+        spin: 0.12
+      },
+      ring: {
+        tint: 0xc96f42,
+        alpha: 0.1,
+        width: 60,
+        height: 22,
+        duration: 116,
+        startScale: 0.92,
+        endScale: 1.42,
+        strokeWidth: 2,
+        strokeAlpha: 0.32
+      },
+      glowTint: 0xf0d7a1,
+      glowAlpha: 0.1,
+      glowScale: 0.48
+    },
+    sourceReaction: {
+      kind: 'lift',
+      distance: 0,
+      lift: 6,
+      duration: 106,
+      returnDuration: 92
     }
   }),
   'breaker-cleave': defineEffect('breaker-cleave', 'sanctified-arc', {
     telegraph: {
       anchor: 'source',
       duration: 98,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
+        tint: 0x63d9cb,
+        alpha: 0.64,
+        startScale: 0.16,
+        endScale: 0.4,
+        duration: 98,
+        additive: true,
+        rotationOffset: -0.2,
+        spin: 0.24
+      },
       ring: {
         tint: 0x63d9cb,
         alpha: 0.18,
@@ -1528,15 +1610,15 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 166,
       sprite: {
-        textureKey: 'sanctified-arc',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
         tint: 0xae4b2f,
         alpha: 0.96,
-        startScale: 0.24,
-        endScale: 0.82,
+        startScale: 0.2,
+        endScale: 0.7,
         duration: 166,
         additive: true,
         rotationOffset: -0.08,
-        spin: 0.14
+        spin: 0.3
       },
       ring: {
         tint: 0x63d9cb,
@@ -1565,23 +1647,83 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         blendMode: 'ADD'
       }
     },
+    afterglow: {
+      anchor: 'target',
+      duration: 118,
+      sprite: {
+        textureKey: 'sanctified-arc',
+        tint: 0x63d9cb,
+        alpha: 0.38,
+        startScale: 0.16,
+        endScale: 0.36,
+        duration: 118,
+        additive: true,
+        spin: 0.12
+      },
+      ring: {
+        tint: 0xae4b2f,
+        alpha: 0.1,
+        width: 66,
+        height: 24,
+        duration: 118,
+        startScale: 0.94,
+        endScale: 1.46,
+        strokeWidth: 2,
+        strokeAlpha: 0.32
+      }
+    },
     camera: {
       shakeDuration: 102,
       shakeIntensity: 0.0021,
       hitStop: 34
+    },
+    sourceReaction: {
+      kind: 'lunge',
+      distance: 20,
+      lift: 5,
+      duration: 118,
+      returnDuration: 100
     }
   }),
   'relay-lance': defineEffect('relay-lance', 'chrono-ranged', {
+    telegraph: {
+      anchor: 'source',
+      duration: 88,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
+        tint: 0xe6c679,
+        alpha: 0.7,
+        startScale: 0.16,
+        endScale: 0.34,
+        duration: 88,
+        additive: true
+      },
+      ring: {
+        tint: 0xe6c679,
+        alpha: 0.16,
+        width: 36,
+        height: 12,
+        duration: 88,
+        startScale: 0.74,
+        endScale: 1.18,
+        strokeWidth: 2,
+        strokeAlpha: 0.76
+      },
+      glowTint: 0xe6c679,
+      glowAlpha: 0.14,
+      glowScale: 0.4
+    },
     travel: {
       from: 'source',
       to: 'target',
-      duration: 220,
-      textureKey: 'chrono-ranged',
+      duration: 236,
+      textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
       tint: 0xe6c679,
       alpha: 0.96,
-      startScale: 0.18,
-      endScale: 0.36,
+      startScale: 0.26,
+      endScale: 0.48,
       additive: true,
+      arcHeight: 4,
       trailTint: [0xffefc4, 0xe6c679, 0x7a2c2b],
       trailScaleStart: 0.54,
       trailScaleEnd: 0.05
@@ -1590,11 +1732,11 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 136,
       sprite: {
-        textureKey: COMBAT_FX_TEXTURE_KEYS.burst,
+        textureKey: COMBAT_FX_TEXTURE_KEYS.ring,
         tint: 0xe6c679,
         alpha: 0.88,
-        startScale: 0.16,
-        endScale: 0.44,
+        startScale: 0.14,
+        endScale: 0.34,
         duration: 136,
         additive: true,
         spin: 0.14
@@ -1631,16 +1773,57 @@ export const COMBAT_EFFECT_DEFINITIONS = {
     travel: {
       from: 'source',
       to: 'target',
-      duration: 210,
+      duration: 176,
       textureKey: 'chrono-ranged',
       tint: 0xa0ece1,
       alpha: 0.96,
-      startScale: 0.2,
-      endScale: 0.34,
+      startScale: 0.14,
+      endScale: 0.22,
       additive: true,
+      arcHeight: 2,
       trailTint: [0xf3fffd, 0xa0ece1, 0xf4a15d],
-      trailScaleStart: 0.54,
+      trailScaleStart: 0.38,
       trailScaleEnd: 0.05
+    },
+    impact: {
+      anchor: 'target',
+      duration: 112,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.orb,
+        tint: 0xa0ece1,
+        alpha: 0.82,
+        startScale: 0.12,
+        endScale: 0.26,
+        duration: 112,
+        additive: true,
+        spin: 0.12
+      },
+      ring: {
+        tint: 0xf4a15d,
+        alpha: 0.1,
+        width: 38,
+        height: 14,
+        duration: 108,
+        startScale: 0.8,
+        endScale: 1.22,
+        strokeWidth: 2,
+        strokeAlpha: 0.34
+      },
+      glowTint: 0xa0ece1,
+      glowAlpha: 0.1,
+      glowScale: 0.34,
+      particles: {
+        tint: [0xf3fffd, 0xa0ece1, 0xf4a15d],
+        count: 10,
+        lifespan: 180,
+        speedMin: 18,
+        speedMax: 72,
+        scaleStart: 0.48,
+        scaleEnd: 0.04,
+        angleSpread: 100,
+        gravityY: 18,
+        blendMode: 'ADD'
+      }
     }
   }),
   'anchor-spike': defineEffect('anchor-spike', 'chrono-ranged', {
@@ -1686,16 +1869,59 @@ export const COMBAT_EFFECT_DEFINITIONS = {
     travel: {
       from: 'source',
       to: 'target',
-      duration: 230,
-      textureKey: 'chrono-ranged',
+      duration: 246,
+      textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
       tint: 0xf4a15d,
       alpha: 0.94,
-      startScale: 0.2,
-      endScale: 0.38,
+      startScale: 0.26,
+      endScale: 0.52,
       additive: true,
+      arcHeight: 6,
+      spin: 0.08,
       trailTint: [0xf3fffd, 0xa0ece1, 0xf4a15d],
       trailScaleStart: 0.56,
       trailScaleEnd: 0.05
+    },
+    impact: {
+      anchor: 'target',
+      duration: 150,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
+        tint: 0xf4a15d,
+        alpha: 0.86,
+        startScale: 0.18,
+        endScale: 0.34,
+        duration: 150,
+        additive: true,
+        rotationOffset: 1.57,
+        spin: 0.06
+      },
+      ring: {
+        tint: 0xa0ece1,
+        alpha: 0.14,
+        width: 52,
+        height: 18,
+        duration: 144,
+        startScale: 0.84,
+        endScale: 1.34,
+        strokeWidth: 2,
+        strokeAlpha: 0.42
+      },
+      glowTint: 0xf4a15d,
+      glowAlpha: 0.14,
+      glowScale: 0.46,
+      particles: {
+        tint: [0xf3fffd, 0xa0ece1, 0xf4a15d],
+        count: 16,
+        lifespan: 240,
+        speedMin: 26,
+        speedMax: 96,
+        scaleStart: 0.72,
+        scaleEnd: 0.05,
+        angleSpread: 120,
+        gravityY: 36,
+        blendMode: 'ADD'
+      }
     }
   }),
   'scrapline-shot': defineEffect('scrapline-shot', 'chrono-ranged', {
@@ -1703,13 +1929,14 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       from: 'source',
       to: 'target',
       duration: 205,
-      textureKey: 'chrono-ranged',
+      textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
       tint: 0xf0a060,
       alpha: 0.94,
-      startScale: 0.16,
-      endScale: 0.3,
+      startScale: 0.18,
+      endScale: 0.34,
       additive: true,
-      spin: 0.12,
+      arcHeight: 8,
+      spin: 0.22,
       trailTint: [0xfdf5dd, 0xf0a060, 0x8fcfc8],
       trailScaleStart: 0.48,
       trailScaleEnd: 0.05
@@ -1718,14 +1945,14 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 130,
       sprite: {
-        textureKey: COMBAT_FX_TEXTURE_KEYS.burst,
+        textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
         tint: 0xf0a060,
         alpha: 0.86,
         startScale: 0.16,
-        endScale: 0.42,
+        endScale: 0.5,
         duration: 130,
         additive: true,
-        spin: 0.16
+        spin: 0.22
       },
       ring: {
         tint: 0x8fcfc8,
@@ -1760,12 +1987,16 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       from: 'source',
       to: 'target',
       duration: 198,
-      textureKey: 'chrono-ranged',
+      textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
       tint: 0xde6a52,
       alpha: 0.94,
-      startScale: 0.18,
-      endScale: 0.3,
+      startScale: 0.14,
+      endScale: 0.24,
       additive: true,
+      burstCount: 3,
+      burstDelay: 32,
+      spread: 12,
+      alphaFalloff: 0.16,
       trailTint: [0xfff0d0, 0xde6a52, 0x7a2c2b],
       trailScaleStart: 0.48,
       trailScaleEnd: 0.05
@@ -1777,8 +2008,8 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         textureKey: COMBAT_FX_TEXTURE_KEYS.burst,
         tint: 0xde6a52,
         alpha: 0.84,
-        startScale: 0.16,
-        endScale: 0.4,
+        startScale: 0.14,
+        endScale: 0.34,
         duration: 128,
         additive: true,
         spin: 0.14
@@ -1855,13 +2086,13 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       from: 'source',
       to: 'target',
       duration: 225,
-      textureKey: 'chrono-ranged',
+      textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
       tint: 0x73e0d6,
       alpha: 0.94,
-      startScale: 0.16,
-      endScale: 0.34,
+      startScale: 0.18,
+      endScale: 0.4,
       additive: true,
-      arcHeight: 10,
+      arcHeight: 16,
       spin: 0.24,
       trailTint: [0xc4fff7, 0x73e0d6, 0xaf5d33],
       trailScaleStart: 0.5,
@@ -1908,7 +2139,64 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       }
     }
   }),
-  'cautery-charge': defineEffect('cautery-charge', 'burst-discharge', {}),
+  'cautery-charge': defineEffect('cautery-charge', 'burst-discharge', {
+    travel: {
+      from: 'source',
+      to: 'target',
+      duration: 156,
+      textureKey: COMBAT_FX_TEXTURE_KEYS.lance,
+      tint: 0xffb463,
+      alpha: 0.9,
+      startScale: 0.2,
+      endScale: 0.38,
+      additive: true,
+      arcHeight: 8,
+      spin: 0.16,
+      trailTint: [0xfff0c4, 0xffb463, 0xd65b32],
+      trailScaleStart: 0.46,
+      trailScaleEnd: 0.05
+    },
+    impact: {
+      anchor: 'target',
+      duration: 152,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.burst,
+        tint: 0xff9c45,
+        alpha: 0.94,
+        startScale: 0.18,
+        endScale: 0.58,
+        duration: 152,
+        additive: true,
+        spin: 0.28
+      },
+      ring: {
+        tint: 0xffc978,
+        alpha: 0.18,
+        width: 52,
+        height: 18,
+        duration: 152,
+        startScale: 0.82,
+        endScale: 1.4,
+        strokeWidth: 2,
+        strokeAlpha: 0.58
+      },
+      glowTint: 0xffa94c,
+      glowAlpha: 0.18,
+      glowScale: 0.56,
+      particles: {
+        tint: [0xfff0c4, 0xffb463, 0xd65b32],
+        count: 20,
+        lifespan: 260,
+        speedMin: 30,
+        speedMax: 116,
+        scaleStart: 0.82,
+        scaleEnd: 0.05,
+        angleSpread: 180,
+        gravityY: 62,
+        blendMode: 'ADD'
+      }
+    }
+  }),
   'reactor-pulse': defineEffect('reactor-pulse', 'burst-discharge', {
     telegraph: {
       anchor: 'source',
@@ -1969,14 +2257,14 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 164,
       sprite: {
-        textureKey: 'burst-discharge',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.ring,
         tint: 0xa4ece3,
         alpha: 0.92,
-        startScale: 0.16,
-        endScale: 0.64,
+        startScale: 0.14,
+        endScale: 0.34,
         duration: 164,
         additive: true,
-        spin: 0.24
+        spin: 0.26
       },
       ring: {
         tint: 0xf4a15d,
@@ -2003,6 +2291,31 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         angleSpread: 180,
         gravityY: 64,
         blendMode: 'ADD'
+      }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 120,
+      sprite: {
+        textureKey: 'burst-discharge',
+        tint: 0xa4ece3,
+        alpha: 0.34,
+        startScale: 0.18,
+        endScale: 0.4,
+        duration: 120,
+        additive: true,
+        spin: 0.16
+      },
+      ring: {
+        tint: 0xf4a15d,
+        alpha: 0.12,
+        width: 56,
+        height: 22,
+        duration: 120,
+        startScale: 0.92,
+        endScale: 1.48,
+        strokeWidth: 2,
+        strokeAlpha: 0.34
       }
     }
   }),
@@ -2066,11 +2379,11 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 162,
       sprite: {
-        textureKey: 'burst-discharge',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.bloom,
         tint: 0xf0d8a5,
         alpha: 0.9,
-        startScale: 0.16,
-        endScale: 0.6,
+        startScale: 0.18,
+        endScale: 0.48,
         duration: 162,
         additive: true,
         spin: 0.2
@@ -2100,6 +2413,31 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         angleSpread: 180,
         gravityY: 64,
         blendMode: 'ADD'
+      }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 124,
+      sprite: {
+        textureKey: 'burst-discharge',
+        tint: 0xd4a4ed,
+        alpha: 0.32,
+        startScale: 0.16,
+        endScale: 0.38,
+        duration: 124,
+        additive: true,
+        spin: 0.14
+      },
+      ring: {
+        tint: 0xf0d8a5,
+        alpha: 0.1,
+        width: 58,
+        height: 22,
+        duration: 124,
+        startScale: 0.92,
+        endScale: 1.46,
+        strokeWidth: 2,
+        strokeAlpha: 0.34
       }
     }
   }),
@@ -2189,6 +2527,33 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         blendMode: 'ADD',
         offsetY: 12
       }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 128,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.ring,
+        tint: 0xd4a4ed,
+        alpha: 0.34,
+        startScale: 0.18,
+        endScale: 0.34,
+        duration: 128,
+        additive: true,
+        spin: 0.16,
+        offsetY: 12
+      },
+      ring: {
+        tint: 0xf0d8a5,
+        alpha: 0.12,
+        width: 66,
+        height: 24,
+        duration: 128,
+        startScale: 0.94,
+        endScale: 1.5,
+        strokeWidth: 2,
+        strokeAlpha: 0.34,
+        offsetY: 12
+      }
     }
   }),
   'phase-lash': defineEffect('phase-lash', 'psychic-sigil', {
@@ -2239,14 +2604,15 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       anchor: 'target',
       duration: 182,
       sprite: {
-        textureKey: 'psychic-sigil',
+        textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
         tint: 0x67ded5,
         alpha: 0.76,
         startScale: 0.2,
-        endScale: 0.74,
+        endScale: 0.62,
         duration: 182,
         additive: true,
-        spin: 0.18,
+        rotationOffset: -0.22,
+        spin: 0.28,
         offsetY: 14
       },
       ring: {
@@ -2277,9 +2643,78 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         blendMode: 'ADD',
         offsetY: 14
       }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 120,
+      sprite: {
+        textureKey: 'psychic-sigil',
+        tint: 0x8654c5,
+        alpha: 0.3,
+        startScale: 0.16,
+        endScale: 0.36,
+        duration: 120,
+        additive: true,
+        spin: 0.16,
+        offsetY: 14
+      },
+      ring: {
+        tint: 0x67ded5,
+        alpha: 0.12,
+        width: 64,
+        height: 24,
+        duration: 120,
+        startScale: 0.92,
+        endScale: 1.48,
+        strokeWidth: 2,
+        strokeAlpha: 0.34,
+        offsetY: 14
+      }
     }
   }),
-  'chronal-rend': defineEffect('chronal-rend', 'temporal-rend', {}),
+  'chronal-rend': defineEffect('chronal-rend', 'temporal-rend', {
+    impact: {
+      anchor: 'target',
+      duration: 152,
+      sprite: {
+        textureKey: 'temporal-rend',
+        tint: 0xa6efe6,
+        alpha: 0.88,
+        startScale: 0.18,
+        endScale: 0.5,
+        duration: 152,
+        additive: true,
+        rotationOffset: 0.1,
+        spin: 0.18
+      },
+      ring: {
+        tint: 0x8ee7de,
+        alpha: 0.18,
+        width: 56,
+        height: 20,
+        duration: 150,
+        startScale: 0.84,
+        endScale: 1.38,
+        strokeWidth: 2,
+        strokeAlpha: 0.58
+      },
+      glowTint: 0x90ebdf,
+      glowAlpha: 0.14,
+      glowScale: 0.52,
+      particles: {
+        tint: [0xeefffd, 0x8ee7de, 0xffb86b],
+        count: 18,
+        lifespan: 250,
+        speedMin: 24,
+        speedMax: 96,
+        scaleStart: 0.74,
+        scaleEnd: 0.05,
+        angleSpread: 160,
+        gravityY: 26,
+        blendMode: 'ADD'
+      }
+    }
+  }),
   'time-shear': defineEffect('time-shear', 'temporal-rend', {
     telegraph: {
       anchor: 'source',
@@ -2324,11 +2759,11 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       from: 'source',
       to: 'target',
       duration: 190,
-      textureKey: 'temporal-rend',
+      textureKey: COMBAT_FX_TEXTURE_KEYS.arc,
       tint: 0xffb86b,
       alpha: 0.92,
-      startScale: 0.16,
-      endScale: 0.36,
+      startScale: 0.2,
+      endScale: 0.42,
       additive: true,
       rotationOffset: 0.18,
       arcHeight: 20,
@@ -2336,6 +2771,47 @@ export const COMBAT_EFFECT_DEFINITIONS = {
       trailTint: [0xeefffd, 0x8ee7de, 0xffb86b],
       trailScaleStart: 0.5,
       trailScaleEnd: 0.05
+    },
+    impact: {
+      anchor: 'target',
+      duration: 144,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.wave,
+        tint: 0xffb86b,
+        alpha: 0.88,
+        startScale: 0.18,
+        endScale: 0.52,
+        duration: 144,
+        additive: true,
+        rotationOffset: -0.16,
+        spin: 0.32
+      },
+      ring: {
+        tint: 0x8ee7de,
+        alpha: 0.16,
+        width: 54,
+        height: 20,
+        duration: 144,
+        startScale: 0.84,
+        endScale: 1.34,
+        strokeWidth: 2,
+        strokeAlpha: 0.52
+      },
+      glowTint: 0xffb86b,
+      glowAlpha: 0.14,
+      glowScale: 0.48,
+      particles: {
+        tint: [0xeefffd, 0x8ee7de, 0xffb86b],
+        count: 16,
+        lifespan: 220,
+        speedMin: 24,
+        speedMax: 94,
+        scaleStart: 0.7,
+        scaleEnd: 0.05,
+        angleSpread: 140,
+        gravityY: 24,
+        blendMode: 'ADD'
+      }
     }
   }),
   'field-mend': defineEffect('field-mend', 'support-bloom', {}),

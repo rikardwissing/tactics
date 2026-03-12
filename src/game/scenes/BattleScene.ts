@@ -6621,80 +6621,102 @@ export class BattleScene extends Phaser.Scene {
       this.getCombatEffectDepth(playback, travel.from, false),
       this.getCombatEffectDepth(playback, travel.to, false)
     ) + 0.02;
+    const burstCount = Math.max(1, travel.burstCount ?? 1);
+    const burstDelay = travel.burstDelay ?? 0;
+    const spread = travel.spread ?? 0;
+    const alphaFalloff = travel.alphaFalloff ?? 0.12;
+    const normalX = Math.cos(angle + Math.PI / 2);
+    const normalY = Math.sin(angle + Math.PI / 2);
 
-    if (Phaser.Math.Distance.Between(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) <= 8) {
-      await this.animateCombatSpriteLayer(fromPoint, depth, angle, {
-        textureKey: travel.textureKey,
-        tint: travel.tint,
-        alpha: travel.alpha,
-        startScale: travel.startScale,
-        endScale: travel.endScale,
-        duration: travel.duration,
-        additive: travel.additive,
-        spin: travel.spin
-      });
-      return;
-    }
+    const animateProjectile = async (burstIndex: number): Promise<void> => {
+      if (burstDelay > 0 && burstIndex > 0) {
+        await this.wait(burstDelay * burstIndex);
+      }
 
-    const projectile = this.registerWorldObject(this.add
-      .image(fromPoint.x, fromPoint.y, travel.textureKey)
-      .setDepth(depth)
-      .setScale(travel.startScale)
-      .setRotation(angle)
-      .setTint(travel.tint)
-      .setAlpha(travel.alpha));
+      const burstOffset = (burstIndex - (burstCount - 1) / 2) * spread;
+      const startX = fromPoint.x + normalX * burstOffset;
+      const startY = fromPoint.y + normalY * burstOffset;
+      const endX = toPoint.x + normalX * burstOffset * 0.45;
+      const endY = toPoint.y + normalY * burstOffset * 0.3;
+      const scaleFactor = Phaser.Math.Clamp(1 - Math.abs(burstOffset) * 0.018, 0.82, 1);
+      const projectileAlpha = Phaser.Math.Clamp(
+        travel.alpha - Math.abs(burstOffset) * alphaFalloff * 0.1,
+        0.28,
+        travel.alpha
+      );
 
-    if (travel.additive) {
-      projectile.setBlendMode(Phaser.BlendModes.ADD);
-    }
+      if (Phaser.Math.Distance.Between(startX, startY, endX, endY) <= 8) {
+        await this.animateCombatSpriteLayer(new Phaser.Math.Vector2(startX, startY), depth, angle, {
+          textureKey: travel.textureKey,
+          tint: travel.tint,
+          alpha: projectileAlpha,
+          startScale: travel.startScale * scaleFactor,
+          endScale: travel.endScale * scaleFactor,
+          duration: travel.duration,
+          additive: travel.additive,
+          spin: travel.spin
+        });
+        return;
+      }
 
-    const trail = travel.trailTint
-      ? this.registerWorldObject(this.add.particles(fromPoint.x, fromPoint.y, 'spark', {
-          lifespan: 160,
-          frequency: 24,
-          quantity: 1,
-          speedX: { min: -8, max: 8 },
-          speedY: { min: -8, max: 8 },
-          alpha: { start: 0.54, end: 0 },
-          scale: {
-            start: travel.trailScaleStart ?? 0.46,
-            end: travel.trailScaleEnd ?? 0.05
+      const projectile = this.registerWorldObject(this.add
+        .image(startX, startY, travel.textureKey)
+        .setDepth(depth)
+        .setScale(travel.startScale * scaleFactor)
+        .setRotation(angle)
+        .setTint(travel.tint)
+        .setAlpha(projectileAlpha));
+
+      if (travel.additive) {
+        projectile.setBlendMode(Phaser.BlendModes.ADD);
+      }
+
+      const trail = travel.trailTint
+        ? this.registerWorldObject(this.add.particles(startX, startY, 'spark', {
+            lifespan: 160,
+            frequency: Math.max(12, 24 - burstCount * 3),
+            quantity: 1,
+            speedX: { min: -8, max: 8 },
+            speedY: { min: -8, max: 8 },
+            alpha: { start: Math.min(0.7, projectileAlpha * 0.6), end: 0 },
+            scale: {
+              start: (travel.trailScaleStart ?? 0.46) * scaleFactor,
+              end: travel.trailScaleEnd ?? 0.05
+            },
+            tint: [...travel.trailTint],
+            blendMode: 'ADD'
+          }))
+        : null;
+
+      trail?.setDepth(depth - 0.01);
+
+      const progress = { value: 0 };
+
+      await new Promise<void>((resolve) => {
+        this.tweens.add({
+          targets: progress,
+          value: 1,
+          duration: travel.duration,
+          ease: 'Cubic.easeInOut',
+          onUpdate: () => {
+            const ratio = progress.value;
+            projectile.x = Phaser.Math.Linear(startX, endX, ratio);
+            projectile.y = Phaser.Math.Linear(startY, endY, ratio) - Math.sin(Math.PI * ratio) * (travel.arcHeight ?? 0);
+            projectile.scaleX = Phaser.Math.Linear(travel.startScale * scaleFactor, travel.endScale * scaleFactor, ratio);
+            projectile.scaleY = projectile.scaleX;
+            projectile.rotation = angle + (travel.spin ?? 0) * ratio;
+            trail?.setPosition(projectile.x, projectile.y);
           },
-          tint: [...travel.trailTint],
-          blendMode: 'ADD'
-        }))
-      : null;
-
-    trail?.setDepth(depth - 0.01);
-
-    const progress = { value: 0 };
-    const startX = fromPoint.x;
-    const startY = fromPoint.y;
-    const endX = toPoint.x;
-    const endY = toPoint.y;
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: progress,
-        value: 1,
-        duration: travel.duration,
-        ease: 'Cubic.easeInOut',
-        onUpdate: () => {
-          const ratio = progress.value;
-          projectile.x = Phaser.Math.Linear(startX, endX, ratio);
-          projectile.y = Phaser.Math.Linear(startY, endY, ratio) - Math.sin(Math.PI * ratio) * (travel.arcHeight ?? 0);
-          projectile.scaleX = Phaser.Math.Linear(travel.startScale, travel.endScale, ratio);
-          projectile.scaleY = projectile.scaleX;
-          projectile.rotation = angle + (travel.spin ?? 0) * ratio;
-          trail?.setPosition(projectile.x, projectile.y);
-        },
-        onComplete: () => {
-          trail?.destroy();
-          projectile.destroy();
-          resolve();
-        }
+          onComplete: () => {
+            trail?.destroy();
+            projectile.destroy();
+            resolve();
+          }
+        });
       });
-    });
+    };
+
+    await Promise.all(Array.from({ length: burstCount }, (_, burstIndex) => animateProjectile(burstIndex)));
   }
 
   private async animateCombatImpactPhase(
