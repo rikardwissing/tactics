@@ -109,8 +109,6 @@ const SLOT_CARD_WIDTH_WIDE = 116;
 const SLOT_CARD_WIDTH_COMPACT = 92;
 const SLOT_CARD_VERTICAL_INSET_WIDE = 6;
 const SLOT_CARD_VERTICAL_INSET_COMPACT = 4;
-const SLOT_CARD_PORTRAIT_BASE_Y = 6;
-const SLOT_CARD_PORTRAIT_EXTRA_Y = 10;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
@@ -784,9 +782,8 @@ export class SetupScene extends Phaser.Scene {
       const portraitDisplayHeight = (blueprint?.spriteDisplayHeight ?? this.maxBlueprintSpriteDisplayHeight) * portraitHeightScale;
       const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
       const portraitOffsetX = (blueprint?.spriteOffsetX ?? 0) * portraitHeightScale;
-      const portraitOffsetY =
-        (blueprint?.spriteOffsetY ?? 0) * portraitHeightScale + SLOT_CARD_PORTRAIT_EXTRA_Y;
-      view.portrait.setPosition(cardWidth / 2 + portraitOffsetX, cardHeight / 2 + SLOT_CARD_PORTRAIT_BASE_Y + portraitOffsetY);
+      const portraitOffsetY = (blueprint?.spriteOffsetY ?? 0) * portraitHeightScale;
+      view.portrait.setPosition(cardWidth / 2 + portraitOffsetX, cardHeight / 2 + portraitOffsetY);
       view.portrait.setScale(portraitScale);
 
       view.slotText
