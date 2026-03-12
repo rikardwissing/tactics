@@ -2548,7 +2548,12 @@ export class BattleScene extends Phaser.Scene {
     this.mapPlaqueOffsetX = -20;
     this.applyMapTitlePresentation();
     this.time.delayedCall(MAP_TITLE_INTRO_DURATION + 120, () => {
-      this.playFactionMottoForTeam('player');
+      if (this.phase === 'complete') {
+        return;
+      }
+
+      const actor = pickNextActor(this.units);
+      this.playFactionMotto(actor.factionId);
     });
 
     this.tweens.add({
@@ -6478,16 +6483,6 @@ export class BattleScene extends Phaser.Scene {
 
   private syncSceneAudioMute(): void {
     this.sound.mute = audioDirector.isMuted();
-  }
-
-  private playFactionMottoForTeam(team: BattleUnit['team']): void {
-    const factionId = this.getFactionIdForTeam(team);
-
-    if (!factionId) {
-      return;
-    }
-
-    this.playFactionMotto(factionId);
   }
 
   private playFactionMotto(factionId: FactionId): void {
