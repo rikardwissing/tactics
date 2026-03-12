@@ -1,8 +1,10 @@
 :root {
-  color: #f6ebd6;
-  background-color: #09060a;
-  background:
+  --app-bg-solid: #09060a;
+  --app-bg-gradient:
     radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
+  color: #f6ebd6;
+  background-color: var(--app-bg-solid);
+  background: var(--app-bg-gradient);
   font-family: "Palatino Linotype", "Book Antiqua", Baskerville, serif;
 }
 
@@ -20,7 +22,7 @@ body,
 }
 
 html {
-  background-color: #09060a;
+  background-color: var(--app-bg-solid);
 }
 
 body {
@@ -29,16 +31,14 @@ body {
   overflow: hidden;
   overscroll-behavior: none;
   color: #f6ebd6;
-  background-color: #09060a;
-  background:
-    radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
+  background-color: var(--app-bg-solid);
+  background: var(--app-bg-gradient);
 }
 
 #app {
   min-height: 100vh;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
+  background: var(--app-bg-gradient);
   padding:
     env(safe-area-inset-top, 0px)
     env(safe-area-inset-right, 0px)
