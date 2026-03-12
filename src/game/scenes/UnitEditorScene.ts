@@ -110,7 +110,7 @@ const FACTION_ORDER: readonly FactionId[] = [
   'myrmidons'
 ] as const;
 
-const TERRAIN_ORDER: readonly TerrainType[] = ['grass', 'moss', 'stone', 'sanctum'];
+const TERRAIN_ORDER: readonly TerrainType[] = ['grass', 'moss', 'stone', 'sanctum', 'chrono', 'brine', 'bastion', 'aevum'];
 const VISUAL_FIELDS: readonly EditableUnitBlueprintField[] = [
   'spriteDisplayHeight',
   'spriteOffsetX',
@@ -131,7 +131,11 @@ const TERRAIN_TILE_ASSETS: Record<TerrainType, readonly string[]> = {
   grass: ['terrain-grass-a', 'terrain-grass-b'],
   moss: ['terrain-moss-a', 'terrain-moss-b'],
   stone: ['terrain-stone-a', 'terrain-stone-b'],
-  sanctum: ['terrain-sanctum-a']
+  sanctum: ['terrain-sanctum-a'],
+  chrono: ['terrain-chrono-a', 'terrain-chrono-b'],
+  brine: ['terrain-brine-a', 'terrain-brine-b'],
+  bastion: ['terrain-bastion-a', 'terrain-bastion-b'],
+  aevum: ['terrain-aevum-a', 'terrain-aevum-b']
 };
 
 const FIELD_LABELS: Record<EditableUnitBlueprintField, string> = {
@@ -1787,6 +1791,34 @@ export class UnitEditorScene extends Phaser.Scene {
           sideRight: 0x4d3e34,
           outline: 0x241713,
           detail: 0xf8dea0
+        };
+      case 'chrono':
+        return {
+          sideLeft: 0x42535d,
+          sideRight: 0x2b363f,
+          outline: 0x12171c,
+          detail: 0x93c7c8
+        };
+      case 'brine':
+        return {
+          sideLeft: 0x335046,
+          sideRight: 0x21352e,
+          outline: 0x101816,
+          detail: 0x8cc6bf
+        };
+      case 'bastion':
+        return {
+          sideLeft: 0x645f59,
+          sideRight: 0x48443f,
+          outline: 0x1d1715,
+          detail: 0xd8c28b
+        };
+      case 'aevum':
+        return {
+          sideLeft: 0x7a6b58,
+          sideRight: 0x5a4d3f,
+          outline: 0x241a14,
+          detail: 0xf1ddb5
         };
       default:
         return {

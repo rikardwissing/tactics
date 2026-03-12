@@ -16,7 +16,7 @@ import {
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
-import { AttackStyle, BattleUnit, FactionId, IdleStyle, Point, ReachNode, TerrainType, TileData, UnitAbility } from '../core/types';
+import { AttackStyle, BattleUnit, FactionId, IdleStyle, Point, ReachNode, SpriteFacing, TerrainType, TileData, UnitAbility } from '../core/types';
 import { createDefaultBattleSetup, createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
@@ -93,10 +93,13 @@ interface UnitView {
   container: Phaser.GameObjects.Container;
   shadow: Phaser.GameObjects.Ellipse;
   marker: Phaser.GameObjects.Ellipse;
+  activeGlow: Phaser.GameObjects.Image;
+  activeOutlineSprites: Phaser.GameObjects.Image[];
   sprite: Phaser.GameObjects.Image;
   hpBack: Phaser.GameObjects.Rectangle;
   hpFill: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.Text;
+  facing: SpriteFacing;
   spriteBaseScale: number;
   spriteBaseY: number;
 }
@@ -249,7 +252,11 @@ const TERRAIN_TILE_ASSETS: Record<TerrainType, readonly string[]> = {
   grass: ['terrain-grass-a', 'terrain-grass-b'],
   moss: ['terrain-moss-a', 'terrain-moss-b'],
   stone: ['terrain-stone-a', 'terrain-stone-b'],
-  sanctum: ['terrain-sanctum-a']
+  sanctum: ['terrain-sanctum-a'],
+  chrono: ['terrain-chrono-a', 'terrain-chrono-b'],
+  brine: ['terrain-brine-a', 'terrain-brine-b'],
+  bastion: ['terrain-bastion-a', 'terrain-bastion-b'],
+  aevum: ['terrain-aevum-a', 'terrain-aevum-b']
 };
 
 type PropRenderConfig = {
@@ -390,7 +397,30 @@ const TIME_OF_DAY_CONFIG: Record<
 const WORLD_EDGE_BASE_LEVEL = 1;
 const UNIT_GROUND_OFFSET_Y = DEFAULT_UNIT_GROUND_OFFSET_Y;
 const UNIT_FOOTPRINT_OFFSET_Y = -4;
+const DEFAULT_UNIT_FACING: SpriteFacing = 'right';
 const SOFT_LIGHT_TEXTURE_KEY = 'soft-light';
+const ACTIVE_TURN_HIGHLIGHT_COLORS = {
+  glowOuter: 0xffd36b,
+  glowInner: 0xffc24f,
+  fillDark: 0x6f4a18,
+  fillMid: 0xe4a93d,
+  fillLight: 0xffefb2,
+  strokeOuter: 0xfff3c6,
+  strokeMid: 0xffca62,
+  strokeInner: 0x8c5d1b,
+  center: 0xfff5cb
+} as const;
+const ACTIVE_UNIT_OUTLINE_OFFSETS = [
+  { x: -1.8, y: 0, alpha: 0.82 },
+  { x: 1.8, y: 0, alpha: 0.82 },
+  { x: 0, y: -1.8, alpha: 0.88 },
+  { x: 0, y: 1.8, alpha: 0.72 },
+  { x: -1.35, y: -1.35, alpha: 0.7 },
+  { x: 1.35, y: -1.35, alpha: 0.7 },
+  { x: -1.35, y: 1.35, alpha: 0.62 },
+  { x: 1.35, y: 1.35, alpha: 0.62 }
+] as const;
+const ACTIVE_UNIT_BORDER_FADE_SPEED = 0.008;
 const MAP_TITLE_INTRO_DURATION = 320;
 const MAP_TITLE_INTRO_HOLD = 880;
 const MAP_TITLE_OUTRO_DURATION = 360;
@@ -1079,6 +1109,7 @@ export class BattleScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     this.updateDynamicLighting(time);
+    this.updateActiveUnitGlowFade(time);
 
     if (this.phase === 'complete' || this.isPanning || this.headerMenuOpen) {
       return;
@@ -2969,32 +3000,63 @@ export class BattleScene extends Phaser.Scene {
 
   private createUnits(): void {
     for (const unit of this.units) {
+      const initialFacing = this.getInitialFacingForUnit(unit);
+      const spriteFlipX = this.shouldFlipSpriteForFacing(initialFacing);
+      const spriteOffsetX = this.getSpriteOffsetXForFacing(unit.spriteOffsetX, initialFacing);
+      const spriteOffsetY = unit.spriteOffsetY ?? 0;
       const marker = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 62, 26, unit.accentColor, 0);
       const shadow = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 50, 18, 0x060205, 0.42);
+      const activeGlow = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
+      activeGlow.displayHeight = unit.spriteDisplayHeight;
+      activeGlow.scaleX = activeGlow.scaleY;
+      activeGlow
+        .setPosition(spriteOffsetX, spriteOffsetY)
+        .setFlipX(spriteFlipX)
+        .setTint(this.getActiveUnitGlowTint(unit))
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0)
+        .setVisible(false);
+      const activeOutlineSprites = ACTIVE_UNIT_OUTLINE_OFFSETS.map(() => {
+        const outline = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
+        outline.displayHeight = unit.spriteDisplayHeight;
+        outline.scaleX = outline.scaleY;
+        outline
+          .setPosition(spriteOffsetX, spriteOffsetY)
+          .setFlipX(spriteFlipX)
+          .setTintFill(this.getActiveUnitOutlineTint(unit))
+          .setAlpha(0)
+          .setVisible(false);
+        return outline;
+      });
       const sprite = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
       sprite.displayHeight = unit.spriteDisplayHeight;
       sprite.scaleX = sprite.scaleY;
-      sprite.setPosition(unit.spriteOffsetX ?? 0, unit.spriteOffsetY ?? 0);
+      sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
 
       const hpBack = this.add.rectangle(0, sprite.y - unit.spriteDisplayHeight - 12, 60, 8, 0x12070d, 0.92);
       const hpFill = this.add.rectangle(-29, sprite.y - unit.spriteDisplayHeight - 12, 56, 4, 0x65d99e, 1).setOrigin(0, 0.5);
       const label = this.add.text(0, sprite.y - unit.spriteDisplayHeight - 28, unit.name, UI_TEXT_WORLD_LABEL);
       label.setOrigin(0.5);
 
-      const container = this.add.container(0, 0, [marker, shadow, sprite, hpBack, hpFill, label]);
+      const container = this.add.container(0, 0, [marker, shadow, activeGlow, ...activeOutlineSprites, sprite, hpBack, hpFill, label]);
       const view: UnitView = {
         container,
         shadow,
         marker,
+        activeGlow,
+        activeOutlineSprites,
         sprite,
         hpBack,
         hpFill,
         label,
+        facing: initialFacing,
         spriteBaseScale: sprite.scaleX,
         spriteBaseY: sprite.y
       };
 
       this.views.set(unit.id, view);
+      this.applyUnitViewFacing(unit, view, initialFacing);
+      this.syncActiveUnitGlow(view);
       this.applyIdleAnimation(unit, view);
       this.positionUnit(unit);
     }
@@ -3057,7 +3119,8 @@ export class BattleScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
       yoyo: true,
       repeat: -1,
-      delay
+      delay,
+      onUpdate: () => this.syncActiveUnitGlow(view)
     });
 
     this.tweens.add({
@@ -3261,9 +3324,10 @@ export class BattleScene extends Phaser.Scene {
     }
 
     this.highlightOverlays = [];
+    this.refreshActiveUnitGlow();
     const activeUnit = this.getActiveUnit();
 
-    if (activeUnit && this.phase !== 'animating') {
+    if (activeUnit && this.shouldShowActiveUnitFocus()) {
       const activeTile = getTile(this.map, activeUnit.x, activeUnit.y);
 
       if (activeTile) {
@@ -3363,27 +3427,27 @@ export class BattleScene extends Phaser.Scene {
     const inner = this.scaleTilePolygon(tilePoints, center, 0.62);
 
     const glow = this.registerWorldObject(this.add.graphics().setBlendMode(Phaser.BlendModes.ADD));
-    glow.fillStyle(0xffd36b, 0.12);
+    glow.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.glowOuter, 0.12);
     glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 1.16), true);
-    glow.fillStyle(0xffc24f, 0.16);
+    glow.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.glowInner, 0.16);
     glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 1.02), true);
     glow.setDepth(this.getHighlightDepth(tile));
     this.highlightOverlays.push(glow);
 
     const overlay = this.registerWorldObject(this.add.graphics());
-    overlay.fillStyle(0x6f4a18, 0.18);
+    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillDark, 0.18);
     overlay.fillPoints(outer, true);
-    overlay.fillStyle(0xe4a93d, 0.2);
+    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillMid, 0.2);
     overlay.fillPoints(mid, true);
-    overlay.fillStyle(0xffefb2, 0.16);
+    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillLight, 0.16);
     overlay.fillPoints(inner, true);
-    overlay.lineStyle(3, 0xfff3c6, 0.95);
+    overlay.lineStyle(3, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeOuter, 0.95);
     overlay.strokePoints(outer, true, true);
-    overlay.lineStyle(2, 0xffca62, 0.85);
+    overlay.lineStyle(2, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeMid, 0.85);
     overlay.strokePoints(mid, true, true);
-    overlay.lineStyle(1, 0x8c5d1b, 0.8);
+    overlay.lineStyle(1, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeInner, 0.8);
     overlay.strokePoints(inner, true, true);
-    overlay.lineStyle(3, 0xffefb2, 0.9);
+    overlay.lineStyle(3, ACTIVE_TURN_HIGHLIGHT_COLORS.fillLight, 0.9);
     for (const point of tilePoints) {
       const dx = point.x - center.x;
       const dy = point.y - center.y;
@@ -3394,7 +3458,7 @@ export class BattleScene extends Phaser.Scene {
         center.y + dy * 0.44
       );
     }
-    overlay.fillStyle(0xfff5cb, 0.85);
+    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.center, 0.85);
     overlay.fillCircle(center.x, center.y, 3.2);
     overlay.setDepth(this.getHighlightDepth(tile) + 0.1);
     this.highlightOverlays.push(overlay);
@@ -3427,6 +3491,197 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
+  private refreshActiveUnitGlow(): void {
+    for (const unit of this.units) {
+      const view = this.views.get(unit.id);
+
+      if (!view) {
+        continue;
+      }
+
+      const isActive = unit.alive && unit.id === this.activeUnitId && this.shouldShowActiveUnitFocus();
+      view.activeGlow
+        .setTint(this.getActiveUnitGlowTint(unit))
+        .setVisible(isActive)
+        .setAlpha(isActive ? (unit.team === 'player' ? 0.28 : 0.24) : 0);
+
+      for (const [index, outline] of view.activeOutlineSprites.entries()) {
+        outline
+          .setTintFill(this.getActiveUnitOutlineTint(unit))
+          .setVisible(isActive)
+          .setAlpha(isActive ? ACTIVE_UNIT_OUTLINE_OFFSETS[index].alpha * (unit.team === 'player' ? 0.78 : 0.68) : 0);
+      }
+
+      this.syncActiveUnitGlow(view);
+    }
+  }
+
+  private shouldShowActiveUnitFocus(): boolean {
+    return this.phase !== 'complete' && this.phase !== 'animating';
+  }
+
+  private updateActiveUnitGlowFade(time: number): void {
+    const activeUnit = this.getActiveUnit();
+
+    if (!activeUnit) {
+      return;
+    }
+
+    const view = this.views.get(activeUnit.id);
+
+    if (!view || !this.shouldShowActiveUnitFocus() || !view.activeGlow.visible) {
+      return;
+    }
+
+    const glowFade = (Math.sin(time * ACTIVE_UNIT_BORDER_FADE_SPEED) + 1) / 2;
+    const outlineFade = (Math.sin(time * ACTIVE_UNIT_BORDER_FADE_SPEED + 1.1) + 1) / 2;
+    const glowAlphaBase = activeUnit.team === 'player' ? 0.13 : 0.1;
+    const glowAlphaRange = activeUnit.team === 'player' ? 0.14 : 0.1;
+    const outlineAlphaScale = 0.42 + outlineFade * 0.58;
+
+    view.activeGlow
+      .setAlpha(glowAlphaBase + glowFade * glowAlphaRange);
+
+    for (const [index, outline] of view.activeOutlineSprites.entries()) {
+      const offset = ACTIVE_UNIT_OUTLINE_OFFSETS[index];
+      outline
+        .setAlpha(offset.alpha * outlineAlphaScale);
+    }
+  }
+
+  private syncActiveUnitGlow(view: UnitView): void {
+    const scaleRatio = view.spriteBaseScale > 0 ? view.sprite.scaleX / view.spriteBaseScale : 1;
+
+    view.activeGlow
+      .setPosition(view.sprite.x, view.sprite.y)
+      .setScale(view.sprite.scaleX * 1.1, view.sprite.scaleY * 1.1)
+      .setAngle(view.sprite.angle);
+
+    for (const [index, outline] of view.activeOutlineSprites.entries()) {
+      const offset = ACTIVE_UNIT_OUTLINE_OFFSETS[index];
+      outline
+        .setPosition(view.sprite.x + offset.x * scaleRatio, view.sprite.y + offset.y * scaleRatio)
+        .setScale(view.sprite.scaleX, view.sprite.scaleY)
+        .setAngle(view.sprite.angle);
+    }
+  }
+
+  private applyUnitViewFacing(unit: BattleUnit, view: UnitView, facing: SpriteFacing): void {
+    view.facing = facing;
+    const spriteOffsetX = this.getSpriteOffsetXForFacing(unit.spriteOffsetX, facing);
+    const spriteOffsetY = unit.spriteOffsetY ?? 0;
+    const spriteFlipX = this.shouldFlipSpriteForFacing(facing);
+
+    view.activeGlow.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    for (const outline of view.activeOutlineSprites) {
+      outline.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    }
+    view.sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    this.syncActiveUnitGlow(view);
+  }
+
+  private updateUnitFacingForMovement(
+    unit: BattleUnit,
+    view: UnitView,
+    fromPoint: Phaser.Math.Vector2,
+    toPoint: Phaser.Math.Vector2
+  ): void {
+    const nextFacing = this.getMovementFacing(fromPoint, toPoint, view.facing);
+
+    if (nextFacing !== view.facing) {
+      this.applyUnitViewFacing(unit, view, nextFacing);
+    }
+  }
+
+  private faceUnitTowardActionTarget(actor: BattleUnit, target: BattleUnit): void {
+    const actorView = this.views.get(actor.id);
+
+    if (!actorView) {
+      return;
+    }
+
+    const actorPoint = this.getUnitWorldPoint(actor);
+    const targetPoint = this.getUnitWorldPoint(target);
+    const nextFacing = this.getMovementFacing(actorPoint, targetPoint, actorView.facing);
+
+    if (nextFacing !== actorView.facing) {
+      this.applyUnitViewFacing(actor, actorView, nextFacing);
+    }
+  }
+
+  private getInitialFacingForUnit(unit: BattleUnit): SpriteFacing {
+    const unitTile = getTile(this.map, unit.x, unit.y);
+
+    if (!unitTile) {
+      return DEFAULT_UNIT_FACING;
+    }
+
+    const unitPoint = this.getUnitGroundPoint(unitTile);
+    let bestEnemy:
+      | {
+          tacticalDistance: number;
+          screenDistance: number;
+          facing: SpriteFacing;
+        }
+      | null = null;
+
+    for (const candidate of this.units) {
+      if (!candidate.alive || candidate.team === unit.team || candidate.id === unit.id) {
+        continue;
+      }
+
+      const candidateTile = getTile(this.map, candidate.x, candidate.y);
+
+      if (!candidateTile) {
+        continue;
+      }
+
+      const candidatePoint = this.getUnitGroundPoint(candidateTile);
+      const tacticalDistance = manhattanDistance(unit, candidate);
+      const dx = candidatePoint.x - unitPoint.x;
+      const dy = candidatePoint.y - unitPoint.y;
+      const screenDistance = dx * dx + dy * dy;
+      const facing = this.getMovementFacing(unitPoint, candidatePoint, DEFAULT_UNIT_FACING);
+
+      if (
+        !bestEnemy ||
+        tacticalDistance < bestEnemy.tacticalDistance ||
+        (tacticalDistance === bestEnemy.tacticalDistance && screenDistance < bestEnemy.screenDistance)
+      ) {
+        bestEnemy = { tacticalDistance, screenDistance, facing };
+      }
+    }
+
+    return bestEnemy?.facing ?? DEFAULT_UNIT_FACING;
+  }
+
+  private getMovementFacing(
+    fromPoint: Phaser.Math.Vector2,
+    toPoint: Phaser.Math.Vector2,
+    fallbackFacing: SpriteFacing
+  ): SpriteFacing {
+    const deltaX = toPoint.x - fromPoint.x;
+
+    if (Math.abs(deltaX) < 1) {
+      return fallbackFacing;
+    }
+
+    return deltaX > 0 ? 'right' : 'left';
+  }
+
+  private getUnitViewFacing(unitId: string): SpriteFacing {
+    return this.views.get(unitId)?.facing ?? DEFAULT_UNIT_FACING;
+  }
+
+  private getSpriteOffsetXForFacing(offsetX: number | undefined, facing: SpriteFacing): number {
+    const resolvedOffsetX = offsetX ?? 0;
+    return facing === 'left' ? -resolvedOffsetX : resolvedOffsetX;
+  }
+
+  private shouldFlipSpriteForFacing(facing: SpriteFacing): boolean {
+    return facing === 'left';
+  }
+
   private positionUnit(unit: BattleUnit): void {
     const view = this.views.get(unit.id);
 
@@ -3448,6 +3703,22 @@ export class BattleScene extends Phaser.Scene {
     view.hpFill.width = Math.max(0, 56 * (unit.hp / unit.maxHp));
     view.hpFill.setFillStyle(unit.team === 'player' ? 0x67d9a0 : 0xe88787, 1);
     view.label.setText(unit.name);
+  }
+
+  private getActiveUnitOutlineTint(unit: BattleUnit): number {
+    return this.mixColors(
+      ACTIVE_TURN_HIGHLIGHT_COLORS.strokeMid,
+      ACTIVE_TURN_HIGHLIGHT_COLORS.strokeOuter,
+      0.42
+    );
+  }
+
+  private getActiveUnitGlowTint(unit: BattleUnit): number {
+    return this.mixColors(
+      ACTIVE_TURN_HIGHLIGHT_COLORS.glowInner,
+      ACTIVE_TURN_HIGHLIGHT_COLORS.strokeOuter,
+      0.26
+    );
   }
 
   private positionChest(chest: ChestState): void {
@@ -4733,6 +5004,8 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    this.faceUnitTowardActionTarget(activeUnit, target);
+
     switch (item.effect.kind) {
       case 'heal': {
         const recovered = Math.min(item.effect.amount, target.maxHp - target.hp);
@@ -4999,6 +5272,7 @@ export class BattleScene extends Phaser.Scene {
 
     const actor = pickNextActor(this.units);
     this.activeUnitId = actor.id;
+    this.refreshActiveUnitGlow();
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
     const actorFocusPoint = this.getUnitCameraFocusPoint(actor);
@@ -5389,6 +5663,12 @@ export class BattleScene extends Phaser.Scene {
 
         const destination = this.getUnitGroundPoint(tile);
         const destinationDepth = this.getUnitDepth(tile);
+        this.updateUnitFacingForMovement(
+          unit,
+          view,
+          new Phaser.Math.Vector2(view.container.x, view.container.y),
+          destination
+        );
         const cameraFocusPoint = this.getUnitCameraFocusPoint(unit, destination);
         const cameraPanPromise = this.panCameraToPoint(
           cameraFocusPoint.x,
@@ -5411,6 +5691,12 @@ export class BattleScene extends Phaser.Scene {
         const destination = this.getUnitGroundPoint(tile);
         const startDepth = view.container.depth;
         const destinationDepth = this.getUnitDepth(tile);
+        this.updateUnitFacingForMovement(
+          unit,
+          view,
+          new Phaser.Math.Vector2(view.container.x, view.container.y),
+          destination
+        );
         const cameraFocusPoint = this.getUnitCameraFocusPoint(unit, destination);
         const cameraPanPromise = this.panCameraToPoint(cameraFocusPoint.x, cameraFocusPoint.y, 240);
         const movementPromise = this.animateStandardMovementStep(view, destination, startDepth, destinationDepth);
@@ -5514,8 +5800,12 @@ export class BattleScene extends Phaser.Scene {
     const afterimage = this.registerWorldObject(this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1));
     afterimage.displayHeight = view.sprite.displayHeight;
     afterimage.scaleX = afterimage.scaleY;
+    afterimage.setFlipX(this.shouldFlipSpriteForFacing(view.facing));
     afterimage
-      .setPosition(point.x + (unit.spriteOffsetX ?? 0), point.y + (unit.spriteOffsetY ?? 0))
+      .setPosition(
+        point.x + this.getSpriteOffsetXForFacing(unit.spriteOffsetX, view.facing),
+        point.y + (unit.spriteOffsetY ?? 0)
+      )
       .setDepth(depth + 0.04)
       .setTint(0xb9f5ff)
       .setBlendMode(Phaser.BlendModes.ADD)
@@ -5749,6 +6039,8 @@ export class BattleScene extends Phaser.Scene {
       return { amount: 0, critical: false };
     }
 
+    this.faceUnitTowardActionTarget(attacker, target);
+
     const strikeAttacker: BattleUnit = {
       ...attacker,
       attack: attacker.attack + (ability.powerModifier ?? 0),
@@ -5890,6 +6182,8 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    this.faceUnitTowardActionTarget(attacker, target);
+
     const amount = Math.min(ability.healAmount ?? 0, target.maxHp - target.hp);
     const effectPoint = this.getUnitSpritePoint(target, 0.72);
     audioDirector.playHeal();
@@ -5914,6 +6208,8 @@ export class BattleScene extends Phaser.Scene {
     if (!attackerView || !targetView || !attacker.alive || !target.alive) {
       return;
     }
+
+    this.faceUnitTowardActionTarget(attacker, target);
 
     const attackerPoint = this.getUnitWorldPoint(attacker);
     const targetPoint = this.getUnitWorldPoint(target);
@@ -5972,7 +6268,9 @@ export class BattleScene extends Phaser.Scene {
       scaleY: view.spriteBaseScale * 1.08,
       duration: 180,
       ease: 'Back.easeOut',
-      yoyo: true
+      yoyo: true,
+      onUpdate: () => this.syncActiveUnitGlow(view),
+      onComplete: () => this.syncActiveUnitGlow(view)
     });
   }
 
@@ -6388,7 +6686,11 @@ export class BattleScene extends Phaser.Scene {
       }
 
       if (portraitTextureKey) {
-        this.showDetailPortrait(portraitTextureKey, portraitKind);
+        this.showDetailPortrait(
+          portraitTextureKey,
+          portraitKind,
+          focusUnit ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(focusUnit.id)) : false
+        );
       } else {
         this.portrait.setVisible(false);
       }
@@ -6660,6 +6962,14 @@ export class BattleScene extends Phaser.Scene {
         return 'Stone';
       case 'sanctum':
         return 'Sanctum';
+      case 'chrono':
+        return 'Chrono Relay';
+      case 'brine':
+        return 'Brine Stone';
+      case 'bastion':
+        return 'Bastion Floor';
+      case 'aevum':
+        return 'Aevum Court';
       default:
         return terrain;
     }
@@ -7209,7 +7519,7 @@ export class BattleScene extends Phaser.Scene {
     }
   }
 
-  private showDetailPortrait(textureKey: string, kind: DetailPortraitKind): void {
+  private showDetailPortrait(textureKey: string, kind: DetailPortraitKind, flipX = false): void {
     this.portrait.setTexture(textureKey);
 
     const frame = this.portrait.frame;
@@ -7250,6 +7560,7 @@ export class BattleScene extends Phaser.Scene {
     const scale = Math.max(0.01, Math.min(widthScale, heightScale));
     this.portrait
       .setOrigin(0.5, 0.5)
+      .setFlipX(flipX)
       .setScale(scale)
       .setAlpha(1)
       .setVisible(this.showPortraitPanel);
@@ -7279,6 +7590,14 @@ export class BattleScene extends Phaser.Scene {
         return 'Broken chapel stone grants slight protection.';
       case 'sanctum':
         return 'The altar crest hardens defenders against direct blows.';
+      case 'chrono':
+        return 'Steel relay flooring funnels the fight along hard-edged lanes.';
+      case 'brine':
+        return 'Wet sanctuary stone rewards committed pushes across the flooded line.';
+      case 'bastion':
+        return 'Fortress parade flooring favors disciplined advances and holdouts.';
+      case 'aevum':
+        return 'Terraced prophecy courts invite patient rotations toward the center.';
       default:
         return '';
     }
@@ -7327,6 +7646,38 @@ export class BattleScene extends Phaser.Scene {
           sideRight: 0x4d3e34,
           outline: 0x241713,
           detail: 0xf8dea0
+        };
+      case 'chrono':
+        return {
+          top: 0x5a6f7b,
+          sideLeft: 0x42535d,
+          sideRight: 0x2b363f,
+          outline: 0x12171c,
+          detail: 0x93c7c8
+        };
+      case 'brine':
+        return {
+          top: 0x45685c,
+          sideLeft: 0x335046,
+          sideRight: 0x21352e,
+          outline: 0x101816,
+          detail: 0x8cc6bf
+        };
+      case 'bastion':
+        return {
+          top: 0x80786f,
+          sideLeft: 0x645f59,
+          sideRight: 0x48443f,
+          outline: 0x1d1715,
+          detail: 0xd8c28b
+        };
+      case 'aevum':
+        return {
+          top: 0xa08d75,
+          sideLeft: 0x7a6b58,
+          sideRight: 0x5a4d3f,
+          outline: 0x241a14,
+          detail: 0xf1ddb5
         };
       default:
         return {

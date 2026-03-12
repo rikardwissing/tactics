@@ -4,6 +4,7 @@ import { ItemId } from './items';
 export type Team = 'player' | 'enemy';
 export type FactionId = 'time-travelers' | 'myrmidons' | 'the-order' | 'children-of-the-prophecy';
 export type UnitGender = 'male' | 'female';
+export type SpriteFacing = 'left' | 'right';
 export type UnitRoleId =
   | 'aion-trooper'
   | 'time-lord'
@@ -26,7 +27,15 @@ export type UnitRoleId =
   | 'sand-strider'
   | 'memory-keeper'
   | 'oracle-lancer';
-export type TerrainType = 'grass' | 'stone' | 'moss' | 'sanctum';
+export type TerrainType =
+  | 'grass'
+  | 'stone'
+  | 'moss'
+  | 'sanctum'
+  | 'chrono'
+  | 'brine'
+  | 'bastion'
+  | 'aevum';
 export type IdleStyle = 'knight' | 'archer' | 'mage' | 'warden' | 'ranger' | 'priest';
 export type MovementStyle = 'standard' | 'blink';
 export type AbilityKind = 'attack' | 'heal' | 'steal';

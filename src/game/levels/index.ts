@@ -1,7 +1,11 @@
 import type { BattleSetup } from '../battleSetup';
 import { BattleUnit, TileData } from '../core/types';
+import aionRelayVaultTiledMap from './data/aion-relay-vault.tiled.json';
 import ashenCausewayTiledMap from './data/ashen-causeway.tiled.json';
+import brineCathedralTiledMap from './data/brine-cathedral.tiled.json';
 import brokenChapelTiledMap from './data/broken-chapel.tiled.json';
+import cloisterOfAevumTiledMap from './data/cloister-of-aevum.tiled.json';
+import ironBasilicaTiledMap from './data/iron-basilica.tiled.json';
 import { parseTiledLevel } from './tiled';
 import { getUnitBlueprint } from './unitBlueprints';
 import { LevelDefinition, PlayerDeploymentSlot } from './types';
@@ -12,12 +16,20 @@ function createBattleUnitId(levelId: string, placementIndex: number, blueprintId
   return `${levelId}:${placementIndex}:${blueprintId}`;
 }
 
+const aionRelayVaultLevel = parseTiledLevel(aionRelayVaultTiledMap);
 const ashenCausewayLevel = parseTiledLevel(ashenCausewayTiledMap);
+const brineCathedralLevel = parseTiledLevel(brineCathedralTiledMap);
 const brokenChapelLevel = parseTiledLevel(brokenChapelTiledMap);
+const cloisterOfAevumLevel = parseTiledLevel(cloisterOfAevumTiledMap);
+const ironBasilicaLevel = parseTiledLevel(ironBasilicaTiledMap);
 
 const LEVELS = {
   [brokenChapelLevel.id]: brokenChapelLevel,
-  [ashenCausewayLevel.id]: ashenCausewayLevel
+  [ashenCausewayLevel.id]: ashenCausewayLevel,
+  [aionRelayVaultLevel.id]: aionRelayVaultLevel,
+  [brineCathedralLevel.id]: brineCathedralLevel,
+  [ironBasilicaLevel.id]: ironBasilicaLevel,
+  [cloisterOfAevumLevel.id]: cloisterOfAevumLevel
 } as const;
 
 export type LevelId = keyof typeof LEVELS;

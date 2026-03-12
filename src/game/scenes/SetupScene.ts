@@ -109,7 +109,8 @@ const SLOT_CARD_WIDTH_WIDE = 116;
 const SLOT_CARD_WIDTH_COMPACT = 92;
 const SLOT_CARD_VERTICAL_INSET_WIDE = 6;
 const SLOT_CARD_VERTICAL_INSET_COMPACT = 4;
-const SLOT_CARD_PORTRAIT_BASELINE_INSET = 6;
+const SLOT_CARD_PORTRAIT_BASELINE_INSET = 20;
+const SLOT_CARD_EMPTY_PORTRAIT_OFFSET_Y = 18;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
@@ -784,12 +785,13 @@ export class SetupScene extends Phaser.Scene {
       const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
       const portraitOffsetX = (blueprint?.spriteOffsetX ?? 0) * portraitHeightScale;
       const portraitOffsetY = (blueprint?.spriteOffsetY ?? 0) * portraitHeightScale;
+      const emptyPortraitOffsetY = blueprint ? 0 : SLOT_CARD_EMPTY_PORTRAIT_OFFSET_Y;
       const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
       view.portrait
         .setScale(portraitScale)
         .setPosition(
           cardWidth / 2 + portraitOffsetX,
-          portraitBaselineY + portraitOffsetY - portraitDisplayHeight / 2
+          portraitBaselineY + portraitOffsetY + emptyPortraitOffsetY - portraitDisplayHeight / 2
         );
 
       view.slotText
@@ -1146,7 +1148,10 @@ export class SetupScene extends Phaser.Scene {
       .setWordWrapWidth(Math.max(0, width - textLeft - 20), true);
 
     if (entry.portraitImageKey) {
-      item.portrait.setTexture(entry.portraitImageKey).setVisible(true).setAlpha(entry.disabled ? 0.58 : 1);
+      item.portrait
+        .setTexture(entry.portraitImageKey)
+        .setVisible(true)
+        .setAlpha(entry.disabled ? 0.58 : 1);
       const referenceHeight = Math.max(1, entry.portraitDisplayHeight ?? this.maxBlueprintSpriteDisplayHeight);
       const portraitScale = Math.min(
         (artBounds.width - 16) / Math.max(1, item.portrait.width),

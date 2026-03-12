@@ -5,6 +5,10 @@ const setupWarCouncilBackdrop = new URL('../assets/game/backdrops/setup-war-coun
 const renationsGlobalBackdrop = new URL('../assets/game/backdrops/renations-global-backdrop.png', import.meta.url).href;
 const brokenChapelBackdrop = new URL('../assets/game/backdrops/broken-chapel-backdrop.png', import.meta.url).href;
 const ashenCausewayBackdrop = new URL('../assets/game/backdrops/ashen-causeway-backdrop.png', import.meta.url).href;
+const aionRelayVaultBackdrop = new URL('../assets/game/backdrops/aion-relay-vault-backdrop.png', import.meta.url).href;
+const brineCathedralBackdrop = new URL('../assets/game/backdrops/brine-cathedral-backdrop.png', import.meta.url).href;
+const ironBasilicaBackdrop = new URL('../assets/game/backdrops/iron-basilica-backdrop.png', import.meta.url).href;
+const cloisterOfAevumBackdrop = new URL('../assets/game/backdrops/cloister-of-aevum-backdrop.png', import.meta.url).href;
 const battleResultVictory = new URL('../assets/game/ui/battle-result-victory.png', import.meta.url).href;
 const battleResultDefeat = new URL('../assets/game/ui/battle-result-defeat.png', import.meta.url).href;
 const renationsTacticsLogo = new URL('../assets/game/renations-tactics-logo.png', import.meta.url).href;
@@ -107,6 +111,14 @@ const terrainMossB = new URL('../assets/game/terrain/terrain-moss-b.png', import
 const terrainStoneA = new URL('../assets/game/terrain/terrain-stone-a.png', import.meta.url).href;
 const terrainStoneB = new URL('../assets/game/terrain/terrain-stone-b.png', import.meta.url).href;
 const terrainSanctumA = new URL('../assets/game/terrain/terrain-sanctum-a.png', import.meta.url).href;
+const terrainChronoA = new URL('../assets/game/terrain/terrain-chrono-a.png', import.meta.url).href;
+const terrainChronoB = new URL('../assets/game/terrain/terrain-chrono-b.png', import.meta.url).href;
+const terrainBrineA = new URL('../assets/game/terrain/terrain-brine-a.png', import.meta.url).href;
+const terrainBrineB = new URL('../assets/game/terrain/terrain-brine-b.png', import.meta.url).href;
+const terrainBastionA = new URL('../assets/game/terrain/terrain-bastion-a.png', import.meta.url).href;
+const terrainBastionB = new URL('../assets/game/terrain/terrain-bastion-b.png', import.meta.url).href;
+const terrainAevumA = new URL('../assets/game/terrain/terrain-aevum-a.png', import.meta.url).href;
+const terrainAevumB = new URL('../assets/game/terrain/terrain-aevum-b.png', import.meta.url).href;
 const obstacleRubbleBarricade = new URL('../assets/game/props/obstacle-rubble-barricade.png', import.meta.url).href;
 const lightTorch = new URL('../assets/game/props/light-torch.png', import.meta.url).href;
 const sanctumBrazier = new URL('../assets/game/props/sanctum-brazier.png', import.meta.url).href;
@@ -120,6 +132,10 @@ export const IMAGE_ASSETS = [
   { key: 'renations-global-backdrop', url: renationsGlobalBackdrop },
   { key: 'broken-chapel-backdrop', url: brokenChapelBackdrop },
   { key: 'ashen-causeway-backdrop', url: ashenCausewayBackdrop },
+  { key: 'aion-relay-vault-backdrop', url: aionRelayVaultBackdrop },
+  { key: 'brine-cathedral-backdrop', url: brineCathedralBackdrop },
+  { key: 'iron-basilica-backdrop', url: ironBasilicaBackdrop },
+  { key: 'cloister-of-aevum-backdrop', url: cloisterOfAevumBackdrop },
   { key: 'battle-result-victory', url: battleResultVictory },
   { key: 'battle-result-defeat', url: battleResultDefeat },
   { key: 'renations-tactics-logo', url: renationsTacticsLogo },
@@ -157,6 +173,14 @@ export const IMAGE_ASSETS = [
   { key: 'terrain-stone-a', url: terrainStoneA },
   { key: 'terrain-stone-b', url: terrainStoneB },
   { key: 'terrain-sanctum-a', url: terrainSanctumA },
+  { key: 'terrain-chrono-a', url: terrainChronoA },
+  { key: 'terrain-chrono-b', url: terrainChronoB },
+  { key: 'terrain-brine-a', url: terrainBrineA },
+  { key: 'terrain-brine-b', url: terrainBrineB },
+  { key: 'terrain-bastion-a', url: terrainBastionA },
+  { key: 'terrain-bastion-b', url: terrainBastionB },
+  { key: 'terrain-aevum-a', url: terrainAevumA },
+  { key: 'terrain-aevum-b', url: terrainAevumB },
   { key: 'obstacle-rubble-barricade', url: obstacleRubbleBarricade },
   { key: 'light-torch', url: lightTorch },
   { key: 'sanctum-brazier', url: sanctumBrazier }

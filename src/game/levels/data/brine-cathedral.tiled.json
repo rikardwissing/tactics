@@ -1,0 +1,987 @@
+{
+  "compressionlevel": -1,
+  "height": 16,
+  "infinite": false,
+  "layers": [
+    {
+      "data": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        6,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        6,
+        6,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        6,
+        3,
+        3,
+        6,
+        6,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        3,
+        3,
+        6,
+        2,
+        2,
+        6,
+        3,
+        3,
+        6,
+        6,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        3,
+        3,
+        6,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        6,
+        6,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        6,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "height": 16,
+      "id": 1,
+      "name": "terrain",
+      "opacity": 1,
+      "type": "tilelayer",
+      "visible": true,
+      "width": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "data": [
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        11,
+        10,
+        10,
+        11,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        11,
+        11,
+        11,
+        10,
+        10,
+        11,
+        11,
+        11,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        11,
+        11,
+        12,
+        12,
+        12,
+        12,
+        11,
+        11,
+        10,
+        10,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        12,
+        12,
+        12,
+        12,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        12,
+        12,
+        12,
+        12,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        10,
+        10,
+        11,
+        11,
+        12,
+        12,
+        12,
+        12,
+        11,
+        11,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        11,
+        11,
+        11,
+        10,
+        10,
+        11,
+        11,
+        11,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        11,
+        10,
+        10,
+        11,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        10,
+        10,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        10,
+        10,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9,
+        9
+      ],
+      "height": 16,
+      "id": 2,
+      "name": "heights",
+      "opacity": 1,
+      "type": "tilelayer",
+      "visible": true,
+      "width": 16,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 3,
+      "name": "placements",
+      "objects": [
+        {
+          "height": 32,
+          "id": 1,
+          "name": "Tide Legionary Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "myrmidons-tide-legionary"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "player"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 160,
+          "y": 384
+        },
+        {
+          "height": 32,
+          "id": 2,
+          "name": "Hunter Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "myrmidons-hunter"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "player"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 256,
+          "y": 416
+        },
+        {
+          "height": 32,
+          "id": 3,
+          "name": "Spectre Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "myrmidons-spectre"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "player"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 320,
+          "y": 384
+        },
+        {
+          "height": 32,
+          "id": 4,
+          "name": "Aion Trooper Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "time-travelers-aion-trooper"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "enemy"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 160,
+          "y": 96
+        },
+        {
+          "height": 32,
+          "id": 5,
+          "name": "Time Lord Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "time-travelers-time-lord"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "enemy"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 256,
+          "y": 64
+        },
+        {
+          "height": 32,
+          "id": 6,
+          "name": "Chronomedic Spawn",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "time-travelers-chronomedic"
+            },
+            {
+              "name": "team",
+              "type": "string",
+              "value": "enemy"
+            }
+          ],
+          "rotation": 0,
+          "type": "unit_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 320,
+          "y": 96
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 4,
+      "name": "chests",
+      "objects": [
+        {
+          "height": 32,
+          "id": 7,
+          "name": "West Tide Cache",
+          "properties": [
+            {
+              "name": "itemId",
+              "type": "string",
+              "value": "mending-salve"
+            },
+            {
+              "name": "quantity",
+              "type": "int",
+              "value": 1
+            }
+          ],
+          "rotation": 0,
+          "type": "chest",
+          "visible": true,
+          "width": 32,
+          "x": 64,
+          "y": 256
+        },
+        {
+          "height": 32,
+          "id": 8,
+          "name": "East Tide Cache",
+          "properties": [
+            {
+              "name": "itemId",
+              "type": "string",
+              "value": "quick-tonic"
+            },
+            {
+              "name": "quantity",
+              "type": "int",
+              "value": 1
+            }
+          ],
+          "rotation": 0,
+          "type": "chest",
+          "visible": true,
+          "width": 32,
+          "x": 416,
+          "y": 256
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 5,
+      "name": "props",
+      "objects": [],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 6,
+  "nextobjectid": 9,
+  "orientation": "orthogonal",
+  "properties": [
+    {
+      "name": "levelId",
+      "type": "string",
+      "value": "brine-cathedral"
+    },
+    {
+      "name": "displayName",
+      "type": "string",
+      "value": "The Brine Cathedral"
+    },
+    {
+      "name": "objective",
+      "type": "string",
+      "value": "Break the tide altar line and hold the flooded nave before the deepborn close the flanks."
+    },
+    {
+      "name": "backdropAssetId",
+      "type": "string",
+      "value": "brine-cathedral-backdrop"
+    },
+    {
+      "name": "shortObjective",
+      "type": "string",
+      "value": "Hold the flooded nave."
+    },
+    {
+      "name": "titlePrefix",
+      "type": "string",
+      "value": "Mission IV"
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "value": "Under-Ice Sepulcher"
+    },
+    {
+      "name": "encounterType",
+      "type": "string",
+      "value": "Tide Sanctuary Fight"
+    },
+    {
+      "name": "titleFlavor",
+      "type": "string",
+      "value": "Crossing wet shell terraces under ice light forces both lines to contest a ritual basin at the center."
+    }
+  ],
+  "renderorder": "right-down",
+  "tiledversion": "1.11.0",
+  "tileheight": 32,
+  "tilesets": [
+    {
+      "columns": 8,
+      "firstgid": 1,
+      "grid": {
+        "height": 32,
+        "orientation": "orthogonal",
+        "width": 32
+      },
+      "margin": 0,
+      "name": "terrain",
+      "spacing": 0,
+      "tilecount": 8,
+      "tileheight": 32,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "grass"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "moss"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "stone"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "sanctum"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "chrono"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "brine"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "bastion"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "aevum"
+            }
+          ]
+        }
+      ],
+      "tilewidth": 32
+    },
+    {
+      "columns": 5,
+      "firstgid": 9,
+      "grid": {
+        "height": 32,
+        "orientation": "orthogonal",
+        "width": 32
+      },
+      "margin": 0,
+      "name": "heights",
+      "spacing": 0,
+      "tilecount": 5,
+      "tileheight": 32,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 3
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 4
+            }
+          ]
+        }
+      ],
+      "tilewidth": 32
+    }
+  ],
+  "tilewidth": 32,
+  "type": "map",
+  "version": "1.10",
+  "width": 16
+}
