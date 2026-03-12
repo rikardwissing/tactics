@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SETUP_PLACEHOLDER_UNIT_IMAGE_KEY } from '../assets';
+import { SETUP_PLACEHOLDER_UNIT_IMAGE_KEY, getUnitPortraitImageKey } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
 import type { FactionId } from '../core/types';
@@ -95,6 +95,7 @@ interface SelectionEntry {
   portraitDisplayHeight?: number;
   portraitOffsetX?: number;
   portraitOffsetY?: number;
+  portraitStyle?: 'sprite' | 'portrait';
 }
 
 const MENU_ITEM_GAP = 10;
@@ -110,7 +111,6 @@ const SLOT_CARD_WIDTH_COMPACT = 92;
 const SLOT_CARD_VERTICAL_INSET_WIDE = 6;
 const SLOT_CARD_VERTICAL_INSET_COMPACT = 4;
 const SLOT_CARD_PORTRAIT_BASELINE_INSET = 20;
-const SLOT_CARD_EMPTY_PORTRAIT_OFFSET_Y = 18;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
@@ -776,23 +776,22 @@ export class SetupScene extends Phaser.Scene {
 
       if (blueprint) {
         view.portrait.setTexture(blueprint.spriteKey).setVisible(true).setAlpha(1);
+        const portraitMaxHeight = Math.max(1, cardHeight - 10);
+        const portraitHeightScale = portraitMaxHeight / this.maxBlueprintSpriteDisplayHeight;
+        const portraitDisplayHeight = blueprint.spriteDisplayHeight * portraitHeightScale;
+        const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
+        const portraitOffsetX = (blueprint.spriteOffsetX ?? 0) * portraitHeightScale;
+        const portraitOffsetY = (blueprint.spriteOffsetY ?? 0) * portraitHeightScale;
+        const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
+        view.portrait
+          .setScale(portraitScale)
+          .setPosition(
+            cardWidth / 2 + portraitOffsetX,
+            portraitBaselineY + portraitOffsetY - portraitDisplayHeight / 2
+          );
       } else {
-        view.portrait.setTexture(SETUP_PLACEHOLDER_UNIT_IMAGE_KEY).setVisible(true).setAlpha(0.5);
+        view.portrait.setVisible(false);
       }
-      const portraitMaxHeight = Math.max(1, cardHeight - 10);
-      const portraitHeightScale = portraitMaxHeight / this.maxBlueprintSpriteDisplayHeight;
-      const portraitDisplayHeight = (blueprint?.spriteDisplayHeight ?? this.maxBlueprintSpriteDisplayHeight) * portraitHeightScale;
-      const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
-      const portraitOffsetX = (blueprint?.spriteOffsetX ?? 0) * portraitHeightScale;
-      const portraitOffsetY = (blueprint?.spriteOffsetY ?? 0) * portraitHeightScale;
-      const emptyPortraitOffsetY = blueprint ? 0 : SLOT_CARD_EMPTY_PORTRAIT_OFFSET_Y;
-      const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
-      view.portrait
-        .setScale(portraitScale)
-        .setPosition(
-          cardWidth / 2 + portraitOffsetX,
-          portraitBaselineY + portraitOffsetY + emptyPortraitOffsetY - portraitDisplayHeight / 2
-        );
 
       view.slotText
         .setPosition(10 + badgeWidth / 2, 10 + badgeHeight / 2)
@@ -990,14 +989,14 @@ export class SetupScene extends Phaser.Scene {
           disabled: false,
           accentColor: UI_COLOR_ACCENT_NEUTRAL,
           backgroundImageKey: this.getLevelBackdropImageKey(this.selectedLevel),
-          portraitImageKey: SETUP_PLACEHOLDER_UNIT_IMAGE_KEY,
-          portraitDisplayHeight: this.maxBlueprintSpriteDisplayHeight
+          portraitStyle: 'sprite' as const
         },
         ...this.factionOrder.flatMap((factionId) =>
           this.availableBlueprints
             .filter((blueprint) => blueprint.factionId === factionId)
             .map((blueprint) => {
               const selectedHere = this.selectedSlotId ? this.playerAssignments[this.selectedSlotId] === blueprint.id : false;
+              const portraitImageKey = getUnitPortraitImageKey(blueprint.spriteKey);
               return {
                 id: blueprint.id,
                 title: blueprint.name,
@@ -1007,10 +1006,11 @@ export class SetupScene extends Phaser.Scene {
                 disabled: false,
                 accentColor: blueprint.accentColor,
                 backgroundImageKey: this.getLevelBackdropImageKey(this.selectedLevel),
-                portraitImageKey: blueprint.spriteKey,
-                portraitDisplayHeight: blueprint.spriteDisplayHeight,
-                portraitOffsetX: blueprint.spriteOffsetX,
-                portraitOffsetY: blueprint.spriteOffsetY
+                portraitImageKey: portraitImageKey ?? blueprint.spriteKey,
+                portraitDisplayHeight: portraitImageKey ? undefined : blueprint.spriteDisplayHeight,
+                portraitOffsetX: portraitImageKey ? undefined : blueprint.spriteOffsetX,
+                portraitOffsetY: portraitImageKey ? undefined : blueprint.spriteOffsetY,
+                portraitStyle: portraitImageKey ? ('portrait' as const) : ('sprite' as const)
               };
             })
         )
@@ -1134,7 +1134,8 @@ export class SetupScene extends Phaser.Scene {
       return;
     }
 
-    const artBounds = new Phaser.Geom.Rectangle(16, 12, this.layoutMode === 'wide' ? 108 : 96, height - 24);
+    const artSize = Math.max(56, height - 24);
+    const artBounds = new Phaser.Geom.Rectangle(16, 12, artSize, artSize);
     const textLeft = artBounds.right + 18;
 
     item.titleText
@@ -1152,17 +1153,25 @@ export class SetupScene extends Phaser.Scene {
         .setTexture(entry.portraitImageKey)
         .setVisible(true)
         .setAlpha(entry.disabled ? 0.58 : 1);
-      const referenceHeight = Math.max(1, entry.portraitDisplayHeight ?? this.maxBlueprintSpriteDisplayHeight);
-      const portraitScale = Math.min(
-        (artBounds.width - 16) / Math.max(1, item.portrait.width),
-        (artBounds.height - 8) / referenceHeight
-      );
-      item.portrait
-        .setScale(portraitScale)
-        .setPosition(
-          artBounds.centerX + (entry.portraitOffsetX ?? 0) * portraitScale,
-          artBounds.bottom + (entry.portraitOffsetY ?? 0) * portraitScale + 2
+      if (entry.portraitStyle === 'portrait') {
+        item.portrait
+          .setOrigin(0.5, 0.5)
+          .setDisplaySize(artBounds.width, artBounds.height)
+          .setPosition(artBounds.centerX, artBounds.centerY);
+      } else {
+        const referenceHeight = Math.max(1, entry.portraitDisplayHeight ?? this.maxBlueprintSpriteDisplayHeight);
+        const portraitScale = Math.min(
+          (artBounds.width - 16) / Math.max(1, item.portrait.width),
+          (artBounds.height - 8) / referenceHeight
         );
+        item.portrait
+          .setOrigin(0.5, 1)
+          .setScale(portraitScale)
+          .setPosition(
+            artBounds.centerX + (entry.portraitOffsetX ?? 0) * portraitScale,
+            artBounds.bottom + (entry.portraitOffsetY ?? 0) * portraitScale + 2
+          );
+      }
     } else {
       item.portrait.setVisible(false);
     }
@@ -1200,7 +1209,8 @@ export class SetupScene extends Phaser.Scene {
     item.background.fillRoundedRect(14, 14, 8, height - 28, 4);
 
     if (!mapMode) {
-      const artBounds = new Phaser.Geom.Rectangle(16, 12, this.layoutMode === 'wide' ? 108 : 96, height - 24);
+      const artSize = Math.max(56, height - 24);
+      const artBounds = new Phaser.Geom.Rectangle(16, 12, artSize, artSize);
       BattleUiChrome.drawInsetBox(item.background, artBounds, {
         fillColor: entry.accentColor,
         fillAlpha: 0.12,

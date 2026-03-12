@@ -300,3 +300,23 @@ export const UNIT_TURN_START_AUDIO_KEYS: Partial<Record<string, (typeof AUDIO_AS
   'myrmidons-hunter': 'unit-turn-start-myrmidons-hunter',
   'myrmidons-spectre': 'unit-turn-start-myrmidons-spectre'
 };
+
+export const UNIT_PORTRAIT_IMAGE_KEYS = {
+  'the-order-house-marshal': 'the-order-house-marshal-portrait',
+  'the-order-squire-operative': 'the-order-squire-operative-portrait',
+  'the-order-banner-surgeon': 'the-order-banner-surgeon-portrait',
+  'time-travelers-aion-trooper': 'time-travelers-aion-trooper-portrait',
+  'time-travelers-time-lord': 'time-travelers-time-lord-portrait',
+  'time-travelers-chronomedic': 'time-travelers-chronomedic-portrait',
+  'time-travelers-scavenger-marksman': 'time-travelers-scavenger-marksman-portrait',
+  'myrmidons-tide-legionary': 'myrmidons-tide-legionary-portrait',
+  'myrmidons-hunter': 'myrmidons-hunter-portrait',
+  'myrmidons-spectre': 'myrmidons-spectre-portrait',
+  'children-of-the-prophecy-aevum-guardian': 'children-of-the-prophecy-aevum-guardian-portrait',
+  'children-of-the-prophecy-memory-keeper': 'children-of-the-prophecy-memory-keeper-portrait',
+  'children-of-the-prophecy-mirage-seer': 'children-of-the-prophecy-mirage-seer-portrait'
+} as const satisfies Partial<Record<(typeof IMAGE_ASSETS)[number]['key'], (typeof IMAGE_ASSETS)[number]['key']>>;
+
+export function getUnitPortraitImageKey(spriteKey: string): string | null {
+  return UNIT_PORTRAIT_IMAGE_KEYS[spriteKey as keyof typeof UNIT_PORTRAIT_IMAGE_KEYS] ?? null;
+}

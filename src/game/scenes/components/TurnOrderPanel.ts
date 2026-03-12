@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEFAULT_UNIT_IMAGE_KEY } from '../../assets';
+import { DEFAULT_UNIT_IMAGE_KEY, getUnitPortraitImageKey } from '../../assets';
 import { BattleUnit } from '../../core/types';
 import {
   UI_COLOR_ACCENT_COOL,
@@ -382,11 +382,6 @@ export class TurnOrderPanel {
     this.syncPulse(row);
   }
 
-  private getPortraitTextureKey(spriteKey: string): string | null {
-    const portraitKey = `${spriteKey}-portrait`;
-    return this.scene.textures.exists(portraitKey) ? portraitKey : null;
-  }
-
   private applyPortraitFit(row: TurnOrderRow): void {
     const avatar = row.avatar;
     const frame = avatar.frame;
@@ -629,7 +624,7 @@ export class TurnOrderPanel {
     }
 
     const borderColor = entry.team === 'player' ? UI_COLOR_ACCENT_COOL : UI_COLOR_DANGER;
-    const portraitTextureKey = this.getPortraitTextureKey(entry.spriteKey);
+    const portraitTextureKey = getUnitPortraitImageKey(entry.spriteKey);
     const avatarTextureKey = portraitTextureKey ?? entry.spriteKey;
     const avatarUsesCrop = portraitTextureKey === null;
     const needsAvatarRefresh =

@@ -78,6 +78,11 @@ function assertOptionalNumber(value: unknown, label: string): number | undefined
   return value as number | undefined;
 }
 
+function assertOptionalBoolean(value: unknown, label: string): boolean | undefined {
+  assert(value === undefined || typeof value === 'boolean', `${label} must be a boolean`);
+  return value as boolean | undefined;
+}
+
 function assertOptionalString<T extends string>(value: unknown, label: string, allowed: readonly T[]): T | undefined {
   assert(value === undefined || (typeof value === 'string' && allowed.includes(value as T)), `${label} must be one of ${allowed.join(', ')}`);
   return value as T | undefined;
@@ -101,8 +106,11 @@ function validateAbility(blueprintId: string, rawAbility: unknown): UnitAbility 
     rangeMax: assertNumber(rawAbility.rangeMax, `${blueprintId} ability.rangeMax`),
     powerModifier: assertOptionalNumber(rawAbility.powerModifier, `${blueprintId} ability.powerModifier`),
     healAmount: assertOptionalNumber(rawAbility.healAmount, `${blueprintId} ability.healAmount`),
+    splashRadius: assertOptionalNumber(rawAbility.splashRadius, `${blueprintId} ability.splashRadius`),
+    splashDamageMultiplier: assertOptionalNumber(rawAbility.splashDamageMultiplier, `${blueprintId} ability.splashDamageMultiplier`),
     attackStyle: assertOptionalString(rawAbility.attackStyle, `${blueprintId} ability.attackStyle`, ATTACK_STYLES),
-    effectKey: assertOptionalString(rawAbility.effectKey, `${blueprintId} ability.effectKey`, COMBAT_EFFECT_IDS)
+    effectKey: assertOptionalString(rawAbility.effectKey, `${blueprintId} ability.effectKey`, COMBAT_EFFECT_IDS),
+    counterable: assertOptionalBoolean(rawAbility.counterable, `${blueprintId} ability.counterable`)
   };
 }
 

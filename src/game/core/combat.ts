@@ -1,6 +1,12 @@
 import { BattleUnit, TileData } from './types';
 import { getTile, manhattanDistance } from './pathfinding';
 
+interface DamageCalculationOptions {
+  canCrit?: boolean;
+  damageMultiplier?: number;
+  minimumDamage?: number;
+}
+
 export function pickNextActor(units: BattleUnit[]): BattleUnit {
   const living = units.filter((unit) => unit.alive);
 
@@ -65,7 +71,8 @@ export function calculateDamage(
   attacker: BattleUnit,
   defender: BattleUnit,
   map: TileData[],
-  randomValue: number
+  randomValue: number,
+  options: DamageCalculationOptions = {}
 ): { amount: number; critical: boolean } {
   const attackerTile = getTile(map, attacker.x, attacker.y);
   const defenderTile = getTile(map, defender.x, defender.y);
@@ -81,8 +88,11 @@ export function calculateDamage(
     defender.defense -
     terrainMitigation +
     Math.round(randomValue * 6);
-  const critical = randomValue > 0.89;
-  const amount = Math.max(10, Math.round(baseDamage * (critical ? 1.35 : 1)));
+  const critical = (options.canCrit ?? true) && randomValue > 0.89;
+  const amount = Math.max(
+    options.minimumDamage ?? 10,
+    Math.round(baseDamage * (critical ? 1.35 : 1) * (options.damageMultiplier ?? 1))
+  );
 
   return { amount, critical };
 }

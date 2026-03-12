@@ -21,6 +21,7 @@ export const COMBAT_EFFECT_IDS = [
   'anchor-spike',
   'scrapline-shot',
   'tracer-volley',
+  'censer-grenade',
   'brine-shot',
   'cautery-charge',
   'reactor-pulse',
@@ -2040,6 +2041,126 @@ export const COMBAT_EFFECT_DEFINITIONS = {
         gravityY: 26,
         blendMode: 'ADD'
       }
+    }
+  }),
+  'censer-grenade': defineEffect('censer-grenade', 'burst-discharge', {
+    telegraph: {
+      anchor: 'source',
+      duration: 92,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.orb,
+        tint: 0xe7c779,
+        alpha: 0.76,
+        startScale: 0.12,
+        endScale: 0.26,
+        duration: 92,
+        additive: true
+      },
+      ring: {
+        tint: 0xe7c779,
+        alpha: 0.14,
+        width: 38,
+        height: 14,
+        duration: 92,
+        startScale: 0.72,
+        endScale: 1.18,
+        strokeWidth: 2,
+        strokeAlpha: 0.7
+      },
+      glowTint: 0xe7c779,
+      glowAlpha: 0.14,
+      glowScale: 0.42,
+      particles: {
+        tint: [0xfff2d0, 0xe7c779, 0x8a3f33],
+        count: 9,
+        lifespan: 220,
+        speedMin: 14,
+        speedMax: 54,
+        scaleStart: 0.58,
+        scaleEnd: 0.04,
+        angleSpread: 120,
+        gravityY: 28,
+        blendMode: 'ADD'
+      }
+    },
+    travel: {
+      from: 'source',
+      to: 'target',
+      duration: 228,
+      textureKey: COMBAT_FX_TEXTURE_KEYS.orb,
+      tint: 0xe7c779,
+      alpha: 0.92,
+      startScale: 0.16,
+      endScale: 0.3,
+      additive: true,
+      arcHeight: 24,
+      spin: 0.26,
+      trailTint: [0xfff2d0, 0xe7c779, 0x8a3f33],
+      trailScaleStart: 0.54,
+      trailScaleEnd: 0.05
+    },
+    impact: {
+      anchor: 'target',
+      duration: 180,
+      sprite: {
+        textureKey: COMBAT_FX_TEXTURE_KEYS.burst,
+        tint: 0xffb15b,
+        alpha: 0.96,
+        startScale: 0.18,
+        endScale: 0.78,
+        duration: 180,
+        additive: true,
+        spin: 0.28
+      },
+      ring: {
+        tint: 0x8a3f33,
+        alpha: 0.16,
+        width: 64,
+        height: 24,
+        duration: 176,
+        startScale: 0.84,
+        endScale: 1.5,
+        strokeWidth: 2,
+        strokeAlpha: 0.46
+      },
+      glowTint: 0xe7c779,
+      glowAlpha: 0.16,
+      glowScale: 0.58,
+      particles: {
+        tint: [0xfff2d0, 0xe7c779, 0x8a3f33],
+        count: 24,
+        lifespan: 300,
+        speedMin: 34,
+        speedMax: 118,
+        scaleStart: 0.9,
+        scaleEnd: 0.05,
+        angleSpread: 180,
+        gravityY: 76,
+        blendMode: 'ADD'
+      }
+    },
+    afterglow: {
+      anchor: 'target',
+      duration: 130,
+      ring: {
+        tint: 0xe7c779,
+        alpha: 0.14,
+        width: 70,
+        height: 26,
+        duration: 130,
+        startScale: 0.92,
+        endScale: 1.58,
+        strokeWidth: 2,
+        strokeAlpha: 0.42
+      },
+      glowTint: 0xe7c779,
+      glowAlpha: 0.1,
+      glowScale: 0.58
+    },
+    camera: {
+      shakeDuration: 102,
+      shakeIntensity: 0.0018,
+      hitStop: 24
     }
   }),
   'brine-shot': defineEffect('brine-shot', 'chrono-ranged', {

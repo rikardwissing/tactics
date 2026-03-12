@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { UNIT_TURN_START_AUDIO_KEYS } from '../assets';
+import { UNIT_TURN_START_AUDIO_KEYS, getUnitPortraitImageKey } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import {
   DEFAULT_UNIT_GROUND_OFFSET_Y,
@@ -74,6 +74,7 @@ interface RosterHeaderView {
 
 interface RosterRowView {
   blueprintId: string;
+  portrait: Phaser.GameObjects.Image;
   titleText: Phaser.GameObjects.Text;
   metaText: Phaser.GameObjects.Text;
   bounds: Phaser.Geom.Rectangle;
@@ -224,6 +225,7 @@ export class UnitEditorScene extends Phaser.Scene {
   private previewMarker!: Phaser.GameObjects.Ellipse;
   private previewShadow!: Phaser.GameObjects.Ellipse;
   private previewSprite!: Phaser.GameObjects.Image;
+  private previewPortrait!: Phaser.GameObjects.Image;
   private previewHpBack!: Phaser.GameObjects.Rectangle;
   private previewHpFill!: Phaser.GameObjects.Rectangle;
   private previewLabel!: Phaser.GameObjects.Text;
@@ -244,6 +246,7 @@ export class UnitEditorScene extends Phaser.Scene {
   private inspectorViewportRect = new Phaser.Geom.Rectangle();
   private previewStageRect = new Phaser.Geom.Rectangle();
   private previewMetaRect = new Phaser.Geom.Rectangle();
+  private previewPortraitRect = new Phaser.Geom.Rectangle();
   private metaBoxRect = new Phaser.Geom.Rectangle();
   private abilitiesBoxRect = new Phaser.Geom.Rectangle();
 
@@ -333,7 +336,9 @@ export class UnitEditorScene extends Phaser.Scene {
     }
 
     for (const blueprint of this.blueprints) {
+      const portraitKey = getUnitPortraitImageKey(blueprint.spriteKey) ?? blueprint.spriteKey;
       this.rosterRowViews.push({
+        portrait: this.applyRosterMask(this.add.image(0, 0, portraitKey).setOrigin(0.5).setDepth(210)),
         blueprintId: blueprint.id,
         titleText: this.applyRosterMask(this.add.text(0, 0, blueprint.name, UI_TEXT_ACTION).setDepth(210)),
         metaText: this.applyRosterMask(this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210)),
@@ -362,6 +367,7 @@ export class UnitEditorScene extends Phaser.Scene {
     this.previewMarker = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 62, 26, 0xffffff, 0.14);
     this.previewShadow = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 50, 18, 0x060205, 0.42);
     this.previewSprite = this.add.image(0, 0, this.getSelectedBlueprint().spriteKey).setOrigin(0.5, 1);
+    this.previewPortrait = this.add.image(0, 0, this.getSelectedBlueprint().spriteKey).setOrigin(0.5).setDepth(210);
     this.previewHpBack = this.add.rectangle(0, 0, 60, 8, 0x12070d, 0.92);
     this.previewHpFill = this.add.rectangle(-29, 0, 56, 4, UI_COLOR_SUCCESS, 1).setOrigin(0, 0.5);
     this.previewLabel = this.add.text(0, 0, this.getSelectedBlueprint().name, UI_TEXT_WORLD_LABEL).setOrigin(0.5);
@@ -556,10 +562,18 @@ export class UnitEditorScene extends Phaser.Scene {
         }
 
         row.bounds.setTo(content.x, cursorY, content.width, 42);
-        row.titleText.setPosition(content.x + 12, cursorY + 8);
-        row.metaText.setPosition(content.x + 12, cursorY + 24);
-        row.metaText.setWordWrapWidth(Math.max(180, content.width - 24), true);
+        const portraitSize = row.bounds.height - 6;
+        const portraitX = content.x + 12 + portraitSize * 0.5;
+        const portraitY = cursorY + row.bounds.height * 0.5;
+        const textX = content.x + 18 + portraitSize;
+        row.portrait
+          .setPosition(portraitX, portraitY)
+          .setDisplaySize(portraitSize, portraitSize);
+        row.titleText.setPosition(textX, cursorY + 8);
+        row.metaText.setPosition(textX, cursorY + 24);
+        row.metaText.setWordWrapWidth(Math.max(140, content.width - (textX - content.x) - 12), true);
         const visible = this.isRectVisible(row.bounds, this.rosterViewportRect);
+        row.portrait.setVisible(visible);
         row.titleText.setVisible(visible);
         row.metaText.setVisible(visible);
         cursorY += 48;
@@ -602,6 +616,14 @@ export class UnitEditorScene extends Phaser.Scene {
       content.width,
       Math.max(160, content.height - 108)
     );
+    const portraitSize = Math.min(92, Math.max(72, Math.round(this.previewStageRect.width * 0.24)));
+    this.previewPortraitRect.setTo(
+      this.previewStageRect.x + 14,
+      this.previewStageRect.y + 14,
+      portraitSize,
+      portraitSize
+    );
+    this.previewPortrait.setPosition(this.previewPortraitRect.centerX, this.previewPortraitRect.centerY);
     this.previewHintText.setPosition(content.x, this.previewStageRect.bottom + UI_PANEL_MINI_GAP);
     this.previewHintText.setWordWrapWidth(content.width, true);
   }
@@ -806,6 +828,13 @@ export class UnitEditorScene extends Phaser.Scene {
       fillAlpha: 0.34,
       strokeAlpha: 0.16
     });
+    BattleUiChrome.drawInsetBox(this.staticUiGraphics, this.previewPortraitRect, {
+      fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+      fillAlpha: 0.92,
+      strokeColor: UI_COLOR_ACCENT_WARM,
+      strokeAlpha: 0.22,
+      radius: 12
+    });
     BattleUiChrome.drawInsetBox(this.inspectorScrollGraphics, this.metaBoxRect, {
       fillColor: UI_COLOR_PANEL_SURFACE_ALT,
       fillAlpha: 0.92
@@ -824,6 +853,8 @@ export class UnitEditorScene extends Phaser.Scene {
       const dirty = this.dirtyDrafts.has(row.blueprintId);
       const accent = selected ? sourceBlueprint.accentColor : UI_COLOR_ACCENT_NEUTRAL;
       const fillAlpha = selected ? 0.58 : dirty ? 0.28 : 0.18;
+      const portraitSize = row.bounds.height - 6;
+      const portraitRect = new Phaser.Geom.Rectangle(row.bounds.x + 12, row.bounds.y + 3, portraitSize, portraitSize);
 
       BattleUiChrome.drawInsetBox(this.rosterScrollGraphics, row.bounds, {
         fillColor: accent,
@@ -831,6 +862,14 @@ export class UnitEditorScene extends Phaser.Scene {
         strokeColor: selected ? UI_COLOR_PANEL_BORDER : accent,
         strokeAlpha: selected ? 0.6 : 0.22,
         radius: 12
+      });
+
+      BattleUiChrome.drawInsetBox(this.rosterScrollGraphics, portraitRect, {
+        fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+        fillAlpha: 0.94,
+        strokeColor: accent,
+        strokeAlpha: selected ? 0.34 : 0.18,
+        radius: 10
       });
 
       if (dirty) {
@@ -981,9 +1020,12 @@ export class UnitEditorScene extends Phaser.Scene {
         continue;
       }
 
+      const portraitKey = getUnitPortraitImageKey(sourceBlueprint.spriteKey) ?? sourceBlueprint.spriteKey;
       const dirty = this.dirtyDrafts.has(row.blueprintId);
+      row.portrait.setTexture(portraitKey);
       row.titleText.setText(`${sourceBlueprint.name}${dirty ? ' *' : ''}`);
       row.metaText.setText(sourceBlueprint.className);
+      row.portrait.setAlpha(row.blueprintId === this.selectedBlueprintId ? 1 : 0.94);
       row.titleText.setAlpha(row.blueprintId === this.selectedBlueprintId ? 1 : 0.92);
       row.metaText.setAlpha(row.blueprintId === this.selectedBlueprintId ? 0.94 : 0.78);
     }
@@ -1047,6 +1089,7 @@ export class UnitEditorScene extends Phaser.Scene {
 
   private refreshPreview(): void {
     const resolvedBlueprint = this.getResolvedSelectedBlueprint();
+    const portraitKey = getUnitPortraitImageKey(resolvedBlueprint.spriteKey) ?? resolvedBlueprint.spriteKey;
     const layout = this.getPreviewLayout();
     const tile = { x: 0, y: 0, height: this.previewHeight };
     const topPoints = getTileTopPoints(tile, layout, tile.height);
@@ -1098,6 +1141,21 @@ export class UnitEditorScene extends Phaser.Scene {
     this.previewContainer.setPosition(groundPoint.x, groundPoint.y).setDepth(tileDepth + 8);
     this.previewMarker.setFillStyle(resolvedBlueprint.accentColor, 0.18);
     this.previewShadow.setFillStyle(0x060205, 0.42);
+    this.previewPortrait.setTexture(portraitKey);
+    const portraitFrame = this.previewPortrait.frame;
+    if (portraitFrame) {
+      const portraitScale = Math.min(
+        (this.previewPortraitRect.width - 10) / Math.max(1, portraitFrame.width),
+        (this.previewPortraitRect.height - 10) / Math.max(1, portraitFrame.height)
+      );
+      this.previewPortrait
+        .setScale(portraitScale)
+        .setPosition(this.previewPortraitRect.centerX, this.previewPortraitRect.centerY)
+        .setVisible(true)
+        .setAlpha(1);
+    } else {
+      this.previewPortrait.setVisible(false);
+    }
     this.previewSprite
       .setTexture(resolvedBlueprint.spriteKey)
       .setPosition(previewOffsetX, previewOffsetY);

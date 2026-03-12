@@ -79,8 +79,11 @@ export interface UnitAbility {
   rangeMax: number;
   powerModifier?: number;
   healAmount?: number;
+  splashRadius?: number;
+  splashDamageMultiplier?: number;
   attackStyle?: AttackStyle;
   effectKey?: CombatEffectId;
+  counterable?: boolean;
 }
 
 export interface UnitBlueprint {

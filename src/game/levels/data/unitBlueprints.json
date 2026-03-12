@@ -417,6 +417,21 @@
         "rangeMax": 4
       },
       {
+        "id": "grenade",
+        "name": "Censer Grenade",
+        "description": "Censer Grenade. Lob a brass charge 2 to 3 tiles away; the blast clips adjacent enemies without inviting return fire.",
+        "kind": "attack",
+        "target": "enemy",
+        "rangeMin": 2,
+        "rangeMax": 3,
+        "powerModifier": -4,
+        "splashRadius": 1,
+        "splashDamageMultiplier": 0.6,
+        "attackStyle": "ember-burst",
+        "effectKey": "censer-grenade",
+        "counterable": false
+      },
+      {
         "id": "steal",
         "name": "Strip Gear",
         "description": "Strip Gear. Slip in close and strip a carried drop before the target falls.",

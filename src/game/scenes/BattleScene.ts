@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
-import { DEFAULT_UNIT_IMAGE_KEY, FACTION_MOTTO_AUDIO_KEYS, UNIT_TURN_START_AUDIO_KEYS } from '../assets';
+import {
+  DEFAULT_UNIT_IMAGE_KEY,
+  FACTION_MOTTO_AUDIO_KEYS,
+  UNIT_TURN_START_AUDIO_KEYS,
+  getUnitPortraitImageKey
+} from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
@@ -250,7 +255,7 @@ const BASE_ACTION_MENU_PANELS = {
 const MAP_PLAQUE_FIXED_WIDTH = BASE_UI_PANELS.topLeft.width;
 const DETAIL_PANEL_FIXED_WIDTH = 352;
 const DETAIL_PANEL_MIN_WIDTH = 260;
-const DETAIL_PANEL_PORTRAIT_WIDTH = 74;
+const DETAIL_PANEL_PORTRAIT_WIDTH = 90;
 const DETAIL_PANEL_PORTRAIT_HEIGHT = 90;
 const DETAIL_PANEL_PORTRAIT_GAP = 10;
 const DETAIL_PANEL_BODY_PADDING_X = 10;
@@ -353,7 +358,7 @@ const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
 };
 
 type TimeOfDayId = 'day' | 'dusk' | 'night' | 'dawn';
-type DetailPortraitKind = 'unit' | 'prop' | 'chest' | 'terrain';
+type DetailPortraitKind = 'unit' | 'unit-portrait' | 'prop' | 'chest' | 'terrain';
 
 const TIME_OF_DAY_ORDER: readonly TimeOfDayId[] = ['day', 'dusk', 'night', 'dawn'];
 
@@ -484,6 +489,7 @@ export class BattleScene extends Phaser.Scene {
   private mapIntroTitleText!: Phaser.GameObjects.Text;
   private mapIntroMetaText!: Phaser.GameObjects.Text;
   private mapIntroFlavorText!: Phaser.GameObjects.Text;
+  private portraitMask!: Phaser.GameObjects.Graphics;
   private logLabelText!: Phaser.GameObjects.Text;
   private autoBattleToggleText!: Phaser.GameObjects.Text;
   private detailMetaText!: Phaser.GameObjects.Text;
@@ -1191,6 +1197,7 @@ export class BattleScene extends Phaser.Scene {
       this.mapObjectiveText,
       this.mapIntroArt,
       this.mapIntroArtMask,
+      this.portraitMask,
       this.mapIntroEyebrowText,
       this.mapIntroTitleText,
       this.mapIntroMetaText,
@@ -1819,6 +1826,8 @@ export class BattleScene extends Phaser.Scene {
     this.mapIntroArtMask = this.add.graphics().setVisible(false).setScrollFactor(0);
     this.mapIntroArt.setMask(this.mapIntroArtMask.createGeometryMask());
 
+    this.portraitMask = this.add.graphics().setVisible(false).setScrollFactor(0);
+
     this.mapIntroEyebrowText = this.add.text(0, 0, '', UI_TEXT_LABEL).setOrigin(0, 0.5);
 
     this.mapIntroTitleText = this.add.text(0, 0, this.level.name, UI_TEXT_TITLE).setOrigin(0, 0);
@@ -1850,6 +1859,7 @@ export class BattleScene extends Phaser.Scene {
       .image(0, 0, DEFAULT_UNIT_IMAGE_KEY)
       .setVisible(false)
       .setScale(0.24);
+    this.portrait.setMask(this.portraitMask.createGeometryMask());
 
     this.detailMetaText = this.add.text(0, 0, '', UI_TEXT_BODY);
 
@@ -1898,6 +1908,7 @@ export class BattleScene extends Phaser.Scene {
       this.autoBattleToggleText,
       this.headerMenuTitleText,
       this.activeBadge,
+      this.portraitMask,
       this.portrait,
       this.detailMetaText,
       this.detailTitleText,
@@ -2314,6 +2325,7 @@ export class BattleScene extends Phaser.Scene {
       this.detailTitleText.setVisible(false).setAlpha(0);
       this.detailBodyText.setVisible(false).setAlpha(0);
       this.portrait.setVisible(false).setAlpha(0);
+      this.portraitMask.clear();
       for (const text of this.detailStatTexts) {
         text.setVisible(false).setAlpha(0);
       }
@@ -2397,6 +2409,17 @@ export class BattleScene extends Phaser.Scene {
       .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY)
       .setAlpha(alpha)
       .setVisible(visible && portraitVisible);
+    this.portraitMask.clear();
+    if (visible && portraitVisible) {
+      this.portraitMask.fillStyle(0xffffff, 1);
+      this.portraitMask.fillRoundedRect(
+        this.uiPanels.portrait.x,
+        this.uiPanels.portrait.y,
+        this.uiPanels.portrait.width,
+        this.uiPanels.portrait.height,
+        UI_INSET_RADIUS
+      );
+    }
 
     for (const bounds of this.dockActionBounds) {
       bounds.setTo(0, 0, 0, 0);
@@ -4678,6 +4701,19 @@ export class BattleScene extends Phaser.Scene {
       return null;
     }
 
+    const detailTags = [
+      `Range ${ability.rangeMin}-${ability.rangeMax}`,
+      ability.target === 'ally' ? 'Allies' : 'Enemies'
+    ];
+
+    if (ability.splashRadius && ability.splashDamageMultiplier) {
+      detailTags.push(`Blast ${ability.splashRadius}`);
+    }
+
+    if (ability.counterable === false) {
+      detailTags.push('No Counter');
+    }
+
     return {
       id: 'ability-detail',
       kind: 'detail',
@@ -4685,7 +4721,7 @@ export class BattleScene extends Phaser.Scene {
       blocksWorldInput: true,
       body: [
         ability.description,
-        `Range ${ability.rangeMin}-${ability.rangeMax}  •  ${ability.target === 'ally' ? 'Allies' : 'Enemies'}`
+        detailTags.join('  •  ')
       ].join('\n')
     };
   }
@@ -5729,13 +5765,30 @@ export class BattleScene extends Phaser.Scene {
           let score = 0;
 
           switch (ability.kind) {
-            case 'attack':
+            case 'attack': {
               score =
                 (target.maxHp - target.hp) * 2 +
                 Math.max(0, tile.height - (getTile(this.map, target.x, target.y)?.height ?? 0)) * 8 +
-                (target.hp <= actor.attack ? 40 : 0) -
+                (target.hp <= actor.attack + (ability.powerModifier ?? 0) ? 40 : 0) -
                 distance * 3;
+
+              if (ability.splashRadius && ability.splashDamageMultiplier) {
+                const splashRadius = ability.splashRadius;
+                const clusteredTargets = enemies.filter(
+                  (candidate) =>
+                    candidate.id !== target.id &&
+                    manhattanDistance(candidate, target) <= splashRadius
+                );
+
+                score += clusteredTargets.length * Math.round(18 * ability.splashDamageMultiplier);
+              }
+
+              if (ability.counterable === false) {
+                score += 6;
+              }
+
               break;
+            }
             case 'heal': {
               const missingHp = target.maxHp - target.hp;
 
@@ -6117,6 +6170,7 @@ export class BattleScene extends Phaser.Scene {
         const counterAbility = this.getBasicAttackAbility(target);
 
         if (
+          ability.counterable !== false &&
           target.alive &&
           attacker.alive &&
           this.isAbilityInRange(target, attacker, counterAbility)
@@ -6180,9 +6234,7 @@ export class BattleScene extends Phaser.Scene {
     target: BattleUnit,
     ability: UnitAbility
   ): Promise<{ amount: number; critical: boolean }> {
-    const targetView = this.views.get(target.id);
-
-    if (!targetView || !this.views.get(attacker.id) || !attacker.alive || !target.alive) {
+    if (!this.views.get(target.id) || !this.views.get(attacker.id) || !attacker.alive || !target.alive) {
       return { amount: 0, critical: false };
     }
 
@@ -6223,61 +6275,145 @@ export class BattleScene extends Phaser.Scene {
     ]);
 
     this.positionUnit(target);
-
-    const damageText = this.registerWorldObject(
-      this.add.text(
-        damageTextPoint.x,
-        damageTextPoint.y,
-        `${damageRoll.amount}`,
-        damageRoll.critical ? UI_TEXT_DAMAGE_CRITICAL : UI_TEXT_DAMAGE
-      )
+    await this.showFloatingCombatText(
+      damageTextPoint,
+      `${damageRoll.amount}`,
+      damageRoll.critical ? UI_TEXT_DAMAGE_CRITICAL : UI_TEXT_DAMAGE,
+      46,
+      800
     );
-    damageText.setOrigin(0.5).setDepth(980);
 
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: damageText,
-        y: damageTextPoint.y - 46,
-        alpha: 0,
-        duration: 800,
-        ease: 'Cubic.easeOut',
-        onComplete: () => {
-          damageText.destroy();
-          resolve();
+    const defeatedUnits: Array<{ unit: BattleUnit; message: string }> = [];
+
+    if (target.hp <= 0) {
+      target.alive = false;
+      defeatedUnits.push({ unit: target, message: `${target.name} falls on the ridge.` });
+    }
+
+    const splashTargets = this.getSplashTargetsForAbility(attacker, target, ability);
+
+    if (splashTargets.length > 0) {
+      this.pushLog(`${ability.name} catches ${splashTargets.map((unit) => unit.name).join(', ')} in the blast.`);
+
+      for (const splashTarget of splashTargets) {
+        await this.resolveSplashStrike(strikeAttacker, target, splashTarget, ability);
+
+        if (splashTarget.hp <= 0) {
+          splashTarget.alive = false;
+          defeatedUnits.push({ unit: splashTarget, message: `${splashTarget.name} is caught in the blast.` });
         }
-      });
-    });
+      }
+    }
 
     if (damageRoll.critical) {
       this.pushLog('Critical hit from the elevated angle.');
     }
 
-    if (target.hp <= 0) {
-      target.alive = false;
-      this.pushLog(`${target.name} falls on the ridge.`);
-
-      if (target.team === 'enemy' && target.dropItemId) {
-        const quantity = target.dropQuantity ?? 1;
-        this.addItemToUnit(attacker, target.dropItemId, quantity);
-        this.pushLog(`${target.name} drops ${this.describeItemGain(target.dropItemId, quantity)} for ${attacker.name}.`);
-      }
-
-      await new Promise<void>((resolve) => {
-        this.tweens.add({
-          targets: targetView.container,
-          alpha: 0,
-          y: targetView.container.y + 24,
-          duration: 420,
-          ease: 'Quad.easeIn',
-          onComplete: () => {
-            targetView.container.setVisible(false);
-            resolve();
-          }
-        });
-      });
+    for (const defeated of defeatedUnits) {
+      await this.animateUnitDefeat(defeated.unit, attacker, defeated.message);
     }
 
     return damageRoll;
+  }
+
+  private getSplashTargetsForAbility(
+    attacker: BattleUnit,
+    primaryTarget: BattleUnit,
+    ability: UnitAbility
+  ): BattleUnit[] {
+    if (!ability.splashRadius || !ability.splashDamageMultiplier || ability.splashRadius < 1) {
+      return [];
+    }
+
+    const splashRadius = ability.splashRadius;
+
+    return this.units.filter((candidate) => {
+      if (!candidate.alive || candidate.id === attacker.id || candidate.id === primaryTarget.id) {
+        return false;
+      }
+
+      if (candidate.team === attacker.team) {
+        return false;
+      }
+
+      return manhattanDistance(primaryTarget, candidate) <= splashRadius;
+    });
+  }
+
+  private async resolveSplashStrike(
+    attacker: BattleUnit,
+    blastOrigin: BattleUnit,
+    target: BattleUnit,
+    ability: UnitAbility
+  ): Promise<void> {
+    if (!this.views.get(target.id) || !target.alive) {
+      return;
+    }
+
+    const blastOriginPoint = this.getUnitWorldPoint(blastOrigin);
+    const targetPoint = this.getUnitWorldPoint(target);
+    const angle = Phaser.Math.Angle.Between(
+      blastOriginPoint.x,
+      blastOriginPoint.y,
+      targetPoint.x,
+      targetPoint.y
+    );
+    const effect = this.createCombatEffectPlayback(attacker.effectKey, attacker, target, {
+      launchPoint: this.getUnitSpritePoint(blastOrigin, 0.54),
+      impactPoint: this.getUnitSpritePoint(target, 0.54),
+      angle
+    });
+    const damage = calculateDamage(attacker, target, this.map, this.rng.frac(), {
+      canCrit: false,
+      damageMultiplier: ability.splashDamageMultiplier,
+      minimumDamage: 6
+    });
+
+    target.hp = Math.max(0, target.hp - damage.amount);
+
+    await Promise.all([
+      this.playCombatEffectImpact(effect),
+      this.animateTargetReaction(effect, target),
+      this.showFloatingCombatText(this.getUnitSpritePoint(target, 0.9), `${damage.amount}`, UI_TEXT_DAMAGE, 38, 680)
+    ]);
+
+    this.positionUnit(target);
+  }
+
+  private async animateUnitDefeat(
+    target: BattleUnit,
+    attacker: BattleUnit,
+    message: string
+  ): Promise<void> {
+    const targetView = this.views.get(target.id);
+
+    this.pushLog(message);
+
+    if (target.team === 'enemy' && target.dropItemId) {
+      const quantity = target.dropQuantity ?? 1;
+      this.addItemToUnit(attacker, target.dropItemId, quantity);
+      this.pushLog(`${target.name} drops ${this.describeItemGain(target.dropItemId, quantity)} for ${attacker.name}.`);
+      target.dropItemId = undefined;
+      target.dropQuantity = undefined;
+    }
+
+    if (!targetView) {
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: targetView.container,
+        alpha: 0,
+        y: targetView.container.y + 24,
+        duration: 420,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          targetView.container.setVisible(false);
+          resolve();
+        }
+      });
+    });
   }
 
   private async resolveHealing(attacker: BattleUnit, target: BattleUnit, ability: UnitAbility): Promise<void> {
@@ -7188,8 +7324,8 @@ export class BattleScene extends Phaser.Scene {
       let portraitKind: DetailPortraitKind = 'terrain';
 
       if (focusUnit) {
-        portraitTextureKey = focusUnit.spriteKey;
-        portraitKind = 'unit';
+        portraitTextureKey = getUnitPortraitImageKey(focusUnit.spriteKey) ?? focusUnit.spriteKey;
+        portraitKind = portraitTextureKey === focusUnit.spriteKey ? 'unit' : 'unit-portrait';
       } else if (inspectionTile) {
         const chest = this.getChestAt(inspectionTile.x, inspectionTile.y);
         const prop = this.getPropAt(inspectionTile.x, inspectionTile.y);
@@ -7209,7 +7345,7 @@ export class BattleScene extends Phaser.Scene {
         this.showDetailPortrait(
           portraitTextureKey,
           portraitKind,
-          focusUnit ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(focusUnit.id)) : false
+          portraitKind === 'unit' && focusUnit ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(focusUnit.id)) : false
         );
       } else {
         this.portrait.setVisible(false);
@@ -8055,23 +8191,55 @@ export class BattleScene extends Phaser.Scene {
     const frameWidth = Math.max(1, frame.width);
     const frameHeight = Math.max(1, frame.height);
 
+    if (kind === 'unit-portrait') {
+      const coverWidth = Math.max(24, panelWidth);
+      const coverHeight = Math.max(24, panelHeight);
+      const targetAspect = coverWidth / coverHeight;
+      const frameAspect = frameWidth / frameHeight;
+      let cropWidth = frameWidth;
+      let cropHeight = frameHeight;
+      let cropX = 0;
+      let cropY = 0;
+
+      if (frameAspect > targetAspect) {
+        cropWidth = frameHeight * targetAspect;
+        cropX = (frameWidth - cropWidth) * 0.5;
+      } else {
+        cropHeight = frameWidth / targetAspect;
+        cropY = (frameHeight - cropHeight) * 0.5;
+      }
+
+      this.portrait
+        .setOrigin(0.5, 0.5)
+        .setFlipX(false)
+        .setCrop(cropX, cropY, cropWidth, cropHeight)
+        .setDisplaySize(coverWidth, coverHeight)
+        .setAlpha(1)
+        .setVisible(this.showPortraitPanel);
+      return;
+    }
+
     let widthScale = maxWidth / frameWidth;
     let heightScale = maxHeight / frameHeight;
 
     switch (kind) {
       case 'unit':
+        this.portrait.setCrop();
         heightScale = Math.max(72, panelHeight - 12) / frameHeight;
         widthScale = heightScale;
         break;
       case 'prop':
+        this.portrait.setCrop();
         widthScale *= 0.88;
         heightScale *= 0.88;
         break;
       case 'chest':
+        this.portrait.setCrop();
         widthScale *= 0.84;
         heightScale *= 0.84;
         break;
       case 'terrain':
+        this.portrait.setCrop();
         widthScale *= 0.88;
         heightScale *= 0.66;
         break;
