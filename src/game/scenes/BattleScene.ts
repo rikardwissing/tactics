@@ -79,7 +79,7 @@ type Phase =
   | 'animating'
   | 'complete';
 
-type MenuAction = 'move' | 'abilities' | 'items' | 'wait';
+type MenuAction = 'move' | 'undo-move' | 'abilities' | 'items' | 'wait';
 type UiLayoutMode = 'portrait' | 'landscape' | 'wide';
 type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup';
 type InspectionTarget =
@@ -161,6 +161,18 @@ interface ResultOverlayButtonView {
   action: ResultOverlayAction;
   labelText: Phaser.GameObjects.Text;
   bounds: Phaser.Geom.Rectangle;
+}
+
+interface MoveUndoState {
+  unitId: string;
+  origin: Point;
+  path: Point[];
+  facing: SpriteFacing;
+  openedChest?: {
+    chestId: string;
+    itemId: ItemId;
+    quantity: number;
+  };
 }
 
 interface BattleHudViewModel {
@@ -494,6 +506,7 @@ export class BattleScene extends Phaser.Scene {
   private unitInventories = new Map<string, Partial<Record<ItemId, number>>>();
   private turnMoveUsed = false;
   private turnActionUsed = false;
+  private pendingMoveUndo: MoveUndoState | null = null;
   private autoBattleEnabled = false;
   private autoBattleRunToken = 0;
   private activeAutoBattleRunToken: number | null = null;
@@ -661,6 +674,7 @@ export class BattleScene extends Phaser.Scene {
     }
     this.turnMoveUsed = false;
     this.turnActionUsed = false;
+    this.pendingMoveUndo = null;
     this.boardRotationStep = 0;
     this.boardPivot = this.getBaseBoardPivot();
     this.touchPointerId = null;
@@ -3798,6 +3812,39 @@ export class BattleScene extends Phaser.Scene {
     return true;
   }
 
+  private restoreChestAfterMoveUndo(unit: BattleUnit, moveUndoState: MoveUndoState): void {
+    const openedChest = moveUndoState.openedChest;
+
+    if (!openedChest) {
+      return;
+    }
+
+    const chest = this.chests.find((entry) => entry.id === openedChest.chestId);
+    const view = chest ? this.chestViews.get(chest.id) : null;
+
+    if (!chest || !view) {
+      return;
+    }
+
+    chest.opened = false;
+    this.consumeItemFromUnit(unit, openedChest.itemId, openedChest.quantity);
+
+    this.tweens.killTweensOf(view.container);
+    this.tweens.killTweensOf(view.closedSprite);
+    this.tweens.killTweensOf(view.openSprite);
+    this.tweens.killTweensOf(view.shadow);
+    this.tweens.killTweensOf(view.aura);
+
+    view.container.setVisible(true).setAlpha(1);
+    view.shadow.setPosition(0, -4).setAlpha(0.28).setScale(1, 1);
+    view.aura.setPosition(0, -10).setAlpha(0.12).setScale(1, 1);
+    view.closedSprite.setVisible(true).setAlpha(1).setY(view.closedBaseY).setAngle(0);
+    view.openSprite.setVisible(false).setAlpha(1).setY(view.openBaseY).setScale(view.openBaseScale);
+
+    this.positionChest(chest);
+    this.applyChestIdleAnimation(chest.id);
+  }
+
   private async animateChestPickup(chest: ChestState): Promise<void> {
     const view = this.chestViews.get(chest.id);
 
@@ -4457,13 +4504,22 @@ export class BattleScene extends Phaser.Scene {
     }
 
     const inventoryEntries = getInventoryEntries(this.getUnitInventory(activeUnit));
+    const moveEntry: MenuEntry = this.canUndoMove()
+      ? {
+          action: 'undo-move',
+          label: 'Undo Move',
+          enabled: true
+        }
+      : {
+          action: 'move',
+          label: this.turnMoveUsed ? 'Move [Done]' : 'Move',
+          enabled: !this.turnMoveUsed
+        };
+    const entries: MenuEntry[] = [
+      moveEntry
+    ];
 
-    return [
-      {
-        action: 'move',
-        label: this.turnMoveUsed ? 'Move [Done]' : 'Move',
-        enabled: !this.turnMoveUsed
-      },
+    entries.push(
       {
         action: 'abilities',
         label: this.turnActionUsed ? 'Abilities [Done]' : 'Abilities',
@@ -4479,7 +4535,21 @@ export class BattleScene extends Phaser.Scene {
         label: 'Wait',
         enabled: true
       }
-    ];
+    );
+
+    return entries;
+  }
+
+  private canUndoMove(): boolean {
+    const activeUnit = this.getActiveUnit();
+
+    return Boolean(
+      activeUnit &&
+      activeUnit.team === 'player' &&
+      this.turnMoveUsed &&
+      !this.turnActionUsed &&
+      this.pendingMoveUndo?.unitId === activeUnit.id
+    );
   }
 
   private getBlockedPropPoints(): Point[] {
@@ -4923,6 +4993,10 @@ export class BattleScene extends Phaser.Scene {
         this.drawHighlights();
         this.refreshUi();
         return;
+      case 'undo-move':
+        audioDirector.playUiCancel();
+        await this.undoPlayerMove();
+        return;
       case 'abilities':
         audioDirector.playUiConfirm();
         this.phase = 'player-abilities';
@@ -5237,24 +5311,87 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    const movePath = buildPath(this.moveNodes, tile);
+    const moveUndoState: MoveUndoState = {
+      unitId: activeUnit.id,
+      origin: { x: activeUnit.x, y: activeUnit.y },
+      path: movePath.map((step) => ({ x: step.x, y: step.y })),
+      facing: this.getUnitViewFacing(activeUnit.id)
+    };
+    const chestAtDestination = this.getChestAt(tile.x, tile.y);
+
     this.busy = true;
     this.phase = 'animating';
     this.drawHighlights();
     this.refreshUi();
 
-    const path = buildPath(this.moveNodes, tile);
-
-    if (path.length > 1) {
-      await this.animateMovement(activeUnit, path.slice(1));
+    if (movePath.length > 1) {
+      await this.animateMovement(activeUnit, movePath.slice(1));
     }
 
     activeUnit.x = tile.x;
     activeUnit.y = tile.y;
     this.positionUnit(activeUnit);
 
+    if (chestAtDestination) {
+      moveUndoState.openedChest = {
+        chestId: chestAtDestination.id,
+        itemId: chestAtDestination.itemId,
+        quantity: chestAtDestination.quantity
+      };
+    }
+
+    this.pendingMoveUndo = moveUndoState;
     this.turnMoveUsed = true;
     await this.collectChestAt(activeUnit);
     await this.finishPlayerCommand(activeUnit, `${activeUnit.name} is in position. Choose the next command.`);
+  }
+
+  private async undoPlayerMove(): Promise<void> {
+    const activeUnit = this.getActiveUnit();
+    const moveUndoState = this.pendingMoveUndo;
+
+    if (
+      !activeUnit ||
+      activeUnit.team !== 'player' ||
+      !moveUndoState ||
+      moveUndoState.unitId !== activeUnit.id ||
+      !this.turnMoveUsed ||
+      this.turnActionUsed
+    ) {
+      return;
+    }
+
+    this.busy = true;
+    this.phase = 'animating';
+    this.selectedAbilityId = null;
+    this.selectedItemId = null;
+    this.drawHighlights();
+    this.refreshUi();
+
+    activeUnit.x = moveUndoState.origin.x;
+    activeUnit.y = moveUndoState.origin.y;
+    this.positionUnit(activeUnit);
+
+    const view = this.views.get(activeUnit.id);
+    if (view) {
+      this.applyUnitViewFacing(activeUnit, view, moveUndoState.facing);
+    }
+
+    this.restoreChestAfterMoveUndo(activeUnit, moveUndoState);
+
+    const focusPoint = this.getUnitCameraFocusPoint(activeUnit);
+    await this.panCameraToPoint(focusPoint.x, focusPoint.y, 260);
+
+    this.pendingMoveUndo = null;
+    this.turnMoveUsed = false;
+    this.busy = false;
+    this.phase = 'player-menu';
+    this.moveNodes = getReachableNodes(this.map, activeUnit, this.units, this.getBlockedPropPoints());
+    this.pushLog(`${activeUnit.name} falls back to the earlier position.`);
+    this.drawHighlights();
+    this.refreshUi();
+    this.tryStartAutoBattle(activeUnit);
   }
 
   private async beginNextTurn(): Promise<void> {
@@ -6549,6 +6686,7 @@ export class BattleScene extends Phaser.Scene {
     this.activeUnitId = null;
     this.selectedAbilityId = null;
     this.selectedItemId = null;
+    this.pendingMoveUndo = null;
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes.clear();
     this.turnMoveUsed = false;
@@ -6565,6 +6703,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'complete';
     this.busy = true;
     this.activeUnitId = null;
+    this.pendingMoveUndo = null;
     this.setPauseMenuOpen(false);
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes.clear();
