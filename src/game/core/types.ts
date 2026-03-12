@@ -28,6 +28,7 @@ export type UnitRoleId =
   | 'oracle-lancer';
 export type TerrainType = 'grass' | 'stone' | 'moss' | 'sanctum';
 export type IdleStyle = 'knight' | 'archer' | 'mage' | 'warden' | 'ranger' | 'priest';
+export type MovementStyle = 'standard' | 'blink';
 export type AbilityKind = 'attack' | 'heal' | 'steal';
 export type AbilityTarget = 'enemy' | 'ally';
 export type AttackStyle =
@@ -96,6 +97,7 @@ export interface UnitBlueprint {
   spriteDisplayHeight: number;
   spriteOffsetX?: number;
   spriteOffsetY?: number;
+  movementStyle: MovementStyle;
   idleStyle: IdleStyle;
   attackStyle: AttackStyle;
   effectKey: CombatEffectId;

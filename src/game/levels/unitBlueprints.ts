@@ -7,6 +7,7 @@ import type {
   AttackStyle,
   FactionId,
   IdleStyle,
+  MovementStyle,
   UnitAbility,
   UnitBlueprint,
   UnitGender,
@@ -39,6 +40,7 @@ const UNIT_ROLE_IDS = [
   'oracle-lancer'
 ] as const satisfies readonly UnitRoleId[];
 const IDLE_STYLES = ['knight', 'archer', 'mage', 'warden', 'ranger', 'priest'] as const satisfies readonly IdleStyle[];
+const MOVEMENT_STYLES = ['standard', 'blink'] as const satisfies readonly MovementStyle[];
 const ABILITY_KINDS = ['attack', 'heal', 'steal'] as const satisfies readonly AbilityKind[];
 const ABILITY_TARGETS = ['enemy', 'ally'] as const satisfies readonly AbilityTarget[];
 const ATTACK_STYLES = [
@@ -142,6 +144,7 @@ function validateBlueprint(entryId: string, rawBlueprint: unknown): UnitBlueprin
     spriteDisplayHeight: assertNumber(rawBlueprint.spriteDisplayHeight, `${entryId}.spriteDisplayHeight`),
     spriteOffsetX: assertOptionalNumber(rawBlueprint.spriteOffsetX, `${entryId}.spriteOffsetX`),
     spriteOffsetY: assertOptionalNumber(rawBlueprint.spriteOffsetY, `${entryId}.spriteOffsetY`),
+    movementStyle: assertOptionalString(rawBlueprint.movementStyle, `${entryId}.movementStyle`, MOVEMENT_STYLES) ?? 'standard',
     idleStyle: assertEnum(rawBlueprint.idleStyle, `${entryId}.idleStyle`, IDLE_STYLES),
     attackStyle: assertEnum(rawBlueprint.attackStyle, `${entryId}.attackStyle`, ATTACK_STYLES),
     effectKey: assertEnum(rawBlueprint.effectKey, `${entryId}.effectKey`, COMBAT_EFFECT_IDS),

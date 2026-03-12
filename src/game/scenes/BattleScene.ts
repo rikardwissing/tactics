@@ -157,7 +157,6 @@ interface DockActionEntry {
 interface ResultOverlayButtonView {
   action: ResultOverlayAction;
   labelText: Phaser.GameObjects.Text;
-  detailText: Phaser.GameObjects.Text;
   bounds: Phaser.Geom.Rectangle;
 }
 
@@ -204,6 +203,10 @@ const CHEST_DISPLAY_WIDTH = 47;
 const CHEST_GROUND_OFFSET_Y = TILE_HEIGHT / 2 - 15;
 const UNIT_CAMERA_FOCUS_HEIGHT_FACTOR = 0.5;
 const UNIT_FOLLOW_SCREEN_ANCHOR_Y = 0.34;
+const BLINK_MOVEMENT_CAMERA_PAN_DURATION = 1000;
+const BLINK_MOVEMENT_FADE_OUT_DURATION = 150;
+const BLINK_MOVEMENT_FADE_IN_DURATION = 250;
+const BLINK_MOVEMENT_ENTRY_OFFSET_Y = 14;
 
 const BASE_UI_PANELS = {
   topLeft: new Phaser.Geom.Rectangle(20, 18, 392, 164),
@@ -572,7 +575,6 @@ export class BattleScene extends Phaser.Scene {
   private resultOverlayEyebrow?: Phaser.GameObjects.Text;
   private resultOverlayTitle?: Phaser.GameObjects.Text;
   private resultOverlayBody?: Phaser.GameObjects.Text;
-  private resultOverlayHint?: Phaser.GameObjects.Text;
   private resultOverlayButtons: ResultOverlayButtonView[] = [];
   private resultOverlayPanelBounds = new Phaser.Geom.Rectangle();
   private rng = new Phaser.Math.RandomDataGenerator(['renations-tactics']);
@@ -644,7 +646,6 @@ export class BattleScene extends Phaser.Scene {
     this.resultOverlayEyebrow = undefined;
     this.resultOverlayTitle = undefined;
     this.resultOverlayBody = undefined;
-    this.resultOverlayHint = undefined;
     this.resultOverlayButtons = [];
     this.resultOverlayPanelBounds.setTo(0, 0, 0, 0);
     this.mapIntroAlpha = 0;
@@ -2706,7 +2707,6 @@ export class BattleScene extends Phaser.Scene {
       !this.resultOverlayEyebrow ||
       !this.resultOverlayTitle ||
       !this.resultOverlayBody ||
-      !this.resultOverlayHint ||
       this.resultOverlayButtons.length !== 2 ||
       !this.resultOverlayResult
     ) {
@@ -2743,7 +2743,6 @@ export class BattleScene extends Phaser.Scene {
       : Math.max(180, panelBounds.right - 22 - copyX);
     const copyTop = portraitLayout ? artBounds.bottom + 18 : artBounds.y + 8;
     const bodyY = copyTop + 78;
-    const hintY = portraitLayout ? panelBounds.bottom - 102 : panelBounds.bottom - 68;
     const buttonHeight = portraitLayout ? 60 : 74;
     const buttonGap = 14;
     const buttonWidth = portraitLayout
@@ -2804,13 +2803,9 @@ export class BattleScene extends Phaser.Scene {
 
       button.labelText
         .setText(descriptor.label)
-        .setPosition(button.bounds.centerX, button.bounds.y + 18)
+        .setPosition(button.bounds.centerX, button.bounds.centerY)
+        .setOrigin(0.5, 0.5)
         .setColor(UI_COLOR_TEXT);
-      button.detailText
-        .setText(descriptor.detail)
-        .setPosition(button.bounds.centerX, button.bounds.bottom - 16)
-        .setColor(descriptor.detailColor)
-        .setWordWrapWidth(button.bounds.width - 22, true);
     }
 
     this.resultOverlayEyebrow
@@ -2830,42 +2825,30 @@ export class BattleScene extends Phaser.Scene {
       .setOrigin(portraitLayout ? 0.5 : 0, 0)
       .setStyle({ align: portraitLayout ? 'center' : 'left' })
       .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 360), true);
-    this.resultOverlayHint
-      .setPosition(copyX, hintY)
-      .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
-      .setColor(UI_COLOR_TEXT_DISABLED)
-      .setStyle({ align: portraitLayout ? 'center' : 'left' })
-      .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 340), true);
   }
 
   private getResultOverlayButtonDescriptors(): Array<{
     action: ResultOverlayAction;
     label: string;
-    detail: string;
     fillColor: number;
     strokeColor: number;
     fillAlpha: number;
-    detailColor: string;
   }> {
     if (this.resultOverlayResult === 'Victory') {
       return [
         {
           action: 'retry',
           label: 'RETRY BATTLE',
-          detail: 'Run the deployment again from the opening turn.',
           fillColor: UI_COLOR_ACCENT_NEUTRAL,
           strokeColor: UI_COLOR_PANEL_BORDER,
-          fillAlpha: 0.82,
-          detailColor: UI_COLOR_TEXT_DISABLED
+          fillAlpha: 0.82
         },
         {
           action: 'setup',
           label: 'MAP SELECT',
-          detail: 'Return to the war council and choose the next field.',
           fillColor: UI_COLOR_SUCCESS,
           strokeColor: UI_COLOR_PANEL_BORDER,
-          fillAlpha: 0.3,
-          detailColor: UI_COLOR_TEXT
+          fillAlpha: 0.3
         }
       ];
     }
@@ -2874,20 +2857,16 @@ export class BattleScene extends Phaser.Scene {
       {
         action: 'retry',
         label: 'RETRY BATTLE',
-        detail: 'Re-form the column and make another push immediately.',
         fillColor: UI_COLOR_ACCENT_DANGER,
         strokeColor: UI_COLOR_DANGER,
-        fillAlpha: 0.48,
-        detailColor: UI_COLOR_TEXT
+        fillAlpha: 0.48
       },
       {
         action: 'setup',
         label: 'MAP SELECT',
-        detail: 'Stand down to map select and choose a different deployment.',
         fillColor: UI_COLOR_ACCENT_COOL,
         strokeColor: UI_COLOR_PANEL_BORDER,
-        fillAlpha: 0.82,
-        detailColor: UI_COLOR_TEXT_DISABLED
+        fillAlpha: 0.82
       }
     ];
   }
@@ -5395,6 +5374,33 @@ export class BattleScene extends Phaser.Scene {
     const camera = this.getWorldCamera();
 
     try {
+      if (unit.movementStyle === 'blink') {
+        const finalStep = path[path.length - 1];
+
+        if (!finalStep) {
+          return;
+        }
+
+        const tile = getTile(this.map, finalStep.x, finalStep.y);
+
+        if (!tile) {
+          return;
+        }
+
+        const destination = this.getUnitGroundPoint(tile);
+        const destinationDepth = this.getUnitDepth(tile);
+        const cameraFocusPoint = this.getUnitCameraFocusPoint(unit, destination);
+        const cameraPanPromise = this.panCameraToPoint(
+          cameraFocusPoint.x,
+          cameraFocusPoint.y,
+          BLINK_MOVEMENT_CAMERA_PAN_DURATION
+        );
+        const movementPromise = this.animateBlinkMovementStep(unit, view, destination, destinationDepth);
+
+        await Promise.all([movementPromise, cameraPanPromise]);
+        return;
+      }
+
       for (const step of path) {
         const tile = getTile(this.map, step.x, step.y);
 
@@ -5407,43 +5413,236 @@ export class BattleScene extends Phaser.Scene {
         const destinationDepth = this.getUnitDepth(tile);
         const cameraFocusPoint = this.getUnitCameraFocusPoint(unit, destination);
         const cameraPanPromise = this.panCameraToPoint(cameraFocusPoint.x, cameraFocusPoint.y, 240);
+        const movementPromise = this.animateStandardMovementStep(view, destination, startDepth, destinationDepth);
         audioDirector.playStep();
-
-        const movementPromise = new Promise<void>((resolve) => {
-          this.tweens.add({
-            targets: view.container,
-            x: destination.x,
-            y: destination.y - 10,
-            duration: 150,
-            ease: 'Quad.easeOut',
-            onUpdate: (_tween, target) => {
-              const progress = Phaser.Math.Easing.Quadratic.Out(_tween.progress);
-              target.setDepth(Phaser.Math.Linear(startDepth, destinationDepth, progress));
-            },
-            onComplete: () => {
-              view.container.setDepth(destinationDepth);
-              this.tweens.add({
-                targets: view.container,
-                y: destination.y,
-                duration: 90,
-                ease: 'Quad.easeIn',
-                onUpdate: () => {
-                  view.container.setDepth(destinationDepth);
-                },
-                onComplete: () => {
-                  view.container.setDepth(destinationDepth);
-                  resolve();
-                }
-              });
-            }
-          });
-        });
 
         await Promise.all([movementPromise, cameraPanPromise]);
       }
     } finally {
       this.setBoardScroll(camera.scrollX, camera.scrollY);
     }
+  }
+
+  private animateStandardMovementStep(
+    view: UnitView,
+    destination: Phaser.Math.Vector2,
+    startDepth: number,
+    destinationDepth: number
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: view.container,
+        x: destination.x,
+        y: destination.y - 10,
+        duration: 150,
+        ease: 'Quad.easeOut',
+        onUpdate: (_tween, target) => {
+          const progress = Phaser.Math.Easing.Quadratic.Out(_tween.progress);
+          target.setDepth(Phaser.Math.Linear(startDepth, destinationDepth, progress));
+        },
+        onComplete: () => {
+          view.container.setDepth(destinationDepth);
+          this.tweens.add({
+            targets: view.container,
+            y: destination.y,
+            duration: 90,
+            ease: 'Quad.easeIn',
+            onUpdate: () => {
+              view.container.setDepth(destinationDepth);
+            },
+            onComplete: () => {
+              view.container.setDepth(destinationDepth);
+              resolve();
+            }
+          });
+        }
+      });
+    });
+  }
+
+  private animateBlinkMovementStep(
+    unit: BattleUnit,
+    view: UnitView,
+    destination: Phaser.Math.Vector2,
+    destinationDepth: number
+  ): Promise<void> {
+    const startPoint = new Phaser.Math.Vector2(view.container.x, view.container.y);
+    const startDepth = view.container.depth;
+    const tracerDepth = Math.max(startDepth, destinationDepth) + 0.18;
+    const movementAngle = Phaser.Math.Angle.Between(startPoint.x, startPoint.y, destination.x, destination.y);
+
+    this.spawnBlinkMovementAfterimage(unit, view, startPoint, startDepth);
+    this.spawnBlinkMovementTracer(startPoint, destination, tracerDepth, unit.accentColor);
+    this.spawnBlinkMovementBurst(startPoint, startDepth + 0.12, movementAngle + Math.PI, unit.accentColor);
+
+    return new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: view.container,
+        alpha: 0,
+        duration: BLINK_MOVEMENT_FADE_OUT_DURATION,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          view.container.setPosition(destination.x, destination.y - BLINK_MOVEMENT_ENTRY_OFFSET_Y);
+          view.container.setDepth(destinationDepth);
+          this.spawnBlinkMovementBurst(destination, destinationDepth + 0.12, movementAngle, unit.accentColor);
+
+          this.tweens.add({
+            targets: view.container,
+            y: destination.y,
+            alpha: 1,
+            duration: BLINK_MOVEMENT_FADE_IN_DURATION,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+              view.container.setDepth(destinationDepth);
+            },
+            onComplete: () => {
+              view.container.setDepth(destinationDepth);
+              resolve();
+            }
+          });
+        }
+      });
+    });
+  }
+
+  private spawnBlinkMovementAfterimage(
+    unit: BattleUnit,
+    view: UnitView,
+    point: Phaser.Math.Vector2,
+    depth: number
+  ): void {
+    const afterimage = this.registerWorldObject(this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1));
+    afterimage.displayHeight = view.sprite.displayHeight;
+    afterimage.scaleX = afterimage.scaleY;
+    afterimage
+      .setPosition(point.x + (unit.spriteOffsetX ?? 0), point.y + (unit.spriteOffsetY ?? 0))
+      .setDepth(depth + 0.04)
+      .setTint(0xb9f5ff)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0.34);
+
+    this.tweens.add({
+      targets: afterimage,
+      y: afterimage.y - 10,
+      alpha: 0,
+      scaleX: afterimage.scaleX * 1.04,
+      scaleY: afterimage.scaleY * 1.04,
+      duration: 130,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        afterimage.destroy();
+      }
+    });
+  }
+
+  private spawnBlinkMovementTracer(
+    startPoint: Phaser.Math.Vector2,
+    destination: Phaser.Math.Vector2,
+    depth: number,
+    tint: number
+  ): void {
+    const dx = destination.x - startPoint.x;
+    const dy = destination.y - startPoint.y;
+    const length = Math.hypot(dx, dy);
+
+    if (length <= 1) {
+      return;
+    }
+
+    const offsetX = (-dy / length) * 5;
+    const offsetY = (dx / length) * 5;
+    const startY = startPoint.y - 18;
+    const endY = destination.y - 18;
+    const tracer = this.registerWorldObject(this.add.graphics().setBlendMode(Phaser.BlendModes.ADD));
+
+    tracer.lineStyle(10, 0xf6f7ff, 0.12);
+    tracer.lineBetween(startPoint.x, startY, destination.x, endY);
+    tracer.lineStyle(4, tint, 0.4);
+    tracer.lineBetween(
+      startPoint.x + offsetX,
+      startY + offsetY * 0.3,
+      destination.x + offsetX,
+      endY + offsetY * 0.3
+    );
+    tracer.lineStyle(2, 0xffffff, 0.72);
+    tracer.lineBetween(
+      startPoint.x - offsetX * 0.4,
+      startY - offsetY * 0.18,
+      destination.x - offsetX * 0.4,
+      endY - offsetY * 0.18
+    );
+    tracer.fillStyle(tint, 0.24);
+    tracer.fillCircle(startPoint.x, startY, 4);
+    tracer.fillCircle(destination.x, endY, 4);
+    tracer.setDepth(depth);
+
+    this.tweens.add({
+      targets: tracer,
+      alpha: 0,
+      duration: 110,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        tracer.destroy();
+      }
+    });
+  }
+
+  private spawnBlinkMovementBurst(
+    point: Phaser.Math.Vector2,
+    depth: number,
+    angle: number,
+    tint: number
+  ): void {
+    const angleDegrees = Phaser.Math.RadToDeg(angle);
+    const burst = this.registerWorldObject(this.add.particles(point.x, point.y - 20, 'spark', {
+      speed: { min: 32, max: 102 },
+      angle: { min: angleDegrees - 55, max: angleDegrees + 55 },
+      lifespan: 220,
+      quantity: 14,
+      scale: { start: 0.78, end: 0.04 },
+      alpha: { start: 0.82, end: 0 },
+      tint: [tint, 0xb9f5ff, 0xf7efda],
+      blendMode: 'ADD'
+    }));
+    burst.setDepth(depth);
+    burst.explode(14, point.x, point.y - 20);
+
+    const outerRing = this.registerWorldObject(this.add
+      .ellipse(point.x, point.y + UNIT_FOOTPRINT_OFFSET_Y, 46, 18, tint, 0.1)
+      .setStrokeStyle(2, 0xf6f7ff, 0.72)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(depth - 0.08));
+    const innerRing = this.registerWorldObject(this.add
+      .ellipse(point.x, point.y + UNIT_FOOTPRINT_OFFSET_Y, 28, 10, 0xf6f7ff, 0.08)
+      .setStrokeStyle(1, tint, 0.8)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(depth - 0.07));
+
+    this.tweens.add({
+      targets: outerRing,
+      alpha: 0,
+      scaleX: 1.5,
+      scaleY: 1.35,
+      duration: 150,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        outerRing.destroy();
+      }
+    });
+    this.tweens.add({
+      targets: innerRing,
+      alpha: 0,
+      scaleX: 1.8,
+      scaleY: 1.5,
+      duration: 130,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        innerRing.destroy();
+      }
+    });
+    this.time.delayedCall(240, () => {
+      burst.destroy();
+    });
   }
 
   private async performAttack(
@@ -6113,21 +6312,12 @@ export class BattleScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(1003)
       .setScrollFactor(0));
-    this.resultOverlayHint = this.registerUiObject(this.add
-      .text(0, 0, 'Shortcut keys: R to retry, Esc for map select.', UI_TEXT_LABEL)
-      .setDepth(1003)
-      .setScrollFactor(0));
     this.resultOverlayButtons = [
       {
         action: 'retry',
         labelText: this.registerUiObject(this.add
           .text(0, 0, '', UI_TEXT_ACTION)
-          .setOrigin(0.5, 0)
-          .setDepth(1003)
-          .setScrollFactor(0)),
-        detailText: this.registerUiObject(this.add
-          .text(0, 0, '', UI_TEXT_BODY_CENTER)
-          .setOrigin(0.5, 1)
+          .setOrigin(0.5, 0.5)
           .setDepth(1003)
           .setScrollFactor(0)),
         bounds: new Phaser.Geom.Rectangle()
@@ -6136,12 +6326,7 @@ export class BattleScene extends Phaser.Scene {
         action: 'setup',
         labelText: this.registerUiObject(this.add
           .text(0, 0, '', UI_TEXT_ACTION)
-          .setOrigin(0.5, 0)
-          .setDepth(1003)
-          .setScrollFactor(0)),
-        detailText: this.registerUiObject(this.add
-          .text(0, 0, '', UI_TEXT_BODY_CENTER)
-          .setOrigin(0.5, 1)
+          .setOrigin(0.5, 0.5)
           .setDepth(1003)
           .setScrollFactor(0)),
         bounds: new Phaser.Geom.Rectangle()
