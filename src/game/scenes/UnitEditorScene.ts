@@ -63,7 +63,8 @@ type ButtonId =
   | 'reset-selected'
   | 'reset-all'
   | 'copy-patch'
-  | 'download-patch';
+  | 'download-patch'
+  | 'copy-blueprint-file';
 
 interface ButtonView {
   id: ButtonId;
@@ -166,6 +167,11 @@ const UNIT_FOOTPRINT_OFFSET_Y = -4;
 const WORLD_EDGE_BASE_LEVEL = 1;
 const ABILITY_BLOCK_GAP = 10;
 const ABILITY_BLOCK_HEADER_HEIGHT = 56;
+const ACTION_BUTTON_ROWS = [
+  ['reset-selected', 'reset-all'],
+  ['copy-patch', 'download-patch'],
+  ['copy-blueprint-file']
+] as const satisfies readonly (readonly ButtonId[])[];
 
 export class UnitEditorScene extends Phaser.Scene {
   private readonly blueprints = getAllUnitBlueprints();
@@ -284,7 +290,8 @@ export class UnitEditorScene extends Phaser.Scene {
       ['reset-selected', 'Reset Selected'],
       ['reset-all', 'Reset All'],
       ['copy-patch', 'Copy Patch'],
-      ['download-patch', 'Download Patch']
+      ['download-patch', 'Download Patch'],
+      ['copy-blueprint-file', 'Copy Blueprint File']
     ] as const satisfies readonly [ButtonId, string][]) {
       const labelText = this.add
         .text(0, 0, label, id === 'back' ? UI_TEXT_ACTION : UI_TEXT_LABEL)
@@ -548,11 +555,7 @@ export class UnitEditorScene extends Phaser.Scene {
     const content = BattleUiChrome.getContentBounds(this.inspectorPanelRect, 'narrow');
     const buttonWidth = Math.floor((content.width - UI_PANEL_GAP) / 2);
     const buttonHeight = 28;
-    const actionLayout = [
-      ['reset-selected', 'reset-all'],
-      ['copy-patch', 'download-patch']
-    ] as const satisfies readonly [ButtonId, ButtonId][];
-    const totalHeight = this.measureInspectorContentHeight(actionLayout.length, buttonHeight);
+    const totalHeight = this.measureInspectorContentHeight(ACTION_BUTTON_ROWS.length, buttonHeight);
 
     this.inspectorContentHeight = totalHeight;
     this.inspectorViewportRect.setTo(content.x, content.y, content.width, content.height);
@@ -564,7 +567,9 @@ export class UnitEditorScene extends Phaser.Scene {
     this.dirtyCountText.setVisible(this.isScrollableTextVisible(this.dirtyCountText, this.inspectorViewportRect));
     cursorY += 18;
 
-    for (const [rowIndex, row] of actionLayout.entries()) {
+    for (const [rowIndex, row] of ACTION_BUTTON_ROWS.entries()) {
+      const rowButtonWidth = row.length === 1 ? content.width : buttonWidth;
+
       for (const [columnIndex, id] of row.entries()) {
         const button = this.actionButtons.get(id);
 
@@ -573,9 +578,9 @@ export class UnitEditorScene extends Phaser.Scene {
         }
 
         button.bounds.setTo(
-          content.x + columnIndex * (buttonWidth + UI_PANEL_GAP),
+          content.x + columnIndex * (rowButtonWidth + UI_PANEL_GAP),
           cursorY + rowIndex * (buttonHeight + UI_PANEL_MINI_GAP),
-          buttonWidth,
+          rowButtonWidth,
           buttonHeight
         );
         button.labelText.setPosition(button.bounds.centerX, button.bounds.centerY);
@@ -583,7 +588,7 @@ export class UnitEditorScene extends Phaser.Scene {
       }
     }
 
-    cursorY += actionLayout.length * (buttonHeight + UI_PANEL_MINI_GAP) + 4;
+    cursorY += ACTION_BUTTON_ROWS.length * (buttonHeight + UI_PANEL_MINI_GAP) + 4;
     this.readOnlyNoteText.setPosition(content.x, cursorY);
     this.readOnlyNoteText.setWordWrapWidth(content.width, true);
     this.readOnlyNoteText.setVisible(this.isScrollableTextVisible(this.readOnlyNoteText, this.inspectorViewportRect));
@@ -791,8 +796,9 @@ export class UnitEditorScene extends Phaser.Scene {
     const dirtyCount = this.dirtyDrafts.size;
     this.drawButton(this.actionButtons.get('reset-selected'), UI_COLOR_ACCENT_DANGER, selectedDirty);
     this.drawButton(this.actionButtons.get('reset-all'), UI_COLOR_ACCENT_DANGER, dirtyCount > 0);
-    this.drawButton(this.actionButtons.get('copy-patch'), UI_COLOR_ACCENT_COOL, true);
+      this.drawButton(this.actionButtons.get('copy-patch'), UI_COLOR_ACCENT_COOL, true);
     this.drawButton(this.actionButtons.get('download-patch'), UI_COLOR_ACCENT_COOL, true);
+    this.drawButton(this.actionButtons.get('copy-blueprint-file'), UI_COLOR_ACCENT_COOL, true);
 
     for (const view of this.blueprintStepperViews.values()) {
       this.drawStepper(view);
@@ -1408,6 +1414,35 @@ export class UnitEditorScene extends Phaser.Scene {
     }
   }
 
+  private buildBlueprintFileContents(): string {
+    const resolvedBlueprints = Object.fromEntries(
+      this.blueprints.map((blueprint) => {
+        const dirtyDraft = this.dirtyDrafts.get(blueprint.id);
+        return [blueprint.id, dirtyDraft ? resolveEditableUnitBlueprint(blueprint, dirtyDraft) : blueprint];
+      })
+    );
+
+    return `${JSON.stringify(resolvedBlueprints, null, 2)}\n`;
+  }
+
+  private async copyBlueprintFile(): Promise<void> {
+    if (!window.navigator.clipboard?.writeText) {
+      this.statusMessage = 'Clipboard unavailable in this browser.';
+      this.refreshScene();
+      return;
+    }
+
+    try {
+      await window.navigator.clipboard.writeText(this.buildBlueprintFileContents());
+      audioDirector.playUiConfirm();
+      this.statusMessage = 'Full blueprint file copied. Paste it into unitBlueprints.json in your editor.';
+      this.refreshScene();
+    } catch {
+      this.statusMessage = 'Blueprint file copy failed.';
+      this.refreshScene();
+    }
+  }
+
   private downloadPatch(): void {
     const patchMap = this.getPatchMap();
     const blob = new Blob([JSON.stringify(patchMap, null, 2)], { type: 'application/json' });
@@ -1491,6 +1526,9 @@ export class UnitEditorScene extends Phaser.Scene {
           return;
         case 'download-patch':
           this.downloadPatch();
+          return;
+        case 'copy-blueprint-file':
+          void this.copyBlueprintFile();
           return;
         default:
           break;
