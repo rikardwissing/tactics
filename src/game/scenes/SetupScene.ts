@@ -113,8 +113,6 @@ const SLOT_CARD_PORTRAIT_BASE_Y = 6;
 const SLOT_CARD_PORTRAIT_EXTRA_Y = 10;
 const REVEAL_OFFSET_Y = 34;
 const SETUP_MAP_PANEL_HEIGHT_WIDE = 184;
-const SETUP_MAP_PANEL_HEIGHT_COMPACT = 164;
-const SETUP_MAP_PANEL_HEIGHT_COMPACT_MIN = 128;
 const CLEAR_SLOT_ENTRY_ID = '__clear-slot__';
 const SLOT_MARKER_COLORS = [0xcaa56a, 0x61d7c7, 0xe8898f] as const;
 const BASE_FACTION_ORDER: FactionId[] = ['the-order', 'time-travelers', 'children-of-the-prophecy', 'myrmidons'];
@@ -193,7 +191,6 @@ export class SetupScene extends Phaser.Scene {
   private startButtonBounds = new Phaser.Geom.Rectangle();
   private menuPanelBounds = new Phaser.Geom.Rectangle();
   private menuListBounds = new Phaser.Geom.Rectangle();
-  private titleLogoOpaqueBounds: Phaser.Geom.Rectangle | null = null;
 
   constructor() {
     super('setup');
@@ -238,8 +235,7 @@ export class SetupScene extends Phaser.Scene {
     this.menuListMaskGraphics = this.add.graphics().setVisible(false);
     this.menuListMask = new Phaser.Display.Masks.GeometryMask(this, this.menuListMaskGraphics);
 
-    this.titleLogo = this.add.image(0, 0, 'renations-tactics-logo').setOrigin(0, 0);
-    this.titleLogoOpaqueBounds = this.findOpaqueTextureBounds('renations-tactics-logo');
+    this.titleLogo = this.add.image(0, 0, 'renations-tactics-logo').setOrigin(0.5, 0);
     this.subtitleText = this.add.text(0, 0, '', UI_TEXT_BODY).setVisible(false);
     this.statusText = this.add.text(0, 0, '', UI_TEXT_BODY).setVisible(false);
     this.mapPanelTitleText = this.add.text(0, 0, 'BATTLEFIELD', UI_NARROW_HEADER_TITLE_TEXT_STYLE);
@@ -453,6 +449,18 @@ export class SetupScene extends Phaser.Scene {
     this.refreshSelectionMenu();
   }
 
+  private getCompactHeightScale(): number {
+    if (this.layoutMode === 'wide') {
+      return 1;
+    }
+
+    return Phaser.Math.Clamp((this.scale.height - 520) / 200 + 0.58, 0.58, 1);
+  }
+
+  private shouldShowTitleLogo(): boolean {
+    return this.scale.height >= 500;
+  }
+
   private refreshTexts(): void {
     if (this.selectedLevel) {
       this.mapInfoText.setText(this.selectedLevel.name);
@@ -472,41 +480,56 @@ export class SetupScene extends Phaser.Scene {
   private layoutScene(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    const isPortrait = height > width;
     const grid = createUiGrid(width, height, this.layoutMode === 'wide' ? 12 : 6);
-    const topY = isPortrait ? 0 : 8;
+    const compactHeightScale = this.getCompactHeightScale();
+    const showTitleLogo = this.shouldShowTitleLogo();
+    const logoMargin = this.layoutMode === 'wide'
+      ? UI_SCREEN_MARGIN
+      : Math.max(UI_PANEL_MINI_GAP * 2, Math.round(UI_SCREEN_MARGIN * compactHeightScale));
+    const compactMapPanelHeight = this.getCompactMapPanelHeight(grid.content.width);
+    const compactSlotsMinHeight = Math.max(144, Math.round(238 * compactHeightScale));
+    const compactHeroMaxHeight = Math.max(160, Math.round(260 * compactHeightScale));
+    const compactLogoMaxWidth = Math.max(180, Math.round(300 * compactHeightScale));
+    const compactLogoMaxHeight = Math.max(72, Math.round(120 * compactHeightScale));
+    const compactActionHeight = Math.max(58, Math.round(80 * compactHeightScale));
 
     this.layoutBackdropCover(width, height);
     this.backdropShade.setSize(width, height);
 
-    const titleLogoBounds = this.titleLogoOpaqueBounds
-      ?? new Phaser.Geom.Rectangle(0, 0, Math.max(1, this.titleLogo.width), Math.max(1, this.titleLogo.height));
     const minimumPanelStackHeight = this.layoutMode === 'wide'
       ? SETUP_MAP_PANEL_HEIGHT_WIDE + UI_PANEL_GAP + 280
-      : SETUP_MAP_PANEL_HEIGHT_COMPACT + UI_PANEL_GAP + 238;
-    const titleLogoMaxWidth = width - UI_SCREEN_MARGIN * 2;
-    const titleLogoMaxHeight = Math.max(
-      this.layoutMode === 'wide' ? 120 : 96,
-      height - minimumPanelStackHeight - UI_SCREEN_MARGIN - topY
+      : compactMapPanelHeight + UI_PANEL_GAP + compactSlotsMinHeight + (showTitleLogo ? logoMargin : 0);
+    const titleLogoMaxWidth = Math.min(
+      Math.max(1, width - logoMargin * 2),
+      this.layoutMode === 'wide' ? 300 : compactLogoMaxWidth
+    );
+    const availableLogoHeight = Math.max(
+      40,
+      height - minimumPanelStackHeight - (showTitleLogo ? logoMargin * 2 : 0)
+    );
+    const titleLogoMaxHeight = Math.min(
+      this.layoutMode === 'wide' ? 120 : compactLogoMaxHeight,
+      availableLogoHeight
     );
     const titleLogoScale = Math.min(
-      titleLogoMaxWidth / Math.max(1, titleLogoBounds.width),
-      titleLogoMaxHeight / Math.max(1, titleLogoBounds.height)
+      titleLogoMaxWidth / Math.max(1, this.titleLogo.width),
+      titleLogoMaxHeight / Math.max(1, this.titleLogo.height)
     );
-    const titleLogoX = width / 2 - (titleLogoBounds.x + titleLogoBounds.width / 2) * titleLogoScale;
-    const titleLogoY = topY - titleLogoBounds.y * titleLogoScale;
-    this.titleLogo.setPosition(titleLogoX, titleLogoY).setOrigin(0, 0).setScale(titleLogoScale);
+    this.titleLogo
+      .setVisible(showTitleLogo)
+      .setPosition(width / 2, showTitleLogo ? logoMargin : -9999)
+      .setScale(showTitleLogo ? titleLogoScale : 1);
     this.subtitleText
       .setPosition(-9999, -9999)
       .setWordWrapWidth(0, true);
     this.statusText.setPosition(-9999, -9999).setOrigin(1, 0);
 
-    const compactLogoOverlap = isPortrait ? 42 : 24;
-    const wideLogoOverlap = isPortrait ? 8 : 16;
-    const contentTop = topY + titleLogoBounds.height * titleLogoScale - (this.layoutMode === 'compact' ? compactLogoOverlap : wideLogoOverlap);
+    const contentTop = showTitleLogo
+      ? this.titleLogo.y + this.titleLogo.displayHeight + logoMargin
+      : Math.max(UI_PANEL_MINI_GAP, Math.round(logoMargin * 0.5));
 
     if (this.layoutMode === 'wide') {
-      const heroBounds = grid.column(0, 12, contentTop + 8, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
+      const heroBounds = grid.column(0, 12, contentTop, Math.min(300, height - contentTop - UI_SCREEN_MARGIN));
       const targetMapBounds = grid.column(0, 12, contentTop, SETUP_MAP_PANEL_HEIGHT_WIDE);
       const targetSlotsBounds = grid.column(
         0,
@@ -526,14 +549,13 @@ export class SetupScene extends Phaser.Scene {
         )
       );
     } else {
-      const heroBounds = grid.column(0, 6, contentTop + 8, Math.min(260, height - contentTop - UI_SCREEN_MARGIN));
-      const targetMapPanelHeight = this.getCompactMapPanelHeight();
-      const targetMapBounds = grid.column(0, 6, contentTop, targetMapPanelHeight);
+      const heroBounds = grid.column(0, 6, contentTop, Math.min(compactHeroMaxHeight, height - contentTop - UI_SCREEN_MARGIN));
+      const targetMapBounds = grid.column(0, 6, contentTop, compactMapPanelHeight);
       const targetSlotsBounds = grid.column(
         0,
         6,
         targetMapBounds.bottom + UI_PANEL_GAP,
-        Math.max(238, height - targetMapBounds.bottom - UI_PANEL_GAP - UI_SCREEN_MARGIN)
+        Math.max(compactSlotsMinHeight, height - targetMapBounds.bottom - UI_PANEL_GAP - UI_SCREEN_MARGIN)
       );
 
       this.lerpRect(this.mapPanelBounds, heroBounds, targetMapBounds, this.revealProgress);
@@ -592,7 +614,7 @@ export class SetupScene extends Phaser.Scene {
     }
 
     const slotsContent = BattleUiChrome.getContentBounds(this.slotsPanelBounds);
-    const actionHeight = this.layoutMode === 'wide' ? 84 : 80;
+    const actionHeight = this.layoutMode === 'wide' ? 84 : compactActionHeight;
     this.slotRailBounds.setTo(
       slotsContent.x,
       slotsContent.y,
@@ -618,65 +640,21 @@ export class SetupScene extends Phaser.Scene {
     }
   }
 
-  private getCompactMapPanelHeight(): number {
+  private getCompactMapPanelHeight(panelWidth = Math.max(1, this.scale.width - UI_SCREEN_MARGIN * 2)): number {
+    const contentBounds = BattleUiChrome.getContentBounds(new Phaser.Geom.Rectangle(0, 0, panelWidth, 200));
     const contentHeight = this.selectedLevel
-      ? this.mapInfoText.height + this.mapMetaText.height + this.objectiveText.height + UI_PANEL_MINI_GAP + 4
+      ? this.measureWrappedTextHeight(this.mapInfoText, contentBounds.width)
+        + this.measureWrappedTextHeight(this.mapMetaText, contentBounds.width)
+        + this.measureWrappedTextHeight(this.objectiveText, contentBounds.width)
+        + UI_PANEL_MINI_GAP
+        + 4
       : 0;
-    const estimatedPanelHeight = UI_PLAQUE_HEADER_HEIGHT + UI_PANEL_GAP + UI_SCREEN_MARGIN + contentHeight;
-    return Phaser.Math.Clamp(
-      Math.ceil(estimatedPanelHeight),
-      SETUP_MAP_PANEL_HEIGHT_COMPACT_MIN,
-      SETUP_MAP_PANEL_HEIGHT_COMPACT
-    );
+    return Math.ceil(UI_PLAQUE_HEADER_HEIGHT + UI_PANEL_GAP + UI_SCREEN_MARGIN + contentHeight);
   }
 
-  private findOpaqueTextureBounds(textureKey: string): Phaser.Geom.Rectangle | null {
-    const sourceImage = this.textures.get(textureKey)?.getSourceImage() as CanvasImageSource | undefined;
-    if (!sourceImage) {
-      return null;
-    }
-
-    const dimensions = sourceImage as { width?: number; height?: number };
-    const imageWidth = dimensions.width ?? 0;
-    const imageHeight = dimensions.height ?? 0;
-    if (!imageWidth || !imageHeight) {
-      return null;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = imageWidth;
-    canvas.height = imageHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) {
-      return null;
-    }
-
-    ctx.drawImage(sourceImage, 0, 0, imageWidth, imageHeight);
-    const pixels = ctx.getImageData(0, 0, imageWidth, imageHeight).data;
-
-    let minX = imageWidth;
-    let minY = imageHeight;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < imageHeight; y += 1) {
-      const rowOffset = y * imageWidth * 4;
-      for (let x = 0; x < imageWidth; x += 1) {
-        if (pixels[rowOffset + x * 4 + 3] <= 0) {
-          continue;
-        }
-
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-
-    if (maxX < minX || maxY < minY) {
-      return null;
-    }
-
-    return new Phaser.Geom.Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
+  private measureWrappedTextHeight(text: Phaser.GameObjects.Text, wrapWidth: number): number {
+    text.setWordWrapWidth(Math.max(1, wrapWidth), true);
+    return text.height;
   }
 
   private layoutBackdropCover(width: number, height: number): void {
@@ -734,7 +712,13 @@ export class SetupScene extends Phaser.Scene {
   private refreshSlotCards(): void {
     const hasLevel = Boolean(this.selectedLevel);
     const cardGap = this.layoutMode === 'wide' ? SLOT_CARD_GAP_WIDE : SLOT_CARD_GAP_COMPACT;
-    const cardWidth = this.layoutMode === 'wide' ? SLOT_CARD_WIDTH_WIDE : SLOT_CARD_WIDTH_COMPACT;
+    const baseCardWidth = this.layoutMode === 'wide' ? SLOT_CARD_WIDTH_WIDE : SLOT_CARD_WIDTH_COMPACT;
+    const maxCardWidth = this.layoutMode === 'wide' ? 180 : 180;
+    const slotCount = Math.max(1, this.deploymentSlots.length);
+    const expandedCardWidth = Math.floor(
+      (this.slotRailBounds.width - Math.max(0, slotCount - 1) * cardGap) / slotCount
+    );
+    const cardWidth = Phaser.Math.Clamp(expandedCardWidth, baseCardWidth, maxCardWidth);
     const cardVerticalInset = this.layoutMode === 'wide' ? SLOT_CARD_VERTICAL_INSET_WIDE : SLOT_CARD_VERTICAL_INSET_COMPACT;
     const cardHeight = Math.max(1, this.slotRailBounds.height - cardVerticalInset * 2);
     const totalWidth = this.deploymentSlots.length * cardWidth + Math.max(0, this.deploymentSlots.length - 1) * cardGap;
@@ -1072,12 +1056,17 @@ export class SetupScene extends Phaser.Scene {
   }
 
   private getSelectionItemHeight(mode: SelectionMenuMode = this.selectionMenuMode): number {
+    const compactHeightScale = this.getCompactHeightScale();
     if (mode === 'map') {
-      return this.layoutMode === 'wide' ? MAP_MENU_ITEM_HEIGHT_WIDE : MAP_MENU_ITEM_HEIGHT_COMPACT;
+      return this.layoutMode === 'wide'
+        ? MAP_MENU_ITEM_HEIGHT_WIDE
+        : Math.max(88, Math.round(MAP_MENU_ITEM_HEIGHT_COMPACT * compactHeightScale));
     }
 
     if (mode === 'unit') {
-      return this.layoutMode === 'wide' ? UNIT_MENU_ITEM_HEIGHT_WIDE : UNIT_MENU_ITEM_HEIGHT_COMPACT;
+      return this.layoutMode === 'wide'
+        ? UNIT_MENU_ITEM_HEIGHT_WIDE
+        : Math.max(78, Math.round(UNIT_MENU_ITEM_HEIGHT_COMPACT * compactHeightScale));
     }
 
     return UNIT_MENU_ITEM_HEIGHT_WIDE;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { DEFAULT_UNIT_IMAGE_KEY, FACTION_MOTTO_AUDIO_KEYS } from '../assets';
+import { DEFAULT_UNIT_IMAGE_KEY, FACTION_MOTTO_AUDIO_KEYS, UNIT_TURN_START_AUDIO_KEYS } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
 import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
@@ -458,6 +458,7 @@ export class BattleScene extends Phaser.Scene {
   private detailPanelTween?: Phaser.Tweens.Tween;
   private turnStartCatchPhraseText: Phaser.GameObjects.Text | null = null;
   private turnStartCatchPhraseEvent: Phaser.Time.TimerEvent | null = null;
+  private turnStartCatchPhraseSound: Phaser.Sound.BaseSound | null = null;
   private factionMottoPlayed = new Set<FactionId>();
   private pendingFactionMottoId: FactionId | null = null;
   private factionMottoSound: Phaser.Sound.BaseSound | null = null;
@@ -1937,13 +1938,7 @@ export class BattleScene extends Phaser.Scene {
       DETAIL_PANEL_PORTRAIT_HEIGHT
     );
 
-    const playAreaGrid = createUiSubGrid(this.playAreaRect, 12, 0, 0, UI_PANEL_GAP);
-    const turnOrderColumn = playAreaGrid.column(0, 1, playAreaGrid.content.y, turnOrderHeight + UI_PANEL_GAP);
-    const turnOrderBand = playAreaGrid.band(
-      Math.max(playAreaGrid.content.y, playAreaGrid.content.bottom - turnOrderHeight - UI_PANEL_COMPACT_GAP),
-      turnOrderHeight + UI_PANEL_GAP
-    );
-    this.turnOrderBounds.setTo(turnOrderColumn.x, turnOrderBand.y, turnOrderColumn.width, turnOrderBand.height);
+    this.layoutTurnOrderBounds(grid, turnOrderHeight);
 
     this.turnOrderPanel.setVisible(true);
     this.turnOrderPanel.setLayout({
@@ -2027,13 +2022,7 @@ export class BattleScene extends Phaser.Scene {
     const avatarSize = 38;
     const turnOrderGap = avatarSize + 12;
     const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
-    const playAreaGrid = createUiSubGrid(this.playAreaRect, 12, 0, 0, UI_PANEL_GAP);
-    const turnOrderColumn = playAreaGrid.column(0, 1, playAreaGrid.content.y, turnOrderHeight + UI_PANEL_GAP);
-    const turnOrderBand = playAreaGrid.band(
-      Math.max(playAreaGrid.content.y, playAreaGrid.content.bottom - turnOrderHeight - UI_PANEL_COMPACT_GAP),
-      turnOrderHeight + UI_PANEL_GAP
-    );
-    this.turnOrderBounds.setTo(turnOrderColumn.x, turnOrderBand.y, turnOrderColumn.width, turnOrderBand.height);
+    this.layoutTurnOrderBounds(grid, turnOrderHeight);
     this.turnOrderPanel.setLayout({
       x: this.turnOrderBounds.x,
       startY: this.turnOrderBounds.y + UI_PANEL_MICRO_GAP,
@@ -2041,6 +2030,15 @@ export class BattleScene extends Phaser.Scene {
       avatarSize,
       reverse: true
     });
+  }
+
+  private layoutTurnOrderBounds(grid: ReturnType<typeof createUiGrid>, turnOrderHeight: number): void {
+    const turnOrderColumn = grid.column(0, 1, grid.content.y, turnOrderHeight + UI_PANEL_GAP);
+    const turnOrderBand = grid.band(
+      Math.max(grid.content.y, grid.content.bottom - turnOrderHeight - UI_PANEL_COMPACT_GAP),
+      turnOrderHeight + UI_PANEL_GAP
+    );
+    this.turnOrderBounds.setTo(turnOrderColumn.x, turnOrderBand.y, turnOrderColumn.width, turnOrderBand.height);
   }
 
   private getMapPlaqueRequiredHeight(panelWidth: number): number {
@@ -6402,7 +6400,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private queueTurnStartCatchPhrase(unit: BattleUnit): void {
-    this.clearTurnStartCatchPhrase();
+    this.clearTurnStartCatchPhraseText();
     this.turnStartCatchPhraseEvent = this.time.delayedCall(120, () => {
       this.turnStartCatchPhraseEvent = null;
       this.showTurnStartCatchPhrase(unit);
@@ -6416,7 +6414,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    this.clearTurnStartCatchPhrase();
+    this.clearTurnStartCatchPhraseText();
 
     const barkPoint = this.getUnitSpritePoint(unit, 1.06);
     const barkText = this.registerWorldObject(
@@ -6444,6 +6442,33 @@ export class BattleScene extends Phaser.Scene {
         }
         barkText.destroy();
       }
+    });
+  }
+
+  private playTurnStartCatchPhraseVoice(unit: BattleUnit): void {
+    const audioKey = UNIT_TURN_START_AUDIO_KEYS[unit.blueprintId];
+
+    if (!audioKey || audioDirector.isMuted() || this.sound.locked) {
+      return;
+    }
+
+    this.stopTurnStartCatchPhraseSound();
+
+    const sound = this.sound.add(audioKey, { volume: 0.9 });
+    const played = sound.play();
+
+    if (!played) {
+      sound.destroy();
+      return;
+    }
+
+    this.turnStartCatchPhraseSound = sound;
+
+    sound.once('complete', () => {
+      if (this.turnStartCatchPhraseSound === sound) {
+        this.turnStartCatchPhraseSound = null;
+      }
+      sound.destroy();
     });
   }
 
@@ -6521,7 +6546,17 @@ export class BattleScene extends Phaser.Scene {
     this.factionMottoSound = null;
   }
 
-  private clearTurnStartCatchPhrase(): void {
+  private stopTurnStartCatchPhraseSound(): void {
+    if (!this.turnStartCatchPhraseSound) {
+      return;
+    }
+
+    this.turnStartCatchPhraseSound.stop();
+    this.turnStartCatchPhraseSound.destroy();
+    this.turnStartCatchPhraseSound = null;
+  }
+
+  private clearTurnStartCatchPhraseText(): void {
     this.turnStartCatchPhraseEvent?.remove(false);
     this.turnStartCatchPhraseEvent = null;
 
@@ -6532,6 +6567,11 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.turnStartCatchPhraseText);
     this.turnStartCatchPhraseText.destroy();
     this.turnStartCatchPhraseText = null;
+  }
+
+  private clearTurnStartCatchPhrase(): void {
+    this.clearTurnStartCatchPhraseText();
+    this.stopTurnStartCatchPhraseSound();
   }
 
   private getInspectionUnit(): BattleUnit | null {
@@ -6661,13 +6701,24 @@ export class BattleScene extends Phaser.Scene {
       this.detailPanelAlpha = 0;
       this.detailPanelOffsetX = 24;
       this.detailPanelSelectionKey = null;
+      this.stopTurnStartCatchPhraseSound();
       return;
     }
 
     this.showDetailPanel = true;
     const nextSelectionKey = this.getDetailPanelSelectionKey(target);
-    const shouldAnimate = this.detailPanelSelectionKey !== nextSelectionKey || this.detailPanelAlpha <= 0.01;
+    const selectionChanged = this.detailPanelSelectionKey !== nextSelectionKey;
+    const shouldAnimate = selectionChanged || this.detailPanelAlpha <= 0.01;
     this.detailPanelSelectionKey = nextSelectionKey;
+
+    if (target.kind === 'unit') {
+      const unit = this.units.find((candidate) => candidate.alive && candidate.id === target.unitId);
+      if (selectionChanged && unit) {
+        this.playTurnStartCatchPhraseVoice(unit);
+      }
+    } else {
+      this.stopTurnStartCatchPhraseSound();
+    }
 
     if (!shouldAnimate) {
       this.detailPanelAlpha = 1;

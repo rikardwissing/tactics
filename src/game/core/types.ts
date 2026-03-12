@@ -3,6 +3,7 @@ import { ItemId } from './items';
 
 export type Team = 'player' | 'enemy';
 export type FactionId = 'time-travelers' | 'myrmidons' | 'the-order' | 'children-of-the-prophecy';
+export type UnitGender = 'male' | 'female';
 export type UnitRoleId =
   | 'aion-trooper'
   | 'rift-engineer'
@@ -75,6 +76,7 @@ export interface UnitBlueprint {
   id: string;
   factionId: FactionId;
   roleId: UnitRoleId;
+  gender: UnitGender;
   name: string;
   className: string;
   turnStartCatchPhrase: string;

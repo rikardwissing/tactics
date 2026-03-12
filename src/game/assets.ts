@@ -32,6 +32,54 @@ const factionMottoTimeTravelers = new URL('../assets/game/voices/faction-motto-t
 const factionMottoMyrmidons = new URL('../assets/game/voices/faction-motto-myrmidons.mp3', import.meta.url).href;
 const factionMottoTheOrder = new URL('../assets/game/voices/faction-motto-the-order.mp3', import.meta.url).href;
 const factionMottoChildrenOfTheProphecy = new URL('../assets/game/voices/faction-motto-children-of-the-prophecy.mp3', import.meta.url).href;
+const unitTurnStartChildrenOfTheProphecyAevumGuardian = new URL(
+  '../assets/game/voices/unit-turn-start-children-of-the-prophecy-aevum-guardian.mp3',
+  import.meta.url
+).href;
+const unitTurnStartChildrenOfTheProphecyMirageSeer = new URL(
+  '../assets/game/voices/unit-turn-start-children-of-the-prophecy-mirage-seer.mp3',
+  import.meta.url
+).href;
+const unitTurnStartChildrenOfTheProphecyMemoryKeeper = new URL(
+  '../assets/game/voices/unit-turn-start-children-of-the-prophecy-memory-keeper.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTimeTravelersAionTrooper = new URL(
+  '../assets/game/voices/unit-turn-start-time-travelers-aion-trooper.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTimeTravelersScavengerMarksman = new URL(
+  '../assets/game/voices/unit-turn-start-time-travelers-scavenger-marksman.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTimeTravelersChronomedic = new URL(
+  '../assets/game/voices/unit-turn-start-time-travelers-chronomedic.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTheOrderHouseMarshal = new URL(
+  '../assets/game/voices/unit-turn-start-the-order-house-marshal.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTheOrderSquireOperative = new URL(
+  '../assets/game/voices/unit-turn-start-the-order-squire-operative.mp3',
+  import.meta.url
+).href;
+const unitTurnStartTheOrderBannerSurgeon = new URL(
+  '../assets/game/voices/unit-turn-start-the-order-banner-surgeon.mp3',
+  import.meta.url
+).href;
+const unitTurnStartMyrmidonsTideLegionary = new URL(
+  '../assets/game/voices/unit-turn-start-myrmidons-tide-legionary.mp3',
+  import.meta.url
+).href;
+const unitTurnStartMyrmidonsHunter = new URL(
+  '../assets/game/voices/unit-turn-start-myrmidons-hunter.mp3',
+  import.meta.url
+).href;
+const unitTurnStartMyrmidonsSpectre = new URL(
+  '../assets/game/voices/unit-turn-start-myrmidons-spectre.mp3',
+  import.meta.url
+).href;
 const theOrderBreacherStrike = new URL('../assets/game/effects/the-order-breacher-strike.png', import.meta.url).href;
 const theOrderRelayLance = new URL('../assets/game/effects/the-order-relay-lance.png', import.meta.url).href;
 const theOrderTracerVolley = new URL('../assets/game/effects/the-order-tracer-volley.png', import.meta.url).href;
@@ -108,7 +156,31 @@ export const AUDIO_ASSETS = [
   { key: 'faction-motto-time-travelers', url: factionMottoTimeTravelers },
   { key: 'faction-motto-myrmidons', url: factionMottoMyrmidons },
   { key: 'faction-motto-the-order', url: factionMottoTheOrder },
-  { key: 'faction-motto-children-of-the-prophecy', url: factionMottoChildrenOfTheProphecy }
+  { key: 'faction-motto-children-of-the-prophecy', url: factionMottoChildrenOfTheProphecy },
+  {
+    key: 'unit-turn-start-children-of-the-prophecy-aevum-guardian',
+    url: unitTurnStartChildrenOfTheProphecyAevumGuardian
+  },
+  {
+    key: 'unit-turn-start-children-of-the-prophecy-mirage-seer',
+    url: unitTurnStartChildrenOfTheProphecyMirageSeer
+  },
+  {
+    key: 'unit-turn-start-children-of-the-prophecy-memory-keeper',
+    url: unitTurnStartChildrenOfTheProphecyMemoryKeeper
+  },
+  { key: 'unit-turn-start-time-travelers-aion-trooper', url: unitTurnStartTimeTravelersAionTrooper },
+  {
+    key: 'unit-turn-start-time-travelers-scavenger-marksman',
+    url: unitTurnStartTimeTravelersScavengerMarksman
+  },
+  { key: 'unit-turn-start-time-travelers-chronomedic', url: unitTurnStartTimeTravelersChronomedic },
+  { key: 'unit-turn-start-the-order-house-marshal', url: unitTurnStartTheOrderHouseMarshal },
+  { key: 'unit-turn-start-the-order-squire-operative', url: unitTurnStartTheOrderSquireOperative },
+  { key: 'unit-turn-start-the-order-banner-surgeon', url: unitTurnStartTheOrderBannerSurgeon },
+  { key: 'unit-turn-start-myrmidons-tide-legionary', url: unitTurnStartMyrmidonsTideLegionary },
+  { key: 'unit-turn-start-myrmidons-hunter', url: unitTurnStartMyrmidonsHunter },
+  { key: 'unit-turn-start-myrmidons-spectre', url: unitTurnStartMyrmidonsSpectre }
 ] as const;
 
 export const FACTION_MOTTO_AUDIO_KEYS = {
@@ -117,3 +189,18 @@ export const FACTION_MOTTO_AUDIO_KEYS = {
   'the-order': 'faction-motto-the-order',
   'children-of-the-prophecy': 'faction-motto-children-of-the-prophecy'
 } satisfies Record<FactionId, (typeof AUDIO_ASSETS)[number]['key']>;
+
+export const UNIT_TURN_START_AUDIO_KEYS: Partial<Record<string, (typeof AUDIO_ASSETS)[number]['key']>> = {
+  'children-of-the-prophecy-aevum-guardian': 'unit-turn-start-children-of-the-prophecy-aevum-guardian',
+  'children-of-the-prophecy-mirage-seer': 'unit-turn-start-children-of-the-prophecy-mirage-seer',
+  'children-of-the-prophecy-memory-keeper': 'unit-turn-start-children-of-the-prophecy-memory-keeper',
+  'time-travelers-aion-trooper': 'unit-turn-start-time-travelers-aion-trooper',
+  'time-travelers-scavenger-marksman': 'unit-turn-start-time-travelers-scavenger-marksman',
+  'time-travelers-chronomedic': 'unit-turn-start-time-travelers-chronomedic',
+  'the-order-house-marshal': 'unit-turn-start-the-order-house-marshal',
+  'the-order-squire-operative': 'unit-turn-start-the-order-squire-operative',
+  'the-order-banner-surgeon': 'unit-turn-start-the-order-banner-surgeon',
+  'myrmidons-tide-legionary': 'unit-turn-start-myrmidons-tide-legionary',
+  'myrmidons-hunter': 'unit-turn-start-myrmidons-hunter',
+  'myrmidons-spectre': 'unit-turn-start-myrmidons-spectre'
+};
