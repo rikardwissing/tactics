@@ -25,7 +25,7 @@
     "movementStyle": "standard",
     "idleStyle": "warden",
     "attackStyle": "blade-arc",
-    "effectKey": "the-order-breacher-strike",
+    "effectKey": "aevum-staff",
     "abilities": [
       {
         "id": "attack",
@@ -64,7 +64,7 @@
     "movementStyle": "standard",
     "idleStyle": "priest",
     "attackStyle": "ash-hex",
-    "effectKey": "myrmidons-phase-lash",
+    "effectKey": "mirage-bind",
     "abilities": [
       {
         "id": "attack",
@@ -103,7 +103,7 @@
     "movementStyle": "standard",
     "idleStyle": "mage",
     "attackStyle": "ember-burst",
-    "effectKey": "the-order-cautery-charge",
+    "effectKey": "relic-pulse",
     "abilities": [
       {
         "id": "attack",
@@ -123,7 +123,7 @@
         "rangeMin": 0,
         "rangeMax": 3,
         "healAmount": 24,
-        "effectKey": "the-order-field-mend"
+        "effectKey": "memory-mend"
       }
     ]
   },
@@ -153,7 +153,7 @@
     "movementStyle": "standard",
     "idleStyle": "warden",
     "attackStyle": "arrow-flight",
-    "effectKey": "the-order-relay-lance",
+    "effectKey": "chrono-carbine",
     "abilities": [
       {
         "id": "attack",
@@ -174,7 +174,7 @@
         "rangeMax": 4,
         "powerModifier": -5,
         "attackStyle": "arrow-flight",
-        "effectKey": "the-order-relay-lance"
+        "effectKey": "anchor-spike"
       }
     ]
   },
@@ -204,7 +204,7 @@
     "movementStyle": "blink",
     "idleStyle": "ranger",
     "attackStyle": "ash-hex",
-    "effectKey": "the-order-relay-lance",
+    "effectKey": "chronal-rend",
     "abilities": [
       {
         "id": "attack",
@@ -225,7 +225,7 @@
         "rangeMax": 5,
         "powerModifier": 4,
         "attackStyle": "ash-hex",
-        "effectKey": "the-order-relay-lance"
+        "effectKey": "time-shear"
       }
     ]
   },
@@ -255,7 +255,7 @@
     "movementStyle": "standard",
     "idleStyle": "ranger",
     "attackStyle": "feather-shot",
-    "effectKey": "the-order-tracer-volley",
+    "effectKey": "scrapline-shot",
     "abilities": [
       {
         "id": "attack",
@@ -274,7 +274,7 @@
         "target": "enemy",
         "rangeMin": 1,
         "rangeMax": 1,
-        "effectKey": "the-order-strip-gear"
+        "effectKey": "salvage-sweep"
       }
     ]
   },
@@ -304,7 +304,7 @@
     "movementStyle": "standard",
     "idleStyle": "mage",
     "attackStyle": "ember-burst",
-    "effectKey": "the-order-cautery-charge",
+    "effectKey": "reactor-pulse",
     "abilities": [
       {
         "id": "attack",
@@ -324,7 +324,7 @@
         "rangeMin": 0,
         "rangeMax": 3,
         "healAmount": 24,
-        "effectKey": "the-order-field-mend"
+        "effectKey": "rewind-patch"
       }
     ]
   },
@@ -354,7 +354,7 @@
     "movementStyle": "standard",
     "idleStyle": "knight",
     "attackStyle": "blade-arc",
-    "effectKey": "the-order-breacher-strike",
+    "effectKey": "breacher-strike",
     "abilities": [
       {
         "id": "attack",
@@ -375,7 +375,7 @@
         "rangeMax": 4,
         "powerModifier": -6,
         "attackStyle": "arrow-flight",
-        "effectKey": "the-order-relay-lance"
+        "effectKey": "relay-lance"
       }
     ]
   },
@@ -405,7 +405,7 @@
     "movementStyle": "standard",
     "idleStyle": "archer",
     "attackStyle": "arrow-flight",
-    "effectKey": "the-order-tracer-volley",
+    "effectKey": "tracer-volley",
     "abilities": [
       {
         "id": "attack",
@@ -424,7 +424,7 @@
         "target": "enemy",
         "rangeMin": 1,
         "rangeMax": 1,
-        "effectKey": "the-order-strip-gear"
+        "effectKey": "strip-gear"
       }
     ]
   },
@@ -454,7 +454,7 @@
     "movementStyle": "standard",
     "idleStyle": "mage",
     "attackStyle": "ember-burst",
-    "effectKey": "the-order-cautery-charge",
+    "effectKey": "cautery-charge",
     "abilities": [
       {
         "id": "attack",
@@ -474,7 +474,7 @@
         "rangeMin": 0,
         "rangeMax": 3,
         "healAmount": 24,
-        "effectKey": "the-order-field-mend"
+        "effectKey": "field-mend"
       }
     ]
   },
@@ -504,7 +504,7 @@
     "movementStyle": "standard",
     "idleStyle": "warden",
     "attackStyle": "grave-cleave",
-    "effectKey": "myrmidons-breaker-cleave",
+    "effectKey": "breaker-cleave",
     "abilities": [
       {
         "id": "attack",
@@ -544,7 +544,7 @@
     "movementStyle": "standard",
     "idleStyle": "ranger",
     "attackStyle": "feather-shot",
-    "effectKey": "myrmidons-brine-shot",
+    "effectKey": "brine-shot",
     "abilities": [
       {
         "id": "attack",
@@ -584,7 +584,7 @@
     "movementStyle": "standard",
     "idleStyle": "priest",
     "attackStyle": "ash-hex",
-    "effectKey": "myrmidons-phase-lash",
+    "effectKey": "phase-lash",
     "abilities": [
       {
         "id": "attack",

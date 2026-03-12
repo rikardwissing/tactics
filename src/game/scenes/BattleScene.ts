@@ -119,6 +119,17 @@ interface ChestView {
   openBaseScale: number;
 }
 
+interface CombatEffectPlayback {
+  definition: CombatEffectDefinition;
+  source: BattleUnit;
+  target: BattleUnit;
+  sourceGroundPoint: Phaser.Math.Vector2;
+  targetGroundPoint: Phaser.Math.Vector2;
+  sourcePoint: Phaser.Math.Vector2;
+  targetPoint: Phaser.Math.Vector2;
+  angle: number;
+}
+
 interface PropView {
   base: Phaser.GameObjects.Graphics;
   image: Phaser.GameObjects.Image;
@@ -5083,13 +5094,13 @@ export class BattleScene extends Phaser.Scene {
     switch (item.effect.kind) {
       case 'heal': {
         const recovered = Math.min(item.effect.amount, target.maxHp - target.hp);
-        audioDirector.playHeal();
-        await this.playCombatEffect(item.effectKey, activeUnit, target);
+        const effect = this.createCombatEffectPlayback(item.effectKey, activeUnit, target);
+        await Promise.all([this.animateSourceReaction(effect), this.playCombatEffectLeadIn(effect)]);
         target.hp += recovered;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
         this.positionUnit(target);
-        await this.flashUnitSprite(target, 0xb8ffd0);
+        await Promise.all([this.playCombatEffectImpact(effect), this.animateTargetReaction(effect, target)]);
         await this.showFloatingCombatText(
           this.getUnitSpritePoint(target, 0.72),
           recovered > 0 ? `+${recovered}` : 'MISS',
@@ -5106,13 +5117,13 @@ export class BattleScene extends Phaser.Scene {
         return;
       }
       case 'ct':
-        audioDirector.playUiConfirm();
-        await this.playCombatEffect(item.effectKey, activeUnit, target);
+        const effect = this.createCombatEffectPlayback(item.effectKey, activeUnit, target);
+        await Promise.all([this.animateSourceReaction(effect), this.playCombatEffectLeadIn(effect)]);
         target.ct += item.effect.amount;
         this.consumeItemFromUnit(activeUnit, itemId, 1);
         this.turnActionUsed = true;
         this.positionUnit(target);
-        await this.flashUnitSprite(target, 0xf4dd91);
+        await Promise.all([this.playCombatEffectImpact(effect), this.animateTargetReaction(effect, target)]);
         await this.showFloatingCombatText(
           this.getUnitSpritePoint(target, 0.72),
           `+${item.effect.amount} CT`,
@@ -6169,10 +6180,9 @@ export class BattleScene extends Phaser.Scene {
     target: BattleUnit,
     ability: UnitAbility
   ): Promise<{ amount: number; critical: boolean }> {
-    const attackerView = this.views.get(attacker.id);
     const targetView = this.views.get(target.id);
 
-    if (!attackerView || !targetView || !attacker.alive || !target.alive) {
+    if (!targetView || !this.views.get(attacker.id) || !attacker.alive || !target.alive) {
       return { amount: 0, critical: false };
     }
 
@@ -6183,7 +6193,6 @@ export class BattleScene extends Phaser.Scene {
       attack: attacker.attack + (ability.powerModifier ?? 0),
       rangeMin: ability.rangeMin,
       rangeMax: ability.rangeMax,
-      attackStyle: ability.attackStyle ?? attacker.attackStyle,
       effectKey: ability.effectKey ?? attacker.effectKey,
       attackName: ability.name
     };
@@ -6196,63 +6205,24 @@ export class BattleScene extends Phaser.Scene {
       targetPoint.x,
       targetPoint.y
     );
-    const dashDistance = ability.rangeMax === 1 ? 18 : 8;
     const launchPoint = this.getUnitSpritePoint(attacker, 0.55);
     const impactPoint = this.getUnitSpritePoint(target, 0.54);
     const damageTextPoint = this.getUnitSpritePoint(target, 0.9);
-    audioDirector.playAttack(strikeAttacker.attackStyle);
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: attackerView.container,
-        x: attackerPoint.x + Math.cos(angle) * dashDistance,
-        y: attackerPoint.y + Math.sin(angle) * dashDistance,
-        duration: 110,
-        yoyo: true,
-        ease: 'Sine.easeInOut',
-        onComplete: () => resolve()
-      });
-    });
-
-    await this.playCombatEffect(strikeAttacker.effectKey, attacker, target, {
+    const effect = this.createCombatEffectPlayback(strikeAttacker.effectKey, attacker, target, {
       launchPoint,
       impactPoint,
       angle
     });
+    await Promise.all([this.animateSourceReaction(effect), this.playCombatEffectLeadIn(effect)]);
 
     const damageRoll = calculateDamage(strikeAttacker, target, this.map, this.rng.frac());
     target.hp = Math.max(0, target.hp - damageRoll.amount);
-    audioDirector.playHit(damageRoll.critical);
-    targetView.sprite.setTintFill(0xffead0);
-    this.getWorldCamera().shake(strikeAttacker.attackStyle === 'grave-cleave' ? 95 : 70, 0.0016);
-
     await Promise.all([
-      new Promise<void>((resolve) => {
-        this.tweens.add({
-          targets: targetView.sprite,
-          alpha: 0.45,
-          duration: 90,
-          yoyo: true,
-          repeat: 1,
-          onComplete: () => {
-            targetView.sprite.clearTint();
-            resolve();
-          }
-        });
-      }),
-      new Promise<void>((resolve) => {
-        this.tweens.add({
-          targets: targetView.container,
-          x: targetView.container.x + Math.cos(angle) * 8,
-          y: targetView.container.y + Math.sin(angle) * 5,
-          duration: 80,
-          ease: 'Sine.easeOut',
-          yoyo: true,
-          repeat: 1,
-          onComplete: () => resolve()
-        });
-      })
+      this.playCombatEffectImpact(effect, { critical: damageRoll.critical }),
+      this.animateTargetReaction(effect, target, damageRoll.critical)
     ]);
+
+    this.positionUnit(target);
 
     const damageText = this.registerWorldObject(
       this.add.text(
@@ -6277,8 +6247,6 @@ export class BattleScene extends Phaser.Scene {
         }
       });
     });
-
-    this.positionUnit(target);
 
     if (damageRoll.critical) {
       this.pushLog('Critical hit from the elevated angle.');
@@ -6313,9 +6281,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async resolveHealing(attacker: BattleUnit, target: BattleUnit, ability: UnitAbility): Promise<void> {
-    const targetView = this.views.get(target.id);
-
-    if (!targetView || !attacker.alive || !target.alive) {
+    if (!this.views.get(target.id) || !this.views.get(attacker.id) || !attacker.alive || !target.alive) {
       return;
     }
 
@@ -6323,15 +6289,15 @@ export class BattleScene extends Phaser.Scene {
 
     const amount = Math.min(ability.healAmount ?? 0, target.maxHp - target.hp);
     const effectPoint = this.getUnitSpritePoint(target, 0.72);
-    audioDirector.playHeal();
-
-    await this.playCombatEffect(ability.effectKey ?? attacker.effectKey, attacker, target);
-    await this.flashUnitSprite(target, 0xb8ffd0);
+    const effect = this.createCombatEffectPlayback(ability.effectKey ?? attacker.effectKey, attacker, target);
+    await Promise.all([this.animateSourceReaction(effect), this.playCombatEffectLeadIn(effect)]);
 
     if (amount > 0) {
       target.hp += amount;
       this.positionUnit(target);
     }
+
+    await Promise.all([this.playCombatEffectImpact(effect), this.animateTargetReaction(effect, target)]);
 
     await this.showFloatingCombatText(effectPoint, amount > 0 ? `+${amount}` : 'MISS', UI_TEXT_DAMAGE, 42, 720);
 
@@ -6339,10 +6305,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async resolveSteal(attacker: BattleUnit, target: BattleUnit, _ability: UnitAbility): Promise<void> {
-    const attackerView = this.views.get(attacker.id);
-    const targetView = this.views.get(target.id);
-
-    if (!attackerView || !targetView || !attacker.alive || !target.alive) {
+    if (!this.views.get(attacker.id) || !this.views.get(target.id) || !attacker.alive || !target.alive) {
       return;
     }
 
@@ -6351,21 +6314,9 @@ export class BattleScene extends Phaser.Scene {
     const attackerPoint = this.getUnitWorldPoint(attacker);
     const targetPoint = this.getUnitWorldPoint(target);
     const angle = Phaser.Math.Angle.Between(attackerPoint.x, attackerPoint.y, targetPoint.x, targetPoint.y);
-    audioDirector.playSteal();
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: attackerView.container,
-        x: attackerPoint.x + Math.cos(angle) * 14,
-        y: attackerPoint.y + Math.sin(angle) * 10,
-        duration: 120,
-        yoyo: true,
-        ease: 'Sine.easeInOut',
-        onComplete: () => resolve()
-      });
-    });
-
-    await this.playCombatEffect(_ability.effectKey ?? attacker.effectKey, attacker, target);
+    const effect = this.createCombatEffectPlayback(_ability.effectKey ?? attacker.effectKey, attacker, target, { angle });
+    await Promise.all([this.animateSourceReaction(effect), this.playCombatEffectLeadIn(effect)]);
+    await Promise.all([this.playCombatEffectImpact(effect), this.animateTargetReaction(effect, target)]);
 
     if (target.dropItemId) {
       const quantity = target.dropQuantity ?? 1;
@@ -6411,7 +6362,7 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private async playCombatEffect(
+  private createCombatEffectPlayback(
     effectId: CombatEffectId,
     source: BattleUnit,
     target: BattleUnit,
@@ -6420,158 +6371,134 @@ export class BattleScene extends Phaser.Scene {
       impactPoint?: Phaser.Math.Vector2;
       angle?: number;
     }
-  ): Promise<void> {
-    const effect = getCombatEffectDefinition(effectId);
+  ): CombatEffectPlayback {
+    const definition = getCombatEffectDefinition(effectId);
+    const sourceGroundPoint = this.getUnitWorldPoint(source);
+    const targetGroundPoint = this.getUnitWorldPoint(target);
     const launchPoint =
       overrides?.launchPoint ??
-      this.getUnitSpritePoint(source, effect.launchAnchor ?? effect.impactAnchor ?? 0.55);
+      this.getUnitSpritePoint(source, definition.launchAnchor ?? definition.impactAnchor ?? 0.55);
     const impactBase =
       overrides?.impactPoint ??
-      this.getUnitSpritePoint(target, effect.impactAnchor ?? effect.launchAnchor ?? 0.56);
-    const impactPoint = new Phaser.Math.Vector2(
+      this.getUnitSpritePoint(target, definition.impactAnchor ?? definition.launchAnchor ?? 0.56);
+    const targetPoint = new Phaser.Math.Vector2(
       impactBase.x,
-      impactBase.y + (effect.impactOffsetY ?? 0)
+      impactBase.y + (definition.impactOffsetY ?? 0)
     );
     const sourcePoint = new Phaser.Math.Vector2(
       launchPoint.x,
-      launchPoint.y + (effect.sourceOffsetY ?? 0)
+      launchPoint.y + (definition.sourceOffsetY ?? 0)
     );
     const angle =
       overrides?.angle ??
-      Phaser.Math.Angle.Between(sourcePoint.x, sourcePoint.y, impactPoint.x, impactPoint.y);
+      Phaser.Math.Angle.Between(sourcePoint.x, sourcePoint.y, targetPoint.x, targetPoint.y);
 
-    switch (effect.motion) {
-      case 'projectile':
-        await this.animateProjectileSprite(
-          effect.assetKey,
-          sourcePoint,
-          impactPoint,
-          angle,
-          effect.startScale,
-          effect.peakScale,
-          effect.duration,
-          effect.spin ?? 0,
-          effect.additive ?? false
-        );
+    return {
+      definition,
+      source,
+      target,
+      sourceGroundPoint,
+      targetGroundPoint,
+      sourcePoint,
+      targetPoint,
+      angle: Number.isFinite(angle) ? angle : 0
+    };
+  }
+
+  private async playCombatEffectLeadIn(playback: CombatEffectPlayback): Promise<void> {
+    const { definition } = playback;
+
+    if (definition.telegraph) {
+      audioDirector.playCombatEffectPhase(definition.audio, 'telegraph');
+      await this.animateCombatTelegraph(playback, definition.telegraph);
+    }
+
+    if (definition.travel) {
+      audioDirector.playCombatEffectPhase(definition.audio, 'travel');
+      await this.animateCombatTravel(playback, definition.travel);
+    }
+  }
+
+  private async playCombatEffectImpact(
+    playback: CombatEffectPlayback,
+    options?: { critical?: boolean }
+  ): Promise<void> {
+    const { definition } = playback;
+
+    audioDirector.playCombatEffectPhase(definition.audio, 'impact', options?.critical ?? false);
+    await this.animateCombatImpactPhase(playback, definition.impact);
+
+    if (definition.camera.shakeDuration > 0 && definition.camera.shakeIntensity > 0) {
+      this.getWorldCamera().shake(definition.camera.shakeDuration, definition.camera.shakeIntensity);
+    }
+
+    if (definition.camera.hitStop > 0) {
+      await this.wait(definition.camera.hitStop);
+    }
+
+    if (definition.afterglow) {
+      await this.animateCombatAfterglow(playback, definition.afterglow);
+    }
+  }
+
+  private async animateSourceReaction(playback: CombatEffectPlayback): Promise<void> {
+    const reaction = playback.definition.sourceReaction;
+    const view = this.views.get(playback.source.id);
+
+    if (!view || reaction.kind === 'none') {
+      return;
+    }
+
+    const startX = playback.sourceGroundPoint.x;
+    const startY = playback.sourceGroundPoint.y;
+    let deltaX = 0;
+    let deltaY = 0;
+
+    switch (reaction.kind) {
+      case 'lunge':
+        deltaX = Math.cos(playback.angle) * reaction.distance;
+        deltaY = Math.sin(playback.angle) * reaction.distance - reaction.lift;
         break;
-      case 'impact-arc':
-      case 'impact-burst':
-      case 'ground-sigil':
-      case 'support-bloom':
-        await this.animateImpactSprite(
-          effect.assetKey,
-          impactPoint,
-          angle + (effect.rotationOffset ?? 0),
-          effect.startScale,
-          effect.peakScale,
-          effect.duration,
-          effect.additive ?? false,
-          effect.endScaleMultiplier ?? 1.15
-        );
+      case 'brace':
+        deltaX = -Math.cos(playback.angle) * reaction.distance;
+        deltaY = Math.sin(playback.angle) * reaction.distance * 0.3 - reaction.lift;
         break;
-      case 'transfer': {
-        const transferFrom = effect.travelFromTarget ? impactPoint : sourcePoint;
-        const transferTo = effect.travelFromTarget ? sourcePoint : impactPoint;
-        await this.animateTransferEffect(effect, transferFrom, transferTo);
+      case 'phase-step':
+        deltaX = Math.cos(playback.angle) * reaction.distance;
+        deltaY = Math.sin(playback.angle) * reaction.distance - reaction.lift;
+        this.spawnBlinkMovementBurst(playback.sourceGroundPoint, view.container.depth, playback.angle, 0x96ece0);
+        this.spawnCombatAfterimage(playback.source, playback.sourceGroundPoint, 0x96ece0);
         break;
-      }
-      case 'ct-surge':
-        await this.animateCtSurgeEffect(effect, impactPoint);
+      case 'lift':
+        deltaY = -reaction.lift;
         break;
       default:
         break;
     }
-  }
 
-  private async animateProjectileSprite(
-    key: string | null,
-    launchPoint: Phaser.Math.Vector2,
-    impactPoint: Phaser.Math.Vector2,
-    angle: number,
-    startScale: number,
-    endScale: number,
-    duration: number,
-    spin = 0,
-    additive = false
-  ): Promise<void> {
-    if (!key) {
-      return;
-    }
-
-    const projectile = this.registerWorldObject(this.add
-      .image(launchPoint.x, launchPoint.y, key)
-      .setDepth(962)
-      .setScale(startScale)
-      .setRotation(angle)
-      .setAlpha(0.96));
-
-    if (additive) {
-      projectile.setBlendMode(Phaser.BlendModes.ADD);
-    }
+    const destination = new Phaser.Math.Vector2(startX + deltaX, startY + deltaY);
 
     await new Promise<void>((resolve) => {
       this.tweens.add({
-        targets: projectile,
-        x: impactPoint.x,
-        y: impactPoint.y,
-        scaleX: endScale,
-        scaleY: endScale,
-        rotation: angle + spin,
-        duration,
-        ease: 'Cubic.easeIn',
+        targets: view.container,
+        x: destination.x,
+        y: destination.y,
+        duration: reaction.duration,
+        ease: reaction.kind === 'brace' ? 'Quad.easeOut' : 'Sine.easeOut',
         onComplete: () => {
-          projectile.destroy();
-          resolve();
-        }
-      });
-    });
-  }
+          if (reaction.kind === 'phase-step') {
+            this.spawnBlinkMovementBurst(destination, view.container.depth, playback.angle, 0x96ece0);
+            this.spawnCombatAfterimage(playback.source, destination, 0x96ece0);
+          }
 
-  private async animateImpactSprite(
-    key: string | null,
-    impactPoint: Phaser.Math.Vector2,
-    rotation: number,
-    startScale: number,
-    peakScale: number,
-    duration: number,
-    additive: boolean,
-    endScaleMultiplier = 1.15
-  ): Promise<void> {
-    if (!key) {
-      await this.wait(duration * 0.85);
-      return;
-    }
-
-    const effect = this.registerWorldObject(this.add
-      .image(impactPoint.x, impactPoint.y, key)
-      .setDepth(962)
-      .setScale(startScale)
-      .setRotation(rotation)
-      .setAlpha(0));
-
-    if (additive) {
-      effect.setBlendMode(Phaser.BlendModes.ADD);
-    }
-
-    await new Promise<void>((resolve) => {
-      this.tweens.add({
-        targets: effect,
-        alpha: 0.95,
-        scaleX: peakScale,
-        scaleY: peakScale,
-        duration: duration * 0.45,
-        ease: 'Back.easeOut',
-        onComplete: () => {
           this.tweens.add({
-            targets: effect,
-            alpha: 0,
-            scaleX: peakScale * endScaleMultiplier,
-            scaleY: peakScale * endScaleMultiplier,
-            rotation: rotation + 0.25,
-            duration: duration * 0.55,
-            ease: 'Quad.easeOut',
+            targets: view.container,
+            x: startX,
+            y: startY,
+            duration: reaction.returnDuration,
+            ease: 'Sine.easeInOut',
             onComplete: () => {
-              effect.destroy();
+              view.container.setPosition(startX, startY);
               resolve();
             }
           });
@@ -6580,51 +6507,483 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private async animateTransferEffect(
-    effect: CombatEffectDefinition,
-    launchPoint: Phaser.Math.Vector2,
-    impactPoint: Phaser.Math.Vector2
+  private async animateTargetReaction(
+    playback: CombatEffectPlayback,
+    target: BattleUnit,
+    critical = false
   ): Promise<void> {
-    const angle = Phaser.Math.Angle.Between(launchPoint.x, launchPoint.y, impactPoint.x, impactPoint.y);
+    const reaction = playback.definition.targetReaction;
+    const view = this.views.get(target.id);
 
-    if (effect.assetKey) {
-      await this.animateProjectileSprite(
-        effect.assetKey,
-        launchPoint,
-        impactPoint,
-        angle,
-        effect.startScale,
-        effect.peakScale,
-        effect.duration,
-        effect.spin ?? 0,
-        effect.additive ?? false
-      );
-    } else {
-      await this.wait(effect.duration * 0.45);
-      await this.wait(effect.duration * 0.3);
-    }
-  }
-
-  private async animateCtSurgeEffect(
-    effect: CombatEffectDefinition,
-    impactPoint: Phaser.Math.Vector2
-  ): Promise<void> {
-    if (effect.assetKey) {
-      await this.animateImpactSprite(
-        effect.assetKey,
-        impactPoint,
-        effect.rotationOffset ?? 0,
-        effect.startScale,
-        effect.peakScale,
-        effect.duration,
-        effect.additive ?? false,
-        effect.endScaleMultiplier ?? 1.2
-      );
+    if (!view || reaction.kind === 'none') {
       return;
     }
 
-    await this.wait(effect.duration * 0.18);
-    await this.wait(effect.duration * 0.5);
+    const startX = view.container.x;
+    const startY = view.container.y;
+    const magnitude = critical ? 1.18 : 1;
+    const deltaX =
+      reaction.kind === 'uplift'
+        ? 0
+        : Math.cos(playback.angle) * reaction.offsetX * magnitude;
+    const deltaY =
+      reaction.kind === 'phase'
+        ? reaction.offsetY * magnitude
+        : reaction.kind === 'uplift'
+          ? reaction.offsetY * magnitude
+          : Math.sin(playback.angle) * reaction.offsetY * magnitude;
+
+    await Promise.all([
+      new Promise<void>((resolve) => {
+        view.sprite.setTintFill(reaction.flashTint);
+        this.tweens.add({
+          targets: view.sprite,
+          alpha: reaction.alphaMin,
+          duration: reaction.duration,
+          yoyo: true,
+          repeat: reaction.repeat,
+          onComplete: () => {
+            view.sprite.clearTint();
+            view.sprite.setAlpha(1);
+            resolve();
+          }
+        });
+      }),
+      new Promise<void>((resolve) => {
+        this.tweens.add({
+          targets: view.container,
+          x: startX + deltaX,
+          y: startY + deltaY,
+          duration: reaction.duration,
+          ease: reaction.kind === 'uplift' ? 'Sine.easeOut' : 'Quad.easeOut',
+          yoyo: true,
+          repeat: reaction.repeat,
+          onComplete: () => {
+            view.container.setPosition(startX, startY);
+            resolve();
+          }
+        });
+      })
+    ]);
+  }
+
+  private async animateCombatTelegraph(
+    playback: CombatEffectPlayback,
+    telegraph: NonNullable<CombatEffectDefinition['telegraph']>
+  ): Promise<void> {
+    const animations: Promise<void>[] = [];
+    const point = this.getCombatEffectPoint(playback, telegraph.anchor);
+    const groundPoint = this.getCombatEffectGroundPoint(playback, telegraph.anchor);
+    const spriteDepth = this.getCombatEffectDepth(playback, telegraph.anchor, false);
+    const ringDepth = this.getCombatEffectDepth(playback, telegraph.anchor, true);
+
+    if (telegraph.sprite) {
+      animations.push(this.animateCombatSpriteLayer(point, spriteDepth, playback.angle, telegraph.sprite));
+    }
+
+    if (telegraph.ring) {
+      animations.push(this.animateCombatGroundRing(groundPoint, ringDepth, telegraph.ring));
+    }
+
+    if (telegraph.glowTint && telegraph.glowAlpha && telegraph.glowScale) {
+      animations.push(
+        this.animateCombatGlow(
+          point,
+          spriteDepth - 0.01,
+          telegraph.glowTint,
+          telegraph.glowAlpha,
+          telegraph.glowScale,
+          telegraph.duration
+        )
+      );
+    }
+
+    if (telegraph.particles) {
+      this.explodeCombatParticles(point, spriteDepth + 0.02, telegraph.particles, playback.angle);
+    }
+
+    if (animations.length === 0) {
+      await this.wait(telegraph.duration);
+      return;
+    }
+
+    await Promise.all(animations);
+  }
+
+  private async animateCombatTravel(
+    playback: CombatEffectPlayback,
+    travel: NonNullable<CombatEffectDefinition['travel']>
+  ): Promise<void> {
+    const fromPoint = this.getCombatEffectPoint(playback, travel.from);
+    const toPoint = this.getCombatEffectPoint(playback, travel.to);
+    const angle = Phaser.Math.Angle.Between(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) + (travel.rotationOffset ?? 0);
+    const depth = Math.max(
+      this.getCombatEffectDepth(playback, travel.from, false),
+      this.getCombatEffectDepth(playback, travel.to, false)
+    ) + 0.02;
+
+    if (Phaser.Math.Distance.Between(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) <= 8) {
+      await this.animateCombatSpriteLayer(fromPoint, depth, angle, {
+        textureKey: travel.textureKey,
+        tint: travel.tint,
+        alpha: travel.alpha,
+        startScale: travel.startScale,
+        endScale: travel.endScale,
+        duration: travel.duration,
+        additive: travel.additive,
+        spin: travel.spin
+      });
+      return;
+    }
+
+    const projectile = this.registerWorldObject(this.add
+      .image(fromPoint.x, fromPoint.y, travel.textureKey)
+      .setDepth(depth)
+      .setScale(travel.startScale)
+      .setRotation(angle)
+      .setTint(travel.tint)
+      .setAlpha(travel.alpha));
+
+    if (travel.additive) {
+      projectile.setBlendMode(Phaser.BlendModes.ADD);
+    }
+
+    const trail = travel.trailTint
+      ? this.registerWorldObject(this.add.particles(fromPoint.x, fromPoint.y, 'spark', {
+          lifespan: 160,
+          frequency: 24,
+          quantity: 1,
+          speedX: { min: -8, max: 8 },
+          speedY: { min: -8, max: 8 },
+          alpha: { start: 0.54, end: 0 },
+          scale: {
+            start: travel.trailScaleStart ?? 0.46,
+            end: travel.trailScaleEnd ?? 0.05
+          },
+          tint: [...travel.trailTint],
+          blendMode: 'ADD'
+        }))
+      : null;
+
+    trail?.setDepth(depth - 0.01);
+
+    const progress = { value: 0 };
+    const startX = fromPoint.x;
+    const startY = fromPoint.y;
+    const endX = toPoint.x;
+    const endY = toPoint.y;
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: progress,
+        value: 1,
+        duration: travel.duration,
+        ease: 'Cubic.easeInOut',
+        onUpdate: () => {
+          const ratio = progress.value;
+          projectile.x = Phaser.Math.Linear(startX, endX, ratio);
+          projectile.y = Phaser.Math.Linear(startY, endY, ratio) - Math.sin(Math.PI * ratio) * (travel.arcHeight ?? 0);
+          projectile.scaleX = Phaser.Math.Linear(travel.startScale, travel.endScale, ratio);
+          projectile.scaleY = projectile.scaleX;
+          projectile.rotation = angle + (travel.spin ?? 0) * ratio;
+          trail?.setPosition(projectile.x, projectile.y);
+        },
+        onComplete: () => {
+          trail?.destroy();
+          projectile.destroy();
+          resolve();
+        }
+      });
+    });
+  }
+
+  private async animateCombatImpactPhase(
+    playback: CombatEffectPlayback,
+    impact: CombatEffectDefinition['impact']
+  ): Promise<void> {
+    const animations: Promise<void>[] = [];
+    const point = this.getCombatEffectPoint(playback, impact.anchor);
+    const groundPoint = this.getCombatEffectGroundPoint(playback, impact.anchor);
+    const spriteDepth = this.getCombatEffectDepth(playback, impact.anchor, false);
+    const ringDepth = this.getCombatEffectDepth(playback, impact.anchor, true);
+
+    if (impact.sprite) {
+      animations.push(this.animateCombatSpriteLayer(point, spriteDepth, playback.angle, impact.sprite));
+    }
+
+    if (impact.ring) {
+      animations.push(this.animateCombatGroundRing(groundPoint, ringDepth, impact.ring));
+    }
+
+    if (impact.glowTint && impact.glowAlpha && impact.glowScale) {
+      animations.push(
+        this.animateCombatGlow(
+          point,
+          spriteDepth - 0.01,
+          impact.glowTint,
+          impact.glowAlpha,
+          impact.glowScale,
+          impact.duration
+        )
+      );
+    }
+
+    if (impact.particles) {
+      this.explodeCombatParticles(point, spriteDepth + 0.02, impact.particles, playback.angle);
+    }
+
+    if (animations.length === 0) {
+      await this.wait(impact.duration);
+      return;
+    }
+
+    await Promise.all(animations);
+  }
+
+  private async animateCombatAfterglow(
+    playback: CombatEffectPlayback,
+    afterglow: NonNullable<CombatEffectDefinition['afterglow']>
+  ): Promise<void> {
+    const animations: Promise<void>[] = [];
+    const point = this.getCombatEffectPoint(playback, afterglow.anchor);
+    const groundPoint = this.getCombatEffectGroundPoint(playback, afterglow.anchor);
+    const spriteDepth = this.getCombatEffectDepth(playback, afterglow.anchor, false);
+    const ringDepth = this.getCombatEffectDepth(playback, afterglow.anchor, true);
+
+    if (afterglow.sprite) {
+      animations.push(this.animateCombatSpriteLayer(point, spriteDepth, playback.angle, afterglow.sprite));
+    }
+
+    if (afterglow.ring) {
+      animations.push(this.animateCombatGroundRing(groundPoint, ringDepth, afterglow.ring));
+    }
+
+    if (afterglow.glowTint && afterglow.glowAlpha && afterglow.glowScale) {
+      animations.push(
+        this.animateCombatGlow(
+          point,
+          spriteDepth - 0.01,
+          afterglow.glowTint,
+          afterglow.glowAlpha,
+          afterglow.glowScale,
+          afterglow.duration
+        )
+      );
+    }
+
+    if (afterglow.particles) {
+      this.explodeCombatParticles(point, spriteDepth + 0.02, afterglow.particles, playback.angle);
+    }
+
+    if (animations.length === 0) {
+      await this.wait(afterglow.duration);
+      return;
+    }
+
+    await Promise.all(animations);
+  }
+
+  private async animateCombatSpriteLayer(
+    point: Phaser.Math.Vector2,
+    depth: number,
+    angle: number,
+    layer: NonNullable<CombatEffectDefinition['impact']>['sprite']
+  ): Promise<void> {
+    if (!layer) {
+      return;
+    }
+
+    const sprite = this.registerWorldObject(this.add
+      .image(point.x, point.y + (layer.offsetY ?? 0), layer.textureKey)
+      .setDepth(depth)
+      .setScale(layer.startScale)
+      .setRotation(angle + (layer.rotationOffset ?? 0))
+      .setTint(layer.tint)
+      .setAlpha(0));
+
+    if (layer.additive) {
+      sprite.setBlendMode(Phaser.BlendModes.ADD);
+    }
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: sprite,
+        alpha: layer.alpha,
+        scaleX: Phaser.Math.Linear(layer.startScale, layer.endScale, 0.55),
+        scaleY: Phaser.Math.Linear(layer.startScale, layer.endScale, 0.55),
+        duration: layer.duration * 0.4,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          this.tweens.add({
+            targets: sprite,
+            alpha: 0,
+            scaleX: layer.endScale,
+            scaleY: layer.endScale,
+            rotation: angle + (layer.rotationOffset ?? 0) + (layer.spin ?? 0),
+            duration: layer.duration * 0.6,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              sprite.destroy();
+              resolve();
+            }
+          });
+        }
+      });
+    });
+  }
+
+  private async animateCombatGroundRing(
+    point: Phaser.Math.Vector2,
+    depth: number,
+    ring: NonNullable<CombatEffectDefinition['impact']>['ring']
+  ): Promise<void> {
+    if (!ring) {
+      return;
+    }
+
+    const ellipse = this.registerWorldObject(this.add
+      .ellipse(
+        point.x,
+        point.y + (ring.offsetY ?? 0),
+        ring.width,
+        ring.height,
+        ring.tint,
+        ring.fillAlpha ?? ring.alpha * 0.35
+      )
+      .setDepth(depth)
+      .setScale(ring.startScale)
+      .setAlpha(ring.alpha));
+    ellipse.setStrokeStyle(ring.strokeWidth ?? 2, ring.tint, ring.strokeAlpha ?? ring.alpha);
+
+    if (ring.additive) {
+      ellipse.setBlendMode(Phaser.BlendModes.ADD);
+    }
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: ellipse,
+        scaleX: ring.endScale,
+        scaleY: ring.endScale,
+        alpha: 0,
+        duration: ring.duration,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          ellipse.destroy();
+          resolve();
+        }
+      });
+    });
+  }
+
+  private async animateCombatGlow(
+    point: Phaser.Math.Vector2,
+    depth: number,
+    tint: number,
+    alpha: number,
+    scale: number,
+    duration: number
+  ): Promise<void> {
+    const glow = this.registerWorldObject(this.add
+      .image(point.x, point.y, SOFT_LIGHT_TEXTURE_KEY)
+      .setDepth(depth)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(tint)
+      .setScale(scale)
+      .setAlpha(alpha));
+
+    await new Promise<void>((resolve) => {
+      this.tweens.add({
+        targets: glow,
+        alpha: 0,
+        scaleX: scale * 1.35,
+        scaleY: scale * 1.35,
+        duration,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          glow.destroy();
+          resolve();
+        }
+      });
+    });
+  }
+
+  private explodeCombatParticles(
+    point: Phaser.Math.Vector2,
+    depth: number,
+    particles: NonNullable<CombatEffectDefinition['impact']>['particles'],
+    angle: number
+  ): void {
+    if (!particles) {
+      return;
+    }
+
+    const angleDegrees = Phaser.Math.RadToDeg(angle + (particles.angleOffset ?? 0));
+    const burst = this.registerWorldObject(this.add.particles(point.x, point.y + (particles.offsetY ?? 0), 'spark', {
+      speed: { min: particles.speedMin, max: particles.speedMax },
+      angle: particles.angleSpread
+        ? { min: angleDegrees - particles.angleSpread / 2, max: angleDegrees + particles.angleSpread / 2 }
+        : undefined,
+      lifespan: particles.lifespan,
+      quantity: particles.count,
+      scale: { start: particles.scaleStart, end: particles.scaleEnd },
+      alpha: { start: 0.82, end: 0 },
+      tint: [...particles.tint],
+      gravityY: particles.gravityY ?? 0,
+      blendMode: particles.blendMode ?? 'NORMAL'
+    }));
+    burst.setDepth(depth);
+    burst.explode(particles.count, point.x, point.y + (particles.offsetY ?? 0));
+
+    this.time.delayedCall(particles.lifespan + 40, () => {
+      burst.destroy();
+    });
+  }
+
+  private spawnCombatAfterimage(unit: BattleUnit, groundPoint: Phaser.Math.Vector2, tint: number): void {
+    const view = this.views.get(unit.id);
+
+    if (!view) {
+      return;
+    }
+
+    const afterimage = this.registerWorldObject(this.add
+      .image(groundPoint.x + view.sprite.x, groundPoint.y + view.sprite.y, view.sprite.texture.key)
+      .setOrigin(view.sprite.originX, view.sprite.originY)
+      .setDepth(view.container.depth + 0.1)
+      .setTint(tint)
+      .setAlpha(0.26)
+      .setFlipX(view.sprite.flipX)
+      .setFlipY(view.sprite.flipY)
+      .setDisplaySize(view.sprite.displayWidth, view.sprite.displayHeight));
+
+    this.tweens.add({
+      targets: afterimage,
+      alpha: 0,
+      y: afterimage.y + 4,
+      duration: 160,
+      ease: 'Quad.easeOut',
+      onComplete: () => afterimage.destroy()
+    });
+  }
+
+  private getCombatEffectPoint(playback: CombatEffectPlayback, anchor: 'source' | 'target'): Phaser.Math.Vector2 {
+    const point = anchor === 'source' ? playback.sourcePoint : playback.targetPoint;
+    return point.clone();
+  }
+
+  private getCombatEffectGroundPoint(playback: CombatEffectPlayback, anchor: 'source' | 'target'): Phaser.Math.Vector2 {
+    const point = anchor === 'source' ? playback.sourceGroundPoint : playback.targetGroundPoint;
+    return point.clone();
+  }
+
+  private getCombatEffectDepth(
+    playback: CombatEffectPlayback,
+    anchor: 'source' | 'target',
+    grounded: boolean
+  ): number {
+    const unit = anchor === 'source' ? playback.source : playback.target;
+    const baseDepth = this.views.get(unit.id)?.container.depth ?? 962;
+    return grounded ? baseDepth - 0.08 : baseDepth + 0.18;
   }
 
   private async flashUnitSprite(target: BattleUnit, tint: number): Promise<void> {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { CombatEffectAudioDefinition, CombatEffectAudioPhase, CombatEffectAudioProfileId } from '../core/combatEffects';
 
 type MusicTrackId = 'title' | 'setup' | 'battle';
 type BattleAmbienceId = 'day' | 'dusk' | 'night' | 'dawn';
@@ -295,44 +296,60 @@ class AudioDirector {
     this.playNoise(0.02, 0.02, 1800);
   }
 
+  playCombatEffectPhase(
+    audio: CombatEffectAudioDefinition,
+    phase: CombatEffectAudioPhase,
+    critical = false
+  ): void {
+    const detune =
+      phase === 'telegraph'
+        ? audio.telegraphDetune ?? 0
+        : phase === 'travel'
+          ? audio.travelDetune ?? 0
+          : audio.impactDetune ?? 0;
+
+    this.playCombatEffectProfile(audio.profile, phase, detune);
+
+    if (phase === 'impact' && critical) {
+      this.playNoise(0.08, 0.07, 980);
+      this.playTone(104, 0.12, {
+        type: 'triangle',
+        volume: 0.075,
+        release: 0.18,
+        lowpass: 680,
+        detune: detune + 6
+      });
+    }
+  }
+
   playAttack(style: string): void {
     switch (style) {
       case 'arrow-flight':
       case 'feather-shot':
-        this.playTone(820, 0.05, { type: 'square', volume: 0.05, release: 0.08, lowpass: 2400 });
-        this.playNoise(0.04, 0.025, 2800);
+        this.playCombatEffectPhase({ profile: 'chrono-ranged' }, 'telegraph');
         break;
       case 'ember-burst':
+        this.playCombatEffectPhase({ profile: 'burst-discharge' }, 'telegraph');
+        break;
       case 'ash-hex':
-        this.playTone(240, 0.12, { type: 'sawtooth', volume: 0.06, release: 0.18, lowpass: 1100 });
-        this.playNoise(0.1, 0.04, 1400);
+        this.playCombatEffectPhase({ profile: 'psychic-sigil' }, 'telegraph');
         break;
       default:
-        this.playTone(180, 0.06, { type: 'sawtooth', volume: 0.06, release: 0.08, lowpass: 1400 });
-        this.playTone(280, 0.05, { type: 'square', volume: 0.03, release: 0.06 }, 0.02);
+        this.playCombatEffectPhase({ profile: 'sanctified-arc' }, 'telegraph');
         break;
     }
   }
 
   playHit(critical = false): void {
-    this.playNoise(0.09, critical ? 0.08 : 0.05, 1100);
-    this.playTone(critical ? 110 : 92, critical ? 0.12 : 0.08, {
-      type: 'triangle',
-      volume: critical ? 0.08 : 0.055,
-      release: critical ? 0.18 : 0.12,
-      lowpass: 720
-    });
+    this.playCombatEffectPhase({ profile: 'sanctified-arc' }, 'impact', critical);
   }
 
   playHeal(): void {
-    this.playTone(659.25, 0.08, { type: 'sine', volume: 0.05, release: 0.12 });
-    this.playTone(783.99, 0.1, { type: 'sine', volume: 0.045, release: 0.15 }, 0.05);
-    this.playTone(987.77, 0.12, { type: 'triangle', volume: 0.04, release: 0.16 }, 0.1);
+    this.playCombatEffectPhase({ profile: 'support-bloom' }, 'impact');
   }
 
   playSteal(): void {
-    this.playTone(698.46, 0.06, { type: 'square', volume: 0.05, release: 0.08, lowpass: 1800 });
-    this.playTone(1046.5, 0.08, { type: 'triangle', volume: 0.045, release: 0.1 }, 0.04);
+    this.playCombatEffectPhase({ profile: 'utility-extract' }, 'impact');
   }
 
   playChest(): void {
@@ -698,6 +715,146 @@ class AudioDirector {
 
   private playStingerTone(note: number, duration: number, options: Omit<VoiceOptions, 'bus'>, delay = 0): void {
     this.playTone(midiToFrequency(note), duration, { ...options, bus: 'sfx' }, delay);
+  }
+
+  private playCombatEffectProfile(
+    profile: CombatEffectAudioProfileId,
+    phase: CombatEffectAudioPhase,
+    detune = 0
+  ): void {
+    switch (profile) {
+      case 'sanctified-arc':
+        if (phase === 'telegraph') {
+          this.playTone(186, 0.06, { type: 'sawtooth', volume: 0.055, release: 0.08, lowpass: 1260, detune });
+          this.playTone(292, 0.05, { type: 'triangle', volume: 0.03, release: 0.06, lowpass: 1820, detune }, 0.02);
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playNoise(0.07, 0.055, 1040);
+          this.playTone(96, 0.08, { type: 'triangle', volume: 0.055, release: 0.12, lowpass: 760, detune });
+          this.playTone(168, 0.05, { type: 'square', volume: 0.024, release: 0.06, lowpass: 1240, detune }, 0.01);
+        }
+        return;
+      case 'chrono-ranged':
+        if (phase === 'telegraph') {
+          this.playTone(820, 0.05, { type: 'square', volume: 0.048, release: 0.08, lowpass: 2300, detune });
+          this.playNoise(0.035, 0.022, 2800);
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(1120, 0.06, { type: 'triangle', volume: 0.03, release: 0.08, lowpass: 2600, detune });
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playNoise(0.045, 0.03, 2200);
+          this.playTone(178, 0.06, { type: 'triangle', volume: 0.04, release: 0.08, lowpass: 1200, detune });
+        }
+        return;
+      case 'burst-discharge':
+        if (phase === 'telegraph') {
+          this.playTone(238, 0.11, { type: 'sawtooth', volume: 0.058, release: 0.18, lowpass: 1080, detune });
+          this.playNoise(0.09, 0.03, 1450);
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(296, 0.08, { type: 'triangle', volume: 0.035, release: 0.1, lowpass: 1320, detune });
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playNoise(0.08, 0.04, 1320);
+          this.playTone(132, 0.08, { type: 'triangle', volume: 0.05, release: 0.12, lowpass: 780, detune });
+        }
+        return;
+      case 'psychic-sigil':
+        if (phase === 'telegraph') {
+          this.playTone(466.16, 0.08, { type: 'sine', volume: 0.032, release: 0.1, lowpass: 1550, detune: detune - 8 });
+          this.playTone(554.37, 0.1, { type: 'triangle', volume: 0.026, release: 0.12, lowpass: 1720, detune: detune + 4 }, 0.03);
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playNoise(0.06, 0.028, 1500, 0, 0.65);
+          this.playTone(164.81, 0.1, { type: 'sine', volume: 0.04, release: 0.16, lowpass: 900, detune: detune - 10 });
+          this.playTone(329.63, 0.12, { type: 'triangle', volume: 0.028, release: 0.14, lowpass: 1400, detune: detune + 12 }, 0.02);
+        }
+        return;
+      case 'temporal-rend':
+        if (phase === 'telegraph') {
+          this.playTone(392, 0.06, { type: 'sine', volume: 0.038, release: 0.1, lowpass: 1880, detune: detune - 6 });
+          this.playTone(783.99, 0.05, { type: 'square', volume: 0.028, release: 0.08, lowpass: 2200, detune: detune + 10 }, 0.02);
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(659.25, 0.08, { type: 'triangle', volume: 0.03, release: 0.1, lowpass: 2100, detune });
+          this.playNoise(0.04, 0.016, 2300, 0, 0.82);
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playNoise(0.07, 0.03, 1760, 0, 0.72);
+          this.playTone(130.81, 0.09, { type: 'triangle', volume: 0.048, release: 0.14, lowpass: 760, detune });
+          this.playTone(523.25, 0.08, { type: 'sine', volume: 0.022, release: 0.12, lowpass: 1720, detune: detune + 14 }, 0.02);
+        }
+        return;
+      case 'support-bloom':
+        if (phase === 'telegraph') {
+          this.playTone(659.25, 0.06, { type: 'sine', volume: 0.04, release: 0.1, lowpass: 1800, detune });
+          this.playTone(783.99, 0.08, { type: 'triangle', volume: 0.034, release: 0.12, lowpass: 1920, detune }, 0.04);
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(880, 0.06, { type: 'sine', volume: 0.026, release: 0.08, lowpass: 2100, detune });
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playTone(659.25, 0.08, { type: 'sine', volume: 0.05, release: 0.12, lowpass: 1900, detune });
+          this.playTone(783.99, 0.1, { type: 'sine', volume: 0.045, release: 0.15, lowpass: 2100, detune }, 0.05);
+          this.playTone(987.77, 0.12, { type: 'triangle', volume: 0.04, release: 0.16, lowpass: 2300, detune }, 0.1);
+        }
+        return;
+      case 'utility-extract':
+        if (phase === 'telegraph') {
+          this.playTone(698.46, 0.05, { type: 'square', volume: 0.042, release: 0.08, lowpass: 1800, detune });
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(932.33, 0.06, { type: 'triangle', volume: 0.03, release: 0.08, lowpass: 2200, detune }, 0.01);
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playTone(698.46, 0.06, { type: 'square', volume: 0.05, release: 0.08, lowpass: 1800, detune });
+          this.playTone(1046.5, 0.08, { type: 'triangle', volume: 0.045, release: 0.1, lowpass: 2200, detune }, 0.04);
+        }
+        return;
+      case 'item-use':
+        if (phase === 'telegraph') {
+          this.playTone(523.25, 0.05, { type: 'sine', volume: 0.034, release: 0.08, lowpass: 1600, detune });
+          return;
+        }
+
+        if (phase === 'travel') {
+          this.playTone(783.99, 0.05, { type: 'triangle', volume: 0.026, release: 0.08, lowpass: 1900, detune });
+          return;
+        }
+
+        if (phase === 'impact') {
+          this.playTone(587.33, 0.08, { type: 'sine', volume: 0.042, release: 0.1, lowpass: 1800, detune });
+          this.playTone(880, 0.1, { type: 'triangle', volume: 0.036, release: 0.14, lowpass: 2100, detune }, 0.04);
+        }
+        return;
+      default:
+        return;
+    }
   }
 
   private playTone(frequency: number, duration: number, options: VoiceOptions, delay = 0): void {

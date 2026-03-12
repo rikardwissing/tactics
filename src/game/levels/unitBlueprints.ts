@@ -1,5 +1,5 @@
 import rawBlueprints from './data/unitBlueprints.json';
-import type { CombatEffectId } from '../core/combatEffects';
+import { COMBAT_EFFECT_IDS, type CombatEffectId } from '../core/combatEffects';
 import type { ItemId } from '../core/items';
 import type {
   AbilityKind,
@@ -51,17 +51,6 @@ const ATTACK_STYLES = [
   'feather-shot',
   'ash-hex'
 ] as const satisfies readonly AttackStyle[];
-const COMBAT_EFFECT_IDS = [
-  'the-order-breacher-strike',
-  'the-order-relay-lance',
-  'the-order-tracer-volley',
-  'the-order-cautery-charge',
-  'the-order-field-mend',
-  'the-order-strip-gear',
-  'myrmidons-breaker-cleave',
-  'myrmidons-brine-shot',
-  'myrmidons-phase-lash'
-] as const satisfies readonly CombatEffectId[];
 const ITEM_IDS = ['mending-salve', 'quick-tonic'] as const satisfies readonly ItemId[];
 
 function assert(condition: unknown, message: string): asserts condition {

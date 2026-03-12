@@ -91,17 +91,14 @@ const unitTurnStartMyrmidonsSpectre = new URL(
   '../assets/game/voices/unit-turn-start-myrmidons-spectre.mp3',
   import.meta.url
 ).href;
-const theOrderBreacherStrike = new URL('../assets/game/effects/the-order-breacher-strike.png', import.meta.url).href;
-const theOrderRelayLance = new URL('../assets/game/effects/the-order-relay-lance.png', import.meta.url).href;
-const theOrderTracerVolley = new URL('../assets/game/effects/the-order-tracer-volley.png', import.meta.url).href;
-const theOrderCauteryCharge = new URL('../assets/game/effects/the-order-cautery-charge.png', import.meta.url).href;
-const theOrderFieldMend = new URL('../assets/game/effects/the-order-field-mend.png', import.meta.url).href;
-const theOrderStripGear = new URL('../assets/game/effects/the-order-strip-gear.png', import.meta.url).href;
-const myrmidonsBreakerCleave = new URL('../assets/game/effects/myrmidons-breaker-cleave.png', import.meta.url).href;
-const myrmidonsBrineShot = new URL('../assets/game/effects/myrmidons-brine-shot.png', import.meta.url).href;
-const myrmidonsPhaseLash = new URL('../assets/game/effects/myrmidons-phase-lash.png', import.meta.url).href;
-const itemMendingSalve = new URL('../assets/game/effects/item-mending-salve.png', import.meta.url).href;
-const itemQuickTonic = new URL('../assets/game/effects/item-quick-tonic.png', import.meta.url).href;
+const sanctifiedArc = new URL('../assets/game/effects/sanctified-arc.png', import.meta.url).href;
+const chronoRanged = new URL('../assets/game/effects/chrono-ranged.png', import.meta.url).href;
+const psychicSigil = new URL('../assets/game/effects/psychic-sigil.png', import.meta.url).href;
+const temporalRend = new URL('../assets/game/effects/temporal-rend.png', import.meta.url).href;
+const burstDischarge = new URL('../assets/game/effects/burst-discharge.png', import.meta.url).href;
+const supportBloom = new URL('../assets/game/effects/support-bloom.png', import.meta.url).href;
+const utilityExtract = new URL('../assets/game/effects/utility-extract.png', import.meta.url).href;
+const itemUse = new URL('../assets/game/effects/item-use.png', import.meta.url).href;
 const chapelChestClosed = new URL('../assets/game/props/chapel-chest-closed.png', import.meta.url).href;
 const chapelChestOpen = new URL('../assets/game/props/chapel-chest-open.png', import.meta.url).href;
 const terrainGrassA = new URL('../assets/game/terrain/terrain-grass-a.png', import.meta.url).href;
@@ -153,17 +150,14 @@ export const IMAGE_ASSETS = [
   { key: 'children-of-the-prophecy-aevum-guardian', url: childrenOfTheProphecyAevumGuardian },
   { key: 'children-of-the-prophecy-mirage-seer', url: childrenOfTheProphecyMirageSeer },
   { key: 'children-of-the-prophecy-memory-keeper', url: childrenOfTheProphecyMemoryKeeper },
-  { key: 'the-order-breacher-strike', url: theOrderBreacherStrike },
-  { key: 'the-order-relay-lance', url: theOrderRelayLance },
-  { key: 'the-order-tracer-volley', url: theOrderTracerVolley },
-  { key: 'the-order-cautery-charge', url: theOrderCauteryCharge },
-  { key: 'the-order-field-mend', url: theOrderFieldMend },
-  { key: 'the-order-strip-gear', url: theOrderStripGear },
-  { key: 'myrmidons-breaker-cleave', url: myrmidonsBreakerCleave },
-  { key: 'myrmidons-brine-shot', url: myrmidonsBrineShot },
-  { key: 'myrmidons-phase-lash', url: myrmidonsPhaseLash },
-  { key: 'item-mending-salve', url: itemMendingSalve },
-  { key: 'item-quick-tonic', url: itemQuickTonic },
+  { key: 'sanctified-arc', url: sanctifiedArc },
+  { key: 'chrono-ranged', url: chronoRanged },
+  { key: 'psychic-sigil', url: psychicSigil },
+  { key: 'temporal-rend', url: temporalRend },
+  { key: 'burst-discharge', url: burstDischarge },
+  { key: 'support-bloom', url: supportBloom },
+  { key: 'utility-extract', url: utilityExtract },
+  { key: 'item-use', url: itemUse },
   { key: 'chapel-chest-closed', url: chapelChestClosed },
   { key: 'chapel-chest-open', url: chapelChestOpen },
   { key: 'terrain-grass-a', url: terrainGrassA },
