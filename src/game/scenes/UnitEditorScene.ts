@@ -14,7 +14,6 @@ import type { FactionId, Point, TerrainType, UnitBlueprint } from '../core/types
 import { getFactionProfile } from '../levels/factions';
 import { UNIT_BLUEPRINT_BATTLE_SCALE } from '../levels';
 import {
-  buildUnitBlueprintEditorPatchMap,
   createEditableUnitBlueprintDraft,
   diffEditableUnitBlueprintDraft,
   getEditableAbilityFields,
@@ -22,7 +21,6 @@ import {
   type EditableUnitAbilityField,
   type EditableUnitBlueprintDraft,
   type EditableUnitBlueprintField,
-  type UnitBlueprintEditorPatchMap,
   resolveEditableUnitBlueprint,
   sanitizeEditableUnitBlueprintDraft
 } from '../levels/unitBlueprintEditor';
@@ -30,7 +28,6 @@ import { getAllUnitBlueprints } from '../levels/unitBlueprints';
 import {
   BattleUiChrome,
   UI_PANEL_CONTENT_GAP,
-  UI_PANEL_CONTENT_INSET,
   UI_PANEL_GAP,
   UI_PANEL_MINI_GAP
 } from './components/BattleUiChrome';
@@ -40,7 +37,6 @@ import {
   UI_COLOR_ACCENT_DANGER,
   UI_COLOR_ACCENT_NEUTRAL,
   UI_COLOR_ACCENT_WARM,
-  UI_COLOR_DANGER,
   UI_COLOR_PANEL_BORDER,
   UI_COLOR_PANEL_SHADOW,
   UI_COLOR_PANEL_SURFACE_ALT,
@@ -62,8 +58,6 @@ type ButtonId =
   | 'height-next'
   | 'reset-selected'
   | 'reset-all'
-  | 'copy-patch'
-  | 'download-patch'
   | 'copy-blueprint-file';
 
 interface ButtonView {
@@ -169,7 +163,6 @@ const ABILITY_BLOCK_GAP = 10;
 const ABILITY_BLOCK_HEADER_HEIGHT = 56;
 const ACTION_BUTTON_ROWS = [
   ['reset-selected', 'reset-all'],
-  ['copy-patch', 'download-patch'],
   ['copy-blueprint-file']
 ] as const satisfies readonly (readonly ButtonId[])[];
 
@@ -186,7 +179,7 @@ export class UnitEditorScene extends Phaser.Scene {
   private inspectorContentHeight = 0;
   private previewTerrain: TerrainType = 'stone';
   private previewHeight = 1;
-  private statusMessage = 'Drag the preview sprite or use the steppers. Export creates a diff-only patch.';
+  private statusMessage = 'Drag the preview sprite or use the steppers. Copy Blueprint File exports the current JSON.';
 
   private dragPointerId: number | null = null;
   private dragPointerOrigin = new Phaser.Math.Vector2();
@@ -200,7 +193,13 @@ export class UnitEditorScene extends Phaser.Scene {
   private shade!: Phaser.GameObjects.Rectangle;
   private previewWallGraphics!: Phaser.GameObjects.Graphics;
   private previewOutlineGraphics!: Phaser.GameObjects.Graphics;
-  private uiGraphics!: Phaser.GameObjects.Graphics;
+  private staticUiGraphics!: Phaser.GameObjects.Graphics;
+  private rosterScrollGraphics!: Phaser.GameObjects.Graphics;
+  private inspectorScrollGraphics!: Phaser.GameObjects.Graphics;
+  private rosterMaskGraphics!: Phaser.GameObjects.Graphics;
+  private inspectorMaskGraphics!: Phaser.GameObjects.Graphics;
+  private rosterContentMask!: Phaser.Display.Masks.GeometryMask;
+  private inspectorContentMask!: Phaser.Display.Masks.GeometryMask;
   private titleText!: Phaser.GameObjects.Text;
   private subtitleText!: Phaser.GameObjects.Text;
   private statusText!: Phaser.GameObjects.Text;
@@ -258,11 +257,19 @@ export class UnitEditorScene extends Phaser.Scene {
     this.previewWallGraphics = this.add.graphics().setDepth(20);
     this.previewTerrainImage = this.add.image(0, 0, 'terrain-stone-a').setOrigin(0.5, 0.5).setDepth(21);
     this.previewOutlineGraphics = this.add.graphics().setDepth(22);
-    this.uiGraphics = this.add.graphics().setDepth(200);
+    this.staticUiGraphics = this.add.graphics().setDepth(200);
+    this.rosterScrollGraphics = this.add.graphics().setDepth(201);
+    this.inspectorScrollGraphics = this.add.graphics().setDepth(201);
+    this.rosterMaskGraphics = this.add.graphics().setVisible(false);
+    this.inspectorMaskGraphics = this.add.graphics().setVisible(false);
+    this.rosterContentMask = this.rosterMaskGraphics.createGeometryMask();
+    this.inspectorContentMask = this.inspectorMaskGraphics.createGeometryMask();
+    this.rosterScrollGraphics.setMask(this.rosterContentMask);
+    this.inspectorScrollGraphics.setMask(this.inspectorContentMask);
 
     this.titleText = this.add.text(0, 0, 'UNIT BLUEPRINT EDITOR', UI_TEXT_TITLE).setDepth(210);
     this.subtitleText = this.add
-      .text(0, 0, 'Shared blueprint tuning with battle-style preview and manual diff export.', UI_TEXT_BODY)
+      .text(0, 0, 'Shared blueprint tuning with battle-style preview and full JSON export.', UI_TEXT_BODY)
       .setDepth(210);
     this.statusText = this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210);
 
@@ -274,7 +281,7 @@ export class UnitEditorScene extends Phaser.Scene {
     this.previewHintText = this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210);
     this.metaText = this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210);
     this.readOnlyNoteText = this.add
-      .text(0, 0, 'Read-only: names, class text, descriptions, drops, and placements.', UI_TEXT_LABEL)
+      .text(0, 0, 'Reference only below. Editable here: visuals, core stats, and ability numbers.', UI_TEXT_LABEL)
       .setDepth(210);
     this.dirtyCountText = this.add.text(0, 0, '', UI_TEXT_LABEL).setDepth(210);
     this.visualSectionTitle = this.add.text(0, 0, 'VISUAL', UI_TEXT_LABEL).setDepth(210);
@@ -289,8 +296,6 @@ export class UnitEditorScene extends Phaser.Scene {
       ['height-next', '>'],
       ['reset-selected', 'Reset Selected'],
       ['reset-all', 'Reset All'],
-      ['copy-patch', 'Copy Patch'],
-      ['download-patch', 'Download Patch'],
       ['copy-blueprint-file', 'Copy Blueprint File']
     ] as const satisfies readonly [ButtonId, string][]) {
       const labelText = this.add
@@ -308,6 +313,7 @@ export class UnitEditorScene extends Phaser.Scene {
       } else if (id.startsWith('terrain') || id.startsWith('height')) {
         this.previewButtons.set(id, button);
       } else {
+        this.applyInspectorMask(labelText);
         this.actionButtons.set(id, button);
       }
     }
@@ -315,7 +321,9 @@ export class UnitEditorScene extends Phaser.Scene {
     for (const factionId of this.groupedBlueprintIds.keys()) {
       this.rosterHeaderViews.push({
         factionId,
-        text: this.add.text(0, 0, getFactionProfile(factionId).displayName.toUpperCase(), UI_TEXT_LABEL).setDepth(210),
+        text: this.applyRosterMask(
+          this.add.text(0, 0, getFactionProfile(factionId).displayName.toUpperCase(), UI_TEXT_LABEL).setDepth(210)
+        ),
         bounds: new Phaser.Geom.Rectangle()
       });
     }
@@ -323,17 +331,17 @@ export class UnitEditorScene extends Phaser.Scene {
     for (const blueprint of this.blueprints) {
       this.rosterRowViews.push({
         blueprintId: blueprint.id,
-        titleText: this.add.text(0, 0, blueprint.name, UI_TEXT_ACTION).setDepth(210),
-        metaText: this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210),
+        titleText: this.applyRosterMask(this.add.text(0, 0, blueprint.name, UI_TEXT_ACTION).setDepth(210)),
+        metaText: this.applyRosterMask(this.add.text(0, 0, '', UI_TEXT_BODY).setDepth(210)),
         bounds: new Phaser.Geom.Rectangle()
       });
     }
 
     for (const field of [...VISUAL_FIELDS, ...STAT_FIELDS]) {
-      const labelText = this.add.text(0, 0, FIELD_LABELS[field], UI_TEXT_LABEL).setDepth(210);
-      const valueText = this.add.text(0, 0, '0', UI_TEXT_ACTION).setDepth(210);
-      const minusText = this.add.text(0, 0, '-', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210);
-      const plusText = this.add.text(0, 0, '+', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210);
+      const labelText = this.applyInspectorMask(this.add.text(0, 0, FIELD_LABELS[field], UI_TEXT_LABEL).setDepth(210));
+      const valueText = this.applyInspectorMask(this.add.text(0, 0, '0', UI_TEXT_ACTION).setDepth(210));
+      const minusText = this.applyInspectorMask(this.add.text(0, 0, '-', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210));
+      const plusText = this.applyInspectorMask(this.add.text(0, 0, '+', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210));
 
       this.blueprintStepperViews.set(field, {
         target: { kind: 'blueprint', field },
@@ -367,6 +375,12 @@ export class UnitEditorScene extends Phaser.Scene {
     this.metaText.setWordWrapWidth(280, true);
     this.previewHintText.setWordWrapWidth(300, true);
     this.statusText.setWordWrapWidth(780, true);
+    this.applyInspectorMask(this.readOnlyNoteText);
+    this.applyInspectorMask(this.dirtyCountText);
+    this.applyInspectorMask(this.metaText);
+    this.applyInspectorMask(this.visualSectionTitle);
+    this.applyInspectorMask(this.statsSectionTitle);
+    this.applyInspectorMask(this.abilitiesSectionTitle);
 
     this.registerInputHandlers();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
@@ -425,6 +439,8 @@ export class UnitEditorScene extends Phaser.Scene {
   private handleShutdown(): void {
     this.clearStepHold();
     this.stopSelectedCatchPhraseSound();
+    this.rosterScrollGraphics.clearMask();
+    this.inspectorScrollGraphics.clearMask();
     this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.input.removeAllListeners();
     this.input.keyboard?.removeAllListeners();
@@ -468,7 +484,42 @@ export class UnitEditorScene extends Phaser.Scene {
     this.layoutRosterPanel();
     this.layoutPreviewPanel();
     this.layoutInspectorPanel();
+    this.updateScrollMasks();
     this.refreshScene();
+  }
+
+  private applyRosterMask<T extends Phaser.GameObjects.GameObject & {
+    setMask(mask: Phaser.Display.Masks.BitmapMask | Phaser.Display.Masks.GeometryMask | null): T;
+  }>(gameObject: T): T {
+    gameObject.setMask(this.rosterContentMask);
+    return gameObject;
+  }
+
+  private applyInspectorMask<T extends Phaser.GameObjects.GameObject & {
+    setMask(mask: Phaser.Display.Masks.BitmapMask | Phaser.Display.Masks.GeometryMask | null): T;
+  }>(gameObject: T): T {
+    gameObject.setMask(this.inspectorContentMask);
+    return gameObject;
+  }
+
+  private updateScrollMasks(): void {
+    this.rosterMaskGraphics.clear();
+    this.rosterMaskGraphics.fillStyle(0xffffff, 1);
+    this.rosterMaskGraphics.fillRect(
+      this.rosterViewportRect.x,
+      this.rosterViewportRect.y,
+      this.rosterViewportRect.width,
+      this.rosterViewportRect.height
+    );
+
+    this.inspectorMaskGraphics.clear();
+    this.inspectorMaskGraphics.fillStyle(0xffffff, 1);
+    this.inspectorMaskGraphics.fillRect(
+      this.inspectorViewportRect.x,
+      this.inspectorViewportRect.y,
+      this.inspectorViewportRect.width,
+      this.inspectorViewportRect.height
+    );
   }
 
   private layoutRosterPanel(): void {
@@ -503,7 +554,7 @@ export class UnitEditorScene extends Phaser.Scene {
         row.bounds.setTo(content.x, cursorY, content.width, 42);
         row.titleText.setPosition(content.x + 12, cursorY + 8);
         row.metaText.setPosition(content.x + 12, cursorY + 24);
-        row.metaText.setWordWrapWidth(Math.max(180, content.width - 48), true);
+        row.metaText.setWordWrapWidth(Math.max(180, content.width - 24), true);
         const visible = this.isRectVisible(row.bounds, this.rosterViewportRect);
         row.titleText.setVisible(visible);
         row.metaText.setVisible(visible);
@@ -594,7 +645,7 @@ export class UnitEditorScene extends Phaser.Scene {
     this.readOnlyNoteText.setVisible(this.isScrollableTextVisible(this.readOnlyNoteText, this.inspectorViewportRect));
     cursorY += 34;
 
-    this.metaBoxRect.setTo(content.x, cursorY, content.width, 114);
+    this.metaBoxRect.setTo(content.x, cursorY, content.width, 126);
     this.metaText.setPosition(this.metaBoxRect.x + 10, this.metaBoxRect.y + 8);
     this.metaText.setWordWrapWidth(this.metaBoxRect.width - 20, true);
     this.metaText.setVisible(this.isRectVisible(this.metaBoxRect, this.inspectorViewportRect));
@@ -690,7 +741,7 @@ export class UnitEditorScene extends Phaser.Scene {
       + actionRowCount * (buttonHeight + UI_PANEL_MINI_GAP)
       + 4
       + 34
-      + 114
+      + 126
       + 10
       + 18
       + this.measureFieldSectionHeight(VISUAL_FIELDS)
@@ -740,21 +791,23 @@ export class UnitEditorScene extends Phaser.Scene {
   }
 
   private drawUi(): void {
-    this.uiGraphics.clear();
-    BattleUiChrome.drawPanelShell(this.uiGraphics, this.rosterPanelRect, 1, 32, 20, UI_COLOR_ACCENT_NEUTRAL);
-    BattleUiChrome.drawPanelShell(this.uiGraphics, this.previewPanelRect, 1, 32, 20, UI_COLOR_ACCENT_WARM);
-    BattleUiChrome.drawPanelShell(this.uiGraphics, this.inspectorPanelRect, 1, 32, 20, UI_COLOR_ACCENT_COOL);
-    BattleUiChrome.drawInsetBox(this.uiGraphics, this.previewStageRect, {
+    this.staticUiGraphics.clear();
+    this.rosterScrollGraphics.clear();
+    this.inspectorScrollGraphics.clear();
+    BattleUiChrome.drawPanelShell(this.staticUiGraphics, this.rosterPanelRect, 1, 32, 20, UI_COLOR_ACCENT_NEUTRAL);
+    BattleUiChrome.drawPanelShell(this.staticUiGraphics, this.previewPanelRect, 1, 32, 20, UI_COLOR_ACCENT_WARM);
+    BattleUiChrome.drawPanelShell(this.staticUiGraphics, this.inspectorPanelRect, 1, 32, 20, UI_COLOR_ACCENT_COOL);
+    BattleUiChrome.drawInsetBox(this.staticUiGraphics, this.previewStageRect, {
       fillColor: UI_COLOR_PANEL_SHADOW,
       fillAlpha: 0.34,
       strokeAlpha: 0.16
     });
-    BattleUiChrome.drawInsetBox(this.uiGraphics, this.metaBoxRect, {
+    BattleUiChrome.drawInsetBox(this.inspectorScrollGraphics, this.metaBoxRect, {
       fillColor: UI_COLOR_PANEL_SURFACE_ALT,
       fillAlpha: 0.92
     });
 
-    this.drawButton(this.backButton, UI_COLOR_ACCENT_COOL, true);
+    this.drawButton(this.staticUiGraphics, this.backButton, UI_COLOR_ACCENT_COOL, true);
 
     for (const row of this.rosterRowViews) {
       const sourceBlueprint = this.blueprintById.get(row.blueprintId);
@@ -768,7 +821,7 @@ export class UnitEditorScene extends Phaser.Scene {
       const accent = selected ? sourceBlueprint.accentColor : UI_COLOR_ACCENT_NEUTRAL;
       const fillAlpha = selected ? 0.58 : dirty ? 0.28 : 0.18;
 
-      BattleUiChrome.drawInsetBox(this.uiGraphics, row.bounds, {
+      BattleUiChrome.drawInsetBox(this.rosterScrollGraphics, row.bounds, {
         fillColor: accent,
         fillAlpha,
         strokeColor: selected ? UI_COLOR_PANEL_BORDER : accent,
@@ -778,7 +831,7 @@ export class UnitEditorScene extends Phaser.Scene {
 
       if (dirty) {
         const badgeRect = new Phaser.Geom.Rectangle(row.bounds.right - 70, row.bounds.y + 8, 58, 14);
-        BattleUiChrome.drawPill(this.uiGraphics, badgeRect, {
+        BattleUiChrome.drawPill(this.rosterScrollGraphics, badgeRect, {
           fillColor: UI_COLOR_SUCCESS,
           strokeColor: UI_COLOR_PANEL_BORDER,
           fillAlpha: 0.2,
@@ -789,19 +842,17 @@ export class UnitEditorScene extends Phaser.Scene {
     }
 
     for (const button of this.previewButtons.values()) {
-      this.drawButton(button, UI_COLOR_ACCENT_WARM, true);
+      this.drawButton(this.staticUiGraphics, button, UI_COLOR_ACCENT_WARM, true);
     }
 
     const selectedDirty = this.dirtyDrafts.has(this.selectedBlueprintId);
     const dirtyCount = this.dirtyDrafts.size;
-    this.drawButton(this.actionButtons.get('reset-selected'), UI_COLOR_ACCENT_DANGER, selectedDirty);
-    this.drawButton(this.actionButtons.get('reset-all'), UI_COLOR_ACCENT_DANGER, dirtyCount > 0);
-      this.drawButton(this.actionButtons.get('copy-patch'), UI_COLOR_ACCENT_COOL, true);
-    this.drawButton(this.actionButtons.get('download-patch'), UI_COLOR_ACCENT_COOL, true);
-    this.drawButton(this.actionButtons.get('copy-blueprint-file'), UI_COLOR_ACCENT_COOL, true);
+    this.drawButton(this.inspectorScrollGraphics, this.actionButtons.get('reset-selected'), UI_COLOR_ACCENT_DANGER, selectedDirty);
+    this.drawButton(this.inspectorScrollGraphics, this.actionButtons.get('reset-all'), UI_COLOR_ACCENT_DANGER, dirtyCount > 0);
+    this.drawButton(this.inspectorScrollGraphics, this.actionButtons.get('copy-blueprint-file'), UI_COLOR_ACCENT_COOL, true);
 
     for (const view of this.blueprintStepperViews.values()) {
-      this.drawStepper(view);
+      this.drawStepper(this.inspectorScrollGraphics, view);
     }
 
     for (const block of this.abilityBlockViews) {
@@ -809,7 +860,7 @@ export class UnitEditorScene extends Phaser.Scene {
         continue;
       }
 
-      BattleUiChrome.drawInsetBox(this.uiGraphics, block.boxBounds, {
+      BattleUiChrome.drawInsetBox(this.inspectorScrollGraphics, block.boxBounds, {
         fillColor: UI_COLOR_PANEL_SURFACE_ALT,
         fillAlpha: 0.9,
         strokeAlpha: 0.18,
@@ -818,31 +869,43 @@ export class UnitEditorScene extends Phaser.Scene {
     }
 
     for (const view of this.abilityStepperViews.values()) {
-      this.drawStepper(view);
+      this.drawStepper(this.inspectorScrollGraphics, view);
     }
 
-    this.drawScrollIndicator(this.rosterViewportRect, this.rosterContentHeight, this.rosterScrollY, UI_COLOR_ACCENT_NEUTRAL);
-    this.drawScrollIndicator(this.inspectorViewportRect, this.inspectorContentHeight, this.inspectorScrollY, UI_COLOR_ACCENT_COOL);
+    this.drawScrollIndicator(
+      this.staticUiGraphics,
+      this.rosterViewportRect,
+      this.rosterContentHeight,
+      this.rosterScrollY,
+      UI_COLOR_ACCENT_NEUTRAL
+    );
+    this.drawScrollIndicator(
+      this.staticUiGraphics,
+      this.inspectorViewportRect,
+      this.inspectorContentHeight,
+      this.inspectorScrollY,
+      UI_COLOR_ACCENT_COOL
+    );
   }
 
-  private drawStepper(view: StepperView): void {
+  private drawStepper(graphics: Phaser.GameObjects.Graphics, view: StepperView): void {
     if (!view.labelText.visible) {
       return;
     }
 
-    BattleUiChrome.drawInsetBox(this.uiGraphics, view.rowBounds, {
+    BattleUiChrome.drawInsetBox(graphics, view.rowBounds, {
       fillColor: UI_COLOR_PANEL_SURFACE_ALT,
       fillAlpha: 0.82,
       strokeAlpha: 0.16,
       radius: 12
     });
-    BattleUiChrome.drawInsetBox(this.uiGraphics, view.minusBounds, {
+    BattleUiChrome.drawInsetBox(graphics, view.minusBounds, {
       fillColor: UI_COLOR_ACCENT_NEUTRAL,
       fillAlpha: 0.9,
       strokeAlpha: 0.22,
       radius: 10
     });
-    BattleUiChrome.drawInsetBox(this.uiGraphics, view.plusBounds, {
+    BattleUiChrome.drawInsetBox(graphics, view.plusBounds, {
       fillColor: UI_COLOR_ACCENT_NEUTRAL,
       fillAlpha: 0.9,
       strokeAlpha: 0.22,
@@ -850,12 +913,17 @@ export class UnitEditorScene extends Phaser.Scene {
     });
   }
 
-  private drawButton(button: ButtonView | undefined, accentColor: number, enabled: boolean): void {
+  private drawButton(
+    graphics: Phaser.GameObjects.Graphics,
+    button: ButtonView | undefined,
+    accentColor: number,
+    enabled: boolean
+  ): void {
     if (!button || !button.labelText.visible) {
       return;
     }
 
-    BattleUiChrome.drawInsetBox(this.uiGraphics, button.bounds, {
+    BattleUiChrome.drawInsetBox(graphics, button.bounds, {
       fillColor: accentColor,
       fillAlpha: enabled ? 0.92 : 0.24,
       strokeColor: enabled ? UI_COLOR_PANEL_BORDER : accentColor,
@@ -866,6 +934,7 @@ export class UnitEditorScene extends Phaser.Scene {
   }
 
   private drawScrollIndicator(
+    graphics: Phaser.GameObjects.Graphics,
     viewport: Phaser.Geom.Rectangle,
     contentHeight: number,
     scrollY: number,
@@ -882,13 +951,13 @@ export class UnitEditorScene extends Phaser.Scene {
     const thumbY = trackRect.y + (scrollY / maxScroll) * maxThumbOffset;
     const thumbRect = new Phaser.Geom.Rectangle(trackRect.x, thumbY, trackRect.width, thumbHeight);
 
-    BattleUiChrome.drawInsetBox(this.uiGraphics, trackRect, {
+    BattleUiChrome.drawInsetBox(graphics, trackRect, {
       fillColor: UI_COLOR_PANEL_SHADOW,
       fillAlpha: 0.35,
       strokeAlpha: 0,
       radius: 4
     });
-    BattleUiChrome.drawInsetBox(this.uiGraphics, thumbRect, {
+    BattleUiChrome.drawInsetBox(graphics, thumbRect, {
       fillColor: accentColor,
       fillAlpha: 0.72,
       strokeAlpha: 0,
@@ -910,7 +979,7 @@ export class UnitEditorScene extends Phaser.Scene {
 
       const dirty = this.dirtyDrafts.has(row.blueprintId);
       row.titleText.setText(`${sourceBlueprint.name}${dirty ? ' *' : ''}`);
-      row.metaText.setText(`${sourceBlueprint.className}  |  ${getFactionProfile(sourceBlueprint.factionId).displayName}`);
+      row.metaText.setText(sourceBlueprint.className);
       row.titleText.setAlpha(row.blueprintId === this.selectedBlueprintId ? 1 : 0.92);
       row.metaText.setAlpha(row.blueprintId === this.selectedBlueprintId ? 0.94 : 0.78);
     }
@@ -918,20 +987,19 @@ export class UnitEditorScene extends Phaser.Scene {
     this.previewTerrainText.setText(`Terrain: ${this.formatTerrainLabel(this.previewTerrain)}`);
     this.previewHeightText.setText(`Height: ${this.previewHeight}`);
     this.previewHintText.setText(
-      'Battle preview only.\nDrag the sprite to tune offsets. Height and stat changes update the export diff immediately.'
+      'Battle preview only.\nDrag the sprite to tune offsets. Copy Blueprint File exports the current full JSON state.'
     );
 
     this.dirtyCountText.setText(
-      `Edited blueprints: ${dirtyCount}  |  Current patch keys: ${Object.keys(this.getPatchMap()).length}`
+      `Edited blueprints: ${dirtyCount}  |  Copy Blueprint File exports the full current JSON.`
     );
 
     this.metaText.setText([
-      `${resolvedBlueprint.name}  |  ${resolvedBlueprint.className}`,
-      `${getFactionProfile(resolvedBlueprint.factionId).displayName}`,
-      `Attack: ${resolvedBlueprint.attackName}`,
-      `${resolvedBlueprint.attackText}`,
+      `Faction: ${getFactionProfile(resolvedBlueprint.factionId).displayName}`,
+      `Basic attack: ${resolvedBlueprint.attackName}`,
+      `Attack note: ${resolvedBlueprint.attackText}`,
       `Catchphrase: "${resolvedBlueprint.turnStartCatchPhrase}"`,
-      `Drop: ${
+      `Drops: ${
         resolvedBlueprint.dropItemId
           ? `${resolvedBlueprint.dropItemId}${resolvedBlueprint.dropQuantity ? ` x${resolvedBlueprint.dropQuantity}` : ''}`
           : 'none'
@@ -1102,9 +1170,9 @@ export class UnitEditorScene extends Phaser.Scene {
     for (const ability of this.getSelectedDraft().abilities) {
       const block: AbilityBlockView = {
         abilityId: ability.id,
-        titleText: this.add.text(0, 0, ability.name, UI_TEXT_ACTION).setDepth(210),
-        metaText: this.add.text(0, 0, '', UI_TEXT_LABEL).setDepth(210),
-        descriptionText: this.add.text(0, 0, ability.description, UI_TEXT_BODY).setDepth(210),
+        titleText: this.applyInspectorMask(this.add.text(0, 0, ability.name, UI_TEXT_ACTION).setDepth(210)),
+        metaText: this.applyInspectorMask(this.add.text(0, 0, '', UI_TEXT_LABEL).setDepth(210)),
+        descriptionText: this.applyInspectorMask(this.add.text(0, 0, ability.description, UI_TEXT_BODY).setDepth(210)),
         boxBounds: new Phaser.Geom.Rectangle(),
         stepperKeys: []
       };
@@ -1114,10 +1182,10 @@ export class UnitEditorScene extends Phaser.Scene {
 
       for (const field of getEditableAbilityFields(ability)) {
         const key = this.getAbilityStepperKey(ability.id, field);
-        const labelText = this.add.text(0, 0, ABILITY_FIELD_LABELS[field], UI_TEXT_LABEL).setDepth(210);
-        const valueText = this.add.text(0, 0, '0', UI_TEXT_ACTION).setDepth(210);
-        const minusText = this.add.text(0, 0, '-', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210);
-        const plusText = this.add.text(0, 0, '+', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210);
+        const labelText = this.applyInspectorMask(this.add.text(0, 0, ABILITY_FIELD_LABELS[field], UI_TEXT_LABEL).setDepth(210));
+        const valueText = this.applyInspectorMask(this.add.text(0, 0, '0', UI_TEXT_ACTION).setDepth(210));
+        const minusText = this.applyInspectorMask(this.add.text(0, 0, '-', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210));
+        const plusText = this.applyInspectorMask(this.add.text(0, 0, '+', UI_TEXT_ACTION).setOrigin(0.5).setDepth(210));
 
         this.abilityStepperViews.set(key, {
           target: { kind: 'ability', abilityId: ability.id, field },
@@ -1138,10 +1206,6 @@ export class UnitEditorScene extends Phaser.Scene {
     if (this.inspectorPanelRect.width > 0 && this.inspectorPanelRect.height > 0) {
       this.layoutInspectorPanel();
     }
-  }
-
-  private getPatchMap(): UnitBlueprintEditorPatchMap {
-    return buildUnitBlueprintEditorPatchMap(this.blueprints, this.dirtyDrafts);
   }
 
   private getPreviewLayout(): IsometricBoardLayout {
@@ -1394,26 +1458,6 @@ export class UnitEditorScene extends Phaser.Scene {
     this.refreshScene();
   }
 
-  private async copyPatch(): Promise<void> {
-    const serializedPatch = JSON.stringify(this.getPatchMap(), null, 2);
-
-    if (!window.navigator.clipboard?.writeText) {
-      this.statusMessage = 'Clipboard unavailable in this browser.';
-      this.refreshScene();
-      return;
-    }
-
-    try {
-      await window.navigator.clipboard.writeText(serializedPatch);
-      audioDirector.playUiConfirm();
-      this.statusMessage = `Patch copied for ${this.dirtyDrafts.size} edited blueprint${this.dirtyDrafts.size === 1 ? '' : 's'}.`;
-      this.refreshScene();
-    } catch {
-      this.statusMessage = 'Patch copy failed.';
-      this.refreshScene();
-    }
-  }
-
   private buildBlueprintFileContents(): string {
     const resolvedBlueprints = Object.fromEntries(
       this.blueprints.map((blueprint) => {
@@ -1441,24 +1485,6 @@ export class UnitEditorScene extends Phaser.Scene {
       this.statusMessage = 'Blueprint file copy failed.';
       this.refreshScene();
     }
-  }
-
-  private downloadPatch(): void {
-    const patchMap = this.getPatchMap();
-    const blob = new Blob([JSON.stringify(patchMap, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-    link.download = 'unit-blueprint-editor-patch.json';
-    link.click();
-    window.setTimeout(() => {
-      window.URL.revokeObjectURL(url);
-    }, 1000);
-
-    audioDirector.playUiConfirm();
-    this.statusMessage = `Patch downloaded for ${Object.keys(patchMap).length} blueprint${Object.keys(patchMap).length === 1 ? '' : 's'}.`;
-    this.refreshScene();
   }
 
   private returnToTitle(): void {
@@ -1520,12 +1546,6 @@ export class UnitEditorScene extends Phaser.Scene {
           return;
         case 'reset-all':
           this.resetAllDrafts();
-          return;
-        case 'copy-patch':
-          void this.copyPatch();
-          return;
-        case 'download-patch':
-          this.downloadPatch();
           return;
         case 'copy-blueprint-file':
           void this.copyBlueprintFile();

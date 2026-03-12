@@ -1,5 +1,6 @@
 :root {
   color: #f6ebd6;
+  background-color: #09060a;
   background:
     radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
   font-family: "Palatino Linotype", "Book Antiqua", Baskerville, serif;
@@ -18,12 +19,17 @@ body,
   margin: 0;
 }
 
+html {
+  background-color: #09060a;
+}
+
 body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
   color: #f6ebd6;
+  background-color: #09060a;
   background:
     radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
 }
@@ -31,6 +37,8 @@ body {
 #app {
   min-height: 100vh;
   min-height: 100dvh;
+  background:
+    radial-gradient(circle at top, #4c2223 0%, #1f1116 42%, #09060a 100%);
   padding:
     env(safe-area-inset-top, 0px)
     env(safe-area-inset-right, 0px)
