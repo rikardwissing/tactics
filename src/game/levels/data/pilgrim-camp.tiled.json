@@ -1,0 +1,579 @@
+{
+  "compressionlevel": -1,
+  "height": 8,
+  "infinite": false,
+  "layers": [
+    {
+      "data": [
+        1, 1, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 1, 1,
+        1, 2, 2, 2, 2, 3, 3, 2, 2, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 2, 2, 3, 3, 3, 3, 2, 2, 1,
+        2, 2, 2, 3, 3, 3, 3, 3, 2, 2, 3, 3, 3, 4, 4, 4, 4, 3, 3, 3, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2,
+        2, 2, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 4, 4, 4, 4, 3, 3, 3, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2,
+        2, 2, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 4, 3, 3, 3, 2, 2,
+        2, 2, 3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2,
+        1, 2, 2, 3, 3, 3, 3, 2, 2, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 1, 2, 2, 3, 3, 3, 3, 2, 2, 1,
+        1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 2, 2, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1
+      ],
+      "height": 8,
+      "id": 1,
+      "name": "terrain",
+      "opacity": 1,
+      "type": "tilelayer",
+      "visible": true,
+      "width": 30,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "data": [
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 7, 7, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 6, 6,
+        6, 6, 6, 6, 7, 7, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+        5, 5, 6, 6, 6, 6, 6, 6, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 6, 6, 6, 6, 6, 6, 5, 5
+      ],
+      "height": 8,
+      "id": 2,
+      "name": "heights",
+      "opacity": 1,
+      "type": "tilelayer",
+      "visible": true,
+      "width": 30,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 3,
+      "name": "placements",
+      "objects": [],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 4,
+      "name": "props",
+      "objects": [
+        {
+          "height": 32,
+          "id": 1,
+          "name": "West Camp Torch",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "light-torch"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 96,
+          "y": 128
+        },
+        {
+          "height": 32,
+          "id": 2,
+          "name": "Sanctum Brazier West",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "sanctum-brazier"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 416,
+          "y": 96
+        },
+        {
+          "height": 32,
+          "id": 3,
+          "name": "Sanctum Brazier East",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "sanctum-brazier"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 544,
+          "y": 96
+        },
+        {
+          "height": 32,
+          "id": 4,
+          "name": "Supply Barricade",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "obstacle-rubble-barricade"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 320,
+          "y": 192
+        },
+        {
+          "height": 32,
+          "id": 5,
+          "name": "Watch Barricade",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "obstacle-rubble-barricade"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 640,
+          "y": 192
+        },
+        {
+          "height": 32,
+          "id": 6,
+          "name": "East Camp Torch",
+          "properties": [
+            {
+              "name": "assetId",
+              "type": "string",
+              "value": "light-torch"
+            }
+          ],
+          "rotation": 0,
+          "type": "map_prop",
+          "visible": true,
+          "width": 32,
+          "x": 832,
+          "y": 128
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 5,
+      "name": "leader",
+      "objects": [
+        {
+          "height": 32,
+          "id": 7,
+          "name": "Camp Leader",
+          "properties": [
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "time-travelers-time-lord"
+            }
+          ],
+          "rotation": 0,
+          "type": "leader_spawn",
+          "visible": true,
+          "width": 32,
+          "x": 192,
+          "y": 192
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 6,
+      "name": "npcs",
+      "objects": [
+        {
+          "height": 32,
+          "id": 8,
+          "name": "Archivist Nera",
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "chronicler"
+            },
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "children-of-the-prophecy-memory-keeper"
+            },
+            {
+              "name": "className",
+              "type": "string",
+              "value": "Chronicler"
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "value": "Collects witness accounts by the chapel stair and keeps the camp from forgetting what it has survived."
+            },
+            {
+              "name": "actionKinds",
+              "type": "string",
+              "value": "talk"
+            },
+            {
+              "name": "talkTitle",
+              "type": "string",
+              "value": "Chronicler"
+            },
+            {
+              "name": "talkBody",
+              "type": "string",
+              "value": "Archivist Nera closes her book around a thumb-worn ribbon. \"The dead do not ask much of us. Only that we remember them clearly.\""
+            }
+          ],
+          "rotation": 0,
+          "type": "npc",
+          "visible": true,
+          "width": 32,
+          "x": 128,
+          "y": 64
+        },
+        {
+          "height": 32,
+          "id": 9,
+          "name": "Sister Vael",
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "quartermaster"
+            },
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "the-order-banner-surgeon"
+            },
+            {
+              "name": "className",
+              "type": "string",
+              "value": "Quartermaster"
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "value": "Keeps the camp supplied with salves, ration ledgers, and what little trade still reaches the fires."
+            },
+            {
+              "name": "actionKinds",
+              "type": "string",
+              "value": "talk,buy,sell"
+            },
+            {
+              "name": "talkTitle",
+              "type": "string",
+              "value": "Quartermaster"
+            },
+            {
+              "name": "talkBody",
+              "type": "string",
+              "value": "Sister Vael keeps her voice low. \"Hold the line out there and I will keep your packs from running dry.\""
+            },
+            {
+              "name": "buyTitle",
+              "type": "string",
+              "value": "Supply Ledger"
+            },
+            {
+              "name": "buyBody",
+              "type": "string",
+              "value": "The quartermaster spreads out a short list of field goods. Buying is not wired yet, but this panel is ready for the camp shop flow."
+            },
+            {
+              "name": "sellTitle",
+              "type": "string",
+              "value": "Recovery Crate"
+            },
+            {
+              "name": "sellBody",
+              "type": "string",
+              "value": "A recovery crate waits beside the ledger table. Selling is still a placeholder, but this is where spare goods will be turned into camp funds."
+            }
+          ],
+          "rotation": 0,
+          "type": "npc",
+          "visible": true,
+          "width": 32,
+          "x": 480,
+          "y": 128
+        },
+        {
+          "height": 32,
+          "id": 10,
+          "name": "Brother Serac",
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "drillmaster"
+            },
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "children-of-the-prophecy-aevum-guardian"
+            },
+            {
+              "name": "className",
+              "type": "string",
+              "value": "Drillmaster"
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "value": "Runs the evening drills with a patience that feels more like ritual than instruction."
+            },
+            {
+              "name": "actionKinds",
+              "type": "string",
+              "value": "talk,train"
+            },
+            {
+              "name": "talkTitle",
+              "type": "string",
+              "value": "Drillmaster"
+            },
+            {
+              "name": "talkBody",
+              "type": "string",
+              "value": "Brother Serac studies your footing. \"Discipline is mercy. Learn the line here, and fewer will bleed for it later.\""
+            },
+            {
+              "name": "trainTitle",
+              "type": "string",
+              "value": "Drill Circle"
+            },
+            {
+              "name": "trainBody",
+              "type": "string",
+              "value": "Training is still a placeholder, but this panel is where camp drills, upgrades, and role growth will be surfaced."
+            }
+          ],
+          "rotation": 0,
+          "type": "npc",
+          "visible": true,
+          "width": 32,
+          "x": 800,
+          "y": 128
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 7,
+  "nextobjectid": 11,
+  "orientation": "orthogonal",
+  "properties": [
+    {
+      "name": "levelId",
+      "type": "string",
+      "value": "pilgrim-camp"
+    },
+    {
+      "name": "displayName",
+      "type": "string",
+      "value": "Pilgrim Camp"
+    },
+    {
+      "name": "objective",
+      "type": "string",
+      "value": "Walk the refuge grounds and stand beside its keepers to hear what they offer."
+    },
+    {
+      "name": "backdropAssetId",
+      "type": "string",
+      "value": "setup-war-council-backdrop"
+    },
+    {
+      "name": "shortObjective",
+      "type": "string",
+      "value": "Move freely and stand beside a camp contact to open their menu."
+    },
+    {
+      "name": "titlePrefix",
+      "type": "string",
+      "value": "Waystation"
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "value": "Pilgrim Camp"
+    },
+    {
+      "name": "encounterType",
+      "type": "string",
+      "value": "Sanctuary Visit"
+    },
+    {
+      "name": "titleFlavor",
+      "type": "string",
+      "value": "A chapel camp smolders in the dusk, half fortress and half shelter for the next march."
+    }
+  ],
+  "renderorder": "right-down",
+  "tiledversion": "1.11.1",
+  "tilesets": [
+    {
+      "columns": 4,
+      "firstgid": 1,
+      "grid": {
+        "height": 32,
+        "orientation": "orthogonal",
+        "width": 32
+      },
+      "margin": 0,
+      "name": "terrain",
+      "spacing": 0,
+      "tilecount": 4,
+      "tileheight": 32,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "grass"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "moss"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "stone"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "properties": [
+            {
+              "name": "terrain",
+              "type": "string",
+              "value": "sanctum"
+            }
+          ]
+        }
+      ],
+      "tilewidth": 32
+    },
+    {
+      "columns": 5,
+      "firstgid": 5,
+      "grid": {
+        "height": 32,
+        "orientation": "orthogonal",
+        "width": 32
+      },
+      "margin": 0,
+      "name": "heights",
+      "spacing": 0,
+      "tilecount": 5,
+      "tileheight": 32,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 3
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "properties": [
+            {
+              "name": "height",
+              "type": "int",
+              "value": 4
+            }
+          ]
+        }
+      ],
+      "tilewidth": 32
+    }
+  ],
+  "tileheight": 32,
+  "tilewidth": 32,
+  "type": "map",
+  "version": "1.10",
+  "width": 30
+}

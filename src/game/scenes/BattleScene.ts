@@ -20,11 +20,20 @@ import {
 } from '../core/isometric';
 import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
-import { buildPath, getReachableNodes, getTile, manhattanDistance, pointKey } from '../core/pathfinding';
+import { buildPath, getReachableNodes, getTile, getTraversalNodes, manhattanDistance, pointKey } from '../core/pathfinding';
 import { AttackStyle, BattleUnit, FactionId, IdleStyle, Point, ReachNode, SpriteFacing, TerrainType, TileData, UnitAbility } from '../core/types';
+import {
+  createExplorationLeader,
+  createExplorationLevel,
+  createExplorationNpcs,
+  DEFAULT_EXPLORATION_LOCATION_ID,
+  getExplorationLocation
+} from '../exploration';
+import type { ExplorationLocationDefinition, ExplorationNpcRuntime, NpcActionDefinition } from '../exploration/types';
 import { createDefaultBattleSetup, createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
+import type { BoardSceneStartData, SceneMode } from '../sceneSession';
 import { ActionMenuPanelDescriptor, BattleActionMenuStack } from './components/BattleActionMenuStack';
 import {
   BattleUiChrome,
@@ -81,14 +90,19 @@ type Phase =
   | 'player-items'
   | 'player-item-action'
   | 'enemy'
+  | 'exploration-idle'
+  | 'exploration-moving'
+  | 'exploration-menu'
+  | 'exploration-detail'
   | 'animating'
   | 'complete';
 
 type MenuAction = 'move' | 'undo-move' | 'abilities' | 'items' | 'wait';
 type UiLayoutMode = 'portrait' | 'landscape' | 'wide';
-type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup';
+type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup' | 'title';
 type InspectionTarget =
   | { kind: 'unit'; unitId: string }
+  | { kind: 'npc'; npcId: string }
   | { kind: 'tile'; x: number; y: number }
   | { kind: 'mission' };
 type BattleIntroPhase = 'intro' | 'hud';
@@ -133,6 +147,19 @@ interface CombatEffectPlayback {
   sourcePoint: Phaser.Math.Vector2;
   targetPoint: Phaser.Math.Vector2;
   angle: number;
+}
+
+interface VisualActor {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  accentColor: number;
+  spriteKey: string;
+  spriteDisplayHeight: number;
+  spriteOffsetX?: number;
+  spriteOffsetY?: number;
+  idleStyle: IdleStyle;
 }
 
 interface PropView {
@@ -453,10 +480,14 @@ const MAP_TITLE_INTRO_DURATION = 320;
 const MAP_TITLE_INTRO_HOLD = 880;
 const MAP_TITLE_OUTRO_DURATION = 360;
 export class BattleScene extends Phaser.Scene {
+  private sceneMode: SceneMode = 'battle';
+  private sceneStartData: BoardSceneStartData = { mode: 'battle' };
   private level: LevelDefinition = CURRENT_LEVEL;
   private battleSetup: BattleSetup = createDefaultBattleSetup(CURRENT_LEVEL);
+  private explorationLocation: ExplorationLocationDefinition | null = null;
   private map: TileData[] = [];
   private units: BattleUnit[] = [];
+  private explorationNpcs: ExplorationNpcRuntime[] = [];
   private chests: ChestState[] = [];
   private views = new Map<string, UnitView>();
   private chestViews = new Map<string, ChestView>();
@@ -502,6 +533,8 @@ export class BattleScene extends Phaser.Scene {
   private activeUnitId: string | null = null;
   private selectedAbilityId: string | null = null;
   private selectedItemId: ItemId | null = null;
+  private focusedNpcId: string | null = null;
+  private selectedNpcActionId: string | null = null;
   private hoverTile: TileData | null = null;
   private moveNodes = new Map<string, ReachNode>();
   private phase: Phase = 'intro';
@@ -647,23 +680,52 @@ export class BattleScene extends Phaser.Scene {
     return this.level.backdropAssetId ?? 'title-backdrop';
   }
 
-  init(data?: { setup?: BattleSetup }): void {
+  init(data?: BoardSceneStartData): void {
+    this.sceneMode = data?.mode ?? 'battle';
+
+    if (this.sceneMode === 'exploration') {
+      this.explorationLocation = getExplorationLocation(data?.locationId ?? DEFAULT_EXPLORATION_LOCATION_ID);
+      this.level = createExplorationLevel(this.explorationLocation);
+      this.sceneStartData = {
+        mode: 'exploration',
+        locationId: this.explorationLocation.id
+      };
+      return;
+    }
+
+    this.explorationLocation = null;
     this.battleSetup = data?.setup ?? createDefaultBattleSetup(CURRENT_LEVEL);
     this.level = getLevel(this.battleSetup.levelId);
+    this.sceneStartData = {
+      mode: 'battle',
+      setup: this.battleSetup
+    };
   }
 
   create(): void {
     audioDirector.bindScene(this);
-    audioDirector.setMusic('battle');
-    audioDirector.setBattleAmbience(this.timeOfDay);
+    audioDirector.setMusic(this.sceneMode === 'battle' ? 'battle' : 'setup');
+    if (this.sceneMode === 'battle') {
+      audioDirector.setBattleAmbience(this.timeOfDay);
+    }
     void audioDirector.unlock().catch(() => undefined);
 
     this.restarting = false;
     this.worldCamera = this.cameras.main;
     this.uiCamera = undefined;
-    this.map = createLevelMap(this.level);
-    this.units = createLevelUnits(this.level, this.battleSetup.playerAssignments);
-    this.chests = this.level.chests.map((chest) => ({ ...chest, opened: false }));
+    if (this.sceneMode === 'battle') {
+      this.map = createLevelMap(this.level);
+      this.units = createLevelUnits(this.level, this.battleSetup.playerAssignments);
+      this.explorationNpcs = [];
+      this.chests = this.level.chests.map((chest) => ({ ...chest, opened: false }));
+    } else {
+      const location = this.explorationLocation ?? getExplorationLocation(DEFAULT_EXPLORATION_LOCATION_ID);
+      this.level = createExplorationLevel(location);
+      this.map = createLevelMap(this.level);
+      this.units = [createExplorationLeader(location)];
+      this.explorationNpcs = createExplorationNpcs(location);
+      this.chests = [];
+    }
     this.views.clear();
     this.chestViews.clear();
     this.propViews.clear();
@@ -675,12 +737,14 @@ export class BattleScene extends Phaser.Scene {
     this.activeUnitId = null;
     this.selectedAbilityId = null;
     this.selectedItemId = null;
+    this.focusedNpcId = null;
+    this.selectedNpcActionId = null;
     this.hoverTile = null;
     this.inspectionTarget = { kind: 'mission' };
     this.headerMenuOpen = false;
     this.battleIntroPhase = 'intro';
     this.moveNodes.clear();
-    this.phase = 'intro';
+    this.phase = this.sceneMode === 'battle' ? 'intro' : 'exploration-idle';
     this.busy = false;
     this.logLines = [];
     this.gridWidth = Math.max(...this.map.map((tile) => tile.x)) + 1;
@@ -757,6 +821,7 @@ export class BattleScene extends Phaser.Scene {
     this.createProps();
     this.createChests();
     this.createUnits();
+    this.createExplorationNpcs();
     this.applyTimeOfDay();
     this.configureCamera(true);
     this.createUi();
@@ -767,15 +832,26 @@ export class BattleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize(this.scale.gameSize);
 
-    this.pushLog(`${this.getFactionDisplayNameForTeam('player')} and ${this.getFactionDisplayNameForTeam('enemy')} clash on the ruined ridge.`);
-    this.pushLog('Take the crest and break the enemy line before they close around the altar.');
+    if (this.sceneMode === 'battle') {
+      this.pushLog(`${this.getFactionDisplayNameForTeam('player')} and ${this.getFactionDisplayNameForTeam('enemy')} clash on the ruined ridge.`);
+      this.pushLog('Take the crest and break the enemy line before they close around the altar.');
+    } else {
+      this.activeUnitId = this.units[0]?.id ?? null;
+      this.pushLog(`${this.units[0]?.name ?? 'The commander'} arrives at ${this.level.name}.`);
+      this.pushLog('Stand beside a camp contact to open their action menu.');
+    }
     this.refreshUi();
     this.updateUiLayout(this.scale.width, this.scale.height);
     this.refreshUi();
     this.startMapTitleSequence();
 
     this.time.delayedCall(MAP_TITLE_INTRO_DURATION + MAP_TITLE_INTRO_HOLD + MAP_TITLE_OUTRO_DURATION + 120, () => {
-      this.beginNextTurn();
+      if (this.sceneMode === 'battle') {
+        void this.beginNextTurn();
+        return;
+      }
+
+      this.completeExplorationIntro();
     });
   }
 
@@ -888,6 +964,12 @@ export class BattleScene extends Phaser.Scene {
       if (this.isBattleIntroActive()) {
         return;
       }
+      if (this.isExplorationMode() && !this.headerMenuOpen) {
+        if (this.phase === 'exploration-detail' || this.phase === 'exploration-menu') {
+          this.cancelPlayerSelectionPhase();
+          return;
+        }
+      }
       if (this.phase === 'complete') {
         this.returnToSetup();
         return;
@@ -936,7 +1018,7 @@ export class BattleScene extends Phaser.Scene {
     this.phase = 'animating';
     this.input.enabled = false;
     this.input.keyboard?.removeAllListeners();
-    this.scene.restart({ setup: this.battleSetup });
+    this.scene.restart(this.sceneStartData);
   }
 
   private returnToSetup(): void {
@@ -954,8 +1036,237 @@ export class BattleScene extends Phaser.Scene {
     this.scene.start('setup', { setup: this.battleSetup });
   }
 
+  private returnToTitle(): void {
+    if (this.restarting) {
+      return;
+    }
+
+    this.setPauseMenuOpen(false);
+    this.clearTurnStartCatchPhrase();
+    this.restarting = true;
+    this.busy = true;
+    this.phase = 'animating';
+    this.input.enabled = false;
+    this.input.keyboard?.removeAllListeners();
+    this.scene.start('title');
+  }
+
   private isBattleIntroActive(): boolean {
     return this.battleIntroPhase === 'intro';
+  }
+
+  private isExplorationMode(): boolean {
+    return this.sceneMode === 'exploration';
+  }
+
+  private completeExplorationIntro(): void {
+    const leader = this.getActiveUnit();
+    if (!leader) {
+      return;
+    }
+
+    this.busy = false;
+    this.refreshExplorationAdjacency();
+    this.drawHighlights();
+    this.refreshUi();
+  }
+
+  private getExplorationNpc(npcId: string | null): ExplorationNpcRuntime | null {
+    if (!npcId) {
+      return null;
+    }
+
+    return this.explorationNpcs.find((npc) => npc.id === npcId) ?? null;
+  }
+
+  private getExplorationNpcAt(x: number, y: number): ExplorationNpcRuntime | null {
+    return this.explorationNpcs.find((npc) => npc.x === x && npc.y === y) ?? null;
+  }
+
+  private getAdjacentExplorationNpcs(origin = this.getActiveUnit()): ExplorationNpcRuntime[] {
+    if (!this.isExplorationMode() || !origin) {
+      return [];
+    }
+
+    return this.explorationNpcs.filter((npc) => manhattanDistance(origin, npc) === 1);
+  }
+
+  private getInteractionNpc(): ExplorationNpcRuntime | null {
+    if (!this.isExplorationMode()) {
+      return null;
+    }
+
+    const adjacentNpcs = this.getAdjacentExplorationNpcs();
+    if (adjacentNpcs.length === 0) {
+      return null;
+    }
+
+    const focusedNpc = this.getExplorationNpc(this.focusedNpcId);
+    if (focusedNpc && adjacentNpcs.some((npc) => npc.id === focusedNpc.id)) {
+      return focusedNpc;
+    }
+
+    return adjacentNpcs[0] ?? null;
+  }
+
+  private refreshExplorationAdjacency(): void {
+    if (!this.isExplorationMode()) {
+      return;
+    }
+
+    const interactionNpc = this.getInteractionNpc();
+    if (!interactionNpc) {
+      this.focusedNpcId = null;
+      this.selectedNpcActionId = null;
+      this.phase = 'exploration-idle';
+      return;
+    }
+
+    this.focusedNpcId = interactionNpc.id;
+    this.inspectionTarget = { kind: 'npc', npcId: interactionNpc.id };
+    if (this.phase === 'exploration-detail') {
+      const selectedAction = interactionNpc.actions.find((action) => action.id === this.selectedNpcActionId);
+      if (selectedAction) {
+        return;
+      }
+    }
+
+    this.selectedNpcActionId = null;
+    this.phase = 'exploration-menu';
+  }
+
+  private closeExplorationInteraction(): void {
+    this.focusedNpcId = null;
+    this.selectedNpcActionId = null;
+    this.phase = 'exploration-idle';
+    const leader = this.getActiveUnit();
+    this.inspectionTarget = leader ? { kind: 'tile', x: leader.x, y: leader.y } : { kind: 'mission' };
+  }
+
+  private getExplorationMoveNodes(unit: BattleUnit): Map<string, ReachNode> {
+    return getTraversalNodes(
+      this.map,
+      unit,
+      Number.POSITIVE_INFINITY,
+      [
+        ...this.getBlockedPropPoints(),
+        ...this.explorationNpcs.map((npc) => ({ x: npc.x, y: npc.y }))
+      ]
+    );
+  }
+
+  private getPathToExplorationTarget(tile: TileData): Point[] | null {
+    const leader = this.getActiveUnit();
+    if (!leader) {
+      return null;
+    }
+
+    const moveNodes = this.getExplorationMoveNodes(leader);
+    if (!moveNodes.has(pointKey(tile))) {
+      return null;
+    }
+
+    this.moveNodes = moveNodes;
+    return buildPath(moveNodes, tile);
+  }
+
+  private getPathToNpcAdjacency(npc: ExplorationNpcRuntime): Point[] | null {
+    const leader = this.getActiveUnit();
+    if (!leader) {
+      return null;
+    }
+
+    const moveNodes = this.getExplorationMoveNodes(leader);
+    const adjacentTiles = [
+      getTile(this.map, npc.x + 1, npc.y),
+      getTile(this.map, npc.x - 1, npc.y),
+      getTile(this.map, npc.x, npc.y + 1),
+      getTile(this.map, npc.x, npc.y - 1)
+    ].filter((tile): tile is TileData => Boolean(tile));
+
+    const bestTile = adjacentTiles
+      .filter((tile) => moveNodes.has(pointKey(tile)))
+      .sort((left, right) => {
+        const leftNode = moveNodes.get(pointKey(left));
+        const rightNode = moveNodes.get(pointKey(right));
+        return (leftNode?.cost ?? Number.POSITIVE_INFINITY) - (rightNode?.cost ?? Number.POSITIVE_INFINITY);
+      })[0];
+
+    if (!bestTile) {
+      return null;
+    }
+
+    this.moveNodes = moveNodes;
+    return buildPath(moveNodes, bestTile);
+  }
+
+  private async moveExplorationLeader(path: Point[], focusedNpcId: string | null = this.focusedNpcId): Promise<void> {
+    const leader = this.getActiveUnit();
+    if (!leader || path.length === 0) {
+      return;
+    }
+
+    this.busy = true;
+    this.focusedNpcId = focusedNpcId;
+    this.selectedNpcActionId = null;
+    this.phase = 'exploration-moving';
+    this.drawHighlights();
+    this.refreshUi();
+
+    if (path.length > 1) {
+      await this.animateMovement(leader, path.slice(1));
+    }
+
+    const destination = path[path.length - 1];
+    if (destination) {
+      leader.x = destination.x;
+      leader.y = destination.y;
+      this.positionUnit(leader);
+    }
+
+    this.busy = false;
+    this.refreshExplorationAdjacency();
+    this.drawHighlights();
+    this.refreshUi();
+  }
+
+  private async handleExplorationTileSelection(tile: TileData): Promise<void> {
+    const npc = this.getExplorationNpcAt(tile.x, tile.y);
+
+    if (npc) {
+      this.focusedNpcId = npc.id;
+      this.setInspectionTarget({ kind: 'npc', npcId: npc.id }, false);
+
+      const leader = this.getActiveUnit();
+      if (leader && manhattanDistance(leader, npc) === 1) {
+        this.selectedNpcActionId = null;
+        this.phase = 'exploration-menu';
+        this.drawHighlights();
+        this.refreshUi();
+        return;
+      }
+
+      const path = this.getPathToNpcAdjacency(npc);
+      if (!path) {
+        this.pushLog(`${npc.name} is sealed off from this route.`);
+        this.drawHighlights();
+        this.refreshUi();
+        return;
+      }
+
+      await this.moveExplorationLeader(path, npc.id);
+      return;
+    }
+
+    this.setInspectionTarget({ kind: 'tile', x: tile.x, y: tile.y }, false);
+    const path = this.getPathToExplorationTarget(tile);
+    if (!path) {
+      this.drawHighlights();
+      this.refreshUi();
+      return;
+    }
+
+    await this.moveExplorationLeader(path, null);
   }
 
   private setPauseMenuOpen(open: boolean): void {
@@ -1998,7 +2309,7 @@ export class BattleScene extends Phaser.Scene {
     this.minimalMobileLayout = true;
     this.showHudControls = false;
     this.showDetailPanel = this.getResolvedInspectionTarget().kind !== 'mission';
-    this.showTimelinePanel = true;
+    this.showTimelinePanel = !this.isExplorationMode();
     this.showPortraitPanel = true;
     this.visibleTurnOrderCount = 6;
     this.visibleLogLines = 2;
@@ -2573,7 +2884,8 @@ export class BattleScene extends Phaser.Scene {
     const menuPanelWidth = 248;
     const optionRowHeight = 30;
     const optionGap = UI_PANEL_COMPACT_GAP;
-    const menuContentHeight = this.headerMenuOptionTexts.length * optionRowHeight + Math.max(0, this.headerMenuOptionTexts.length - 1) * optionGap;
+    const headerMenuActions = this.getHeaderMenuActions();
+    const menuContentHeight = headerMenuActions.length * optionRowHeight + Math.max(0, headerMenuActions.length - 1) * optionGap;
     const menuPanelHeight = UI_NARROW_PLAQUE_HEADER_HEIGHT + UI_PANEL_CONTENT_GAP + menuContentHeight + UI_PANEL_CONTENT_INSET;
     this.headerMenuPanelBounds.setTo(
       Math.round((width - menuPanelWidth) * 0.5),
@@ -2587,6 +2899,11 @@ export class BattleScene extends Phaser.Scene {
 
     for (const [index, text] of this.headerMenuOptionTexts.entries()) {
       const optionBounds = this.headerMenuOptionBounds[index];
+      if (index >= headerMenuActions.length) {
+        optionBounds.setTo(0, 0, 0, 0);
+        text.setVisible(false);
+        continue;
+      }
       const rowBounds = menuGrid.band(menuGrid.content.y + index * (optionRowHeight + menuGrid.gutter), optionRowHeight);
       optionBounds.setTo(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height);
       text
@@ -2753,6 +3070,12 @@ export class BattleScene extends Phaser.Scene {
     }
 
     return flavor.length <= shortObjective.length ? flavor : shortObjective;
+  }
+
+  private getHeaderMenuActions(): HeaderMenuAction[] {
+    return this.isExplorationMode()
+      ? ['audio', 'restart', 'title']
+      : ['auto', 'audio', 'restart', 'setup'];
   }
 
   private layoutHudControls(margin: number, width: number, height: number): void {
@@ -3049,65 +3372,81 @@ export class BattleScene extends Phaser.Scene {
   private createUnits(): void {
     for (const unit of this.units) {
       const initialFacing = this.getInitialFacingForUnit(unit);
-      const spriteFlipX = this.shouldFlipSpriteForFacing(initialFacing);
-      const spriteOffsetX = this.getSpriteOffsetXForFacing(unit.spriteOffsetX, initialFacing);
-      const spriteOffsetY = unit.spriteOffsetY ?? 0;
-      const marker = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 62, 26, unit.accentColor, 0);
-      const shadow = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 50, 18, 0x060205, 0.42);
-      const activeGlow = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
-      activeGlow.displayHeight = unit.spriteDisplayHeight;
-      activeGlow.scaleX = activeGlow.scaleY;
-      activeGlow
-        .setPosition(spriteOffsetX, spriteOffsetY)
-        .setFlipX(spriteFlipX)
-        .setTint(this.getActiveUnitGlowTint(unit))
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setAlpha(0)
-        .setVisible(false);
-      const activeOutlineSprites = ACTIVE_UNIT_OUTLINE_OFFSETS.map(() => {
-        const outline = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
-        outline.displayHeight = unit.spriteDisplayHeight;
-        outline.scaleX = outline.scaleY;
-        outline
-          .setPosition(spriteOffsetX, spriteOffsetY)
-          .setFlipX(spriteFlipX)
-          .setTintFill(this.getActiveUnitOutlineTint(unit))
-          .setAlpha(0)
-          .setVisible(false);
-        return outline;
-      });
-      const sprite = this.add.image(0, 0, unit.spriteKey).setOrigin(0.5, 1);
-      sprite.displayHeight = unit.spriteDisplayHeight;
-      sprite.scaleX = sprite.scaleY;
-      sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-
-      const hpBack = this.add.rectangle(0, sprite.y - unit.spriteDisplayHeight - 12, 60, 8, 0x12070d, 0.92);
-      const hpFill = this.add.rectangle(-29, sprite.y - unit.spriteDisplayHeight - 12, 56, 4, 0x65d99e, 1).setOrigin(0, 0.5);
-      const label = this.add.text(0, sprite.y - unit.spriteDisplayHeight - 28, unit.name, UI_TEXT_WORLD_LABEL);
-      label.setOrigin(0.5);
-
-      const container = this.add.container(0, 0, [marker, shadow, activeGlow, ...activeOutlineSprites, sprite, hpBack, hpFill, label]);
-      const view: UnitView = {
-        container,
-        shadow,
-        marker,
-        activeGlow,
-        activeOutlineSprites,
-        sprite,
-        hpBack,
-        hpFill,
-        label,
-        facing: initialFacing,
-        spriteBaseScale: sprite.scaleX,
-        spriteBaseY: sprite.y
-      };
-
+      const view = this.createActorView(unit, initialFacing);
       this.views.set(unit.id, view);
       this.applyUnitViewFacing(unit, view, initialFacing);
       this.syncActiveUnitGlow(view);
       this.applyIdleAnimation(unit, view);
       this.positionUnit(unit);
     }
+  }
+
+  private createExplorationNpcs(): void {
+    for (const npc of this.explorationNpcs) {
+      const view = this.createActorView(npc, DEFAULT_UNIT_FACING);
+      view.hpBack.setVisible(false);
+      view.hpFill.setVisible(false);
+      this.views.set(npc.id, view);
+      this.applyNpcViewFacing(npc, view, DEFAULT_UNIT_FACING);
+      this.syncActiveUnitGlow(view);
+      this.applyIdleAnimation(npc, view);
+      this.positionExplorationNpc(npc);
+    }
+  }
+
+  private createActorView(actor: VisualActor, initialFacing: SpriteFacing): UnitView {
+    const spriteFlipX = this.shouldFlipSpriteForFacing(initialFacing);
+    const spriteOffsetX = this.getSpriteOffsetXForFacing(actor.spriteOffsetX, initialFacing);
+    const spriteOffsetY = actor.spriteOffsetY ?? 0;
+    const marker = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 62, 26, actor.accentColor, 0);
+    const shadow = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 50, 18, 0x060205, 0.42);
+    const activeGlow = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
+    activeGlow.displayHeight = actor.spriteDisplayHeight;
+    activeGlow.scaleX = activeGlow.scaleY;
+    activeGlow
+      .setPosition(spriteOffsetX, spriteOffsetY)
+      .setFlipX(spriteFlipX)
+      .setTint(actor.accentColor)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0)
+      .setVisible(false);
+    const activeOutlineSprites = ACTIVE_UNIT_OUTLINE_OFFSETS.map(() => {
+      const outline = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
+      outline.displayHeight = actor.spriteDisplayHeight;
+      outline.scaleX = outline.scaleY;
+      outline
+        .setPosition(spriteOffsetX, spriteOffsetY)
+        .setFlipX(spriteFlipX)
+        .setTintFill(actor.accentColor)
+        .setAlpha(0)
+        .setVisible(false);
+      return outline;
+    });
+    const sprite = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
+    sprite.displayHeight = actor.spriteDisplayHeight;
+    sprite.scaleX = sprite.scaleY;
+    sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+
+    const hpBack = this.add.rectangle(0, sprite.y - actor.spriteDisplayHeight - 12, 60, 8, 0x12070d, 0.92);
+    const hpFill = this.add.rectangle(-29, sprite.y - actor.spriteDisplayHeight - 12, 56, 4, 0x65d99e, 1).setOrigin(0, 0.5);
+    const label = this.add.text(0, sprite.y - actor.spriteDisplayHeight - 28, actor.name, UI_TEXT_WORLD_LABEL);
+    label.setOrigin(0.5);
+
+    const container = this.add.container(0, 0, [marker, shadow, activeGlow, ...activeOutlineSprites, sprite, hpBack, hpFill, label]);
+    return {
+      container,
+      shadow,
+      marker,
+      activeGlow,
+      activeOutlineSprites,
+      sprite,
+      hpBack,
+      hpFill,
+      label,
+      facing: initialFacing,
+      spriteBaseScale: sprite.scaleX,
+      spriteBaseY: sprite.y
+    };
   }
 
   private applyChestIdleAnimation(chestId: string): void {
@@ -3155,9 +3494,9 @@ export class BattleScene extends Phaser.Scene {
     });
   }
 
-  private applyIdleAnimation(unit: BattleUnit, view: UnitView): void {
-    const delay = (unit.x + unit.y) * 110;
-    const profile = this.getIdleProfile(unit.idleStyle);
+  private applyIdleAnimation(actor: VisualActor, view: UnitView): void {
+    const delay = (actor.x + actor.y) * 110;
+    const profile = this.getIdleProfile(actor.idleStyle);
 
     this.tweens.add({
       targets: view.sprite,
@@ -3628,6 +3967,20 @@ export class BattleScene extends Phaser.Scene {
     this.syncActiveUnitGlow(view);
   }
 
+  private applyNpcViewFacing(npc: ExplorationNpcRuntime, view: UnitView, facing: SpriteFacing): void {
+    view.facing = facing;
+    const spriteOffsetX = this.getSpriteOffsetXForFacing(npc.spriteOffsetX, facing);
+    const spriteOffsetY = npc.spriteOffsetY ?? 0;
+    const spriteFlipX = this.shouldFlipSpriteForFacing(facing);
+
+    view.activeGlow.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    for (const outline of view.activeOutlineSprites) {
+      outline.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    }
+    view.sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
+    this.syncActiveUnitGlow(view);
+  }
+
   private updateUnitFacingForMovement(
     unit: BattleUnit,
     view: UnitView,
@@ -3748,9 +4101,35 @@ export class BattleScene extends Phaser.Scene {
     view.container.setDepth(this.getUnitDepth(tile));
     view.container.setVisible(unit.alive);
     view.container.setAlpha(unit.alive ? 1 : 0);
+    const showHealth = this.sceneMode === 'battle';
+    view.hpBack.setVisible(showHealth);
+    view.hpFill.setVisible(showHealth);
     view.hpFill.width = Math.max(0, 56 * (unit.hp / unit.maxHp));
     view.hpFill.setFillStyle(unit.team === 'player' ? 0x67d9a0 : 0xe88787, 1);
     view.label.setText(unit.name);
+  }
+
+  private positionExplorationNpc(npc: ExplorationNpcRuntime): void {
+    const view = this.views.get(npc.id);
+
+    if (!view) {
+      return;
+    }
+
+    const tile = getTile(this.map, npc.x, npc.y);
+
+    if (!tile) {
+      return;
+    }
+
+    const point = this.getUnitGroundPoint(tile);
+    view.container.setPosition(point.x, point.y);
+    view.container.setDepth(this.getUnitDepth(tile));
+    view.container.setVisible(true);
+    view.container.setAlpha(1);
+    view.hpBack.setVisible(false);
+    view.hpFill.setVisible(false);
+    view.label.setText(npc.name);
   }
 
   private getActiveUnitOutlineTint(unit: BattleUnit): number {
@@ -4249,6 +4628,10 @@ export class BattleScene extends Phaser.Scene {
       this.positionUnit(unit);
     }
 
+    for (const npc of this.explorationNpcs) {
+      this.positionExplorationNpc(npc);
+    }
+
     this.configureCamera(false);
     this.drawHighlights();
     this.refreshUi();
@@ -4531,6 +4914,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getMenuEntries(): MenuEntry[] {
+    if (this.isExplorationMode()) {
+      return [];
+    }
+
     const activeUnit = this.getActiveUnit();
 
     if (!activeUnit || activeUnit.team !== 'player') {
@@ -4604,6 +4991,10 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private shouldShowActionMenu(): boolean {
+    if (this.isExplorationMode()) {
+      return !!this.getInteractionNpc() && (this.phase === 'exploration-menu' || this.phase === 'exploration-detail');
+    }
+
     if (this.isBattleIntroActive()) {
       return false;
     }
@@ -4627,6 +5018,46 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private buildActionMenuPanels(): ActionMenuPanelDescriptor[] {
+    if (this.isExplorationMode()) {
+      const npc = this.getInteractionNpc();
+      if (!npc) {
+        return [];
+      }
+
+      const rootPanel: ActionMenuPanelDescriptor = {
+        id: 'npc-actions',
+        kind: 'list',
+        title: npc.name,
+        blocksWorldInput: true,
+        entries: npc.actions.map((action) => ({
+          id: action.id,
+          label: action.label,
+          enabled: true,
+          active: action.id === this.selectedNpcActionId
+        }))
+      };
+
+      if (this.phase !== 'exploration-detail') {
+        return [rootPanel];
+      }
+
+      const detailAction = npc.actions.find((action) => action.id === this.selectedNpcActionId);
+      if (!detailAction) {
+        return [rootPanel];
+      }
+
+      return [
+        rootPanel,
+        {
+          id: 'npc-detail',
+          kind: 'detail',
+          title: detailAction.title ?? detailAction.label,
+          blocksWorldInput: true,
+          body: detailAction.body
+        }
+      ];
+    }
+
     const activeUnit = this.getActiveUnit();
     if (!activeUnit || activeUnit.team !== 'player') {
       return [];
@@ -4818,10 +5249,13 @@ export class BattleScene extends Phaser.Scene {
       return true;
     }
 
-    const actions: HeaderMenuAction[] = ['auto', 'audio', 'restart', 'setup'];
+    const actions = this.getHeaderMenuActions();
     for (const [index, bounds] of this.headerMenuOptionBounds.entries()) {
       if (bounds.contains(x, y)) {
-        await this.executeHeaderMenuAction(actions[index]);
+        const action = actions[index];
+        if (action) {
+          await this.executeHeaderMenuAction(action);
+        }
         return true;
       }
     }
@@ -4848,6 +5282,9 @@ export class BattleScene extends Phaser.Scene {
         return;
       case 'setup':
         this.returnToSetup();
+        return;
+      case 'title':
+        this.returnToTitle();
         return;
       default:
         return;
@@ -4883,6 +5320,26 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private cancelPlayerSelectionPhase(): void {
+    if (this.isExplorationMode()) {
+      switch (this.phase) {
+        case 'exploration-detail':
+          audioDirector.playUiCancel();
+          this.selectedNpcActionId = null;
+          this.phase = this.getInteractionNpc() ? 'exploration-menu' : 'exploration-idle';
+          break;
+        case 'exploration-menu':
+          audioDirector.playUiCancel();
+          this.closeExplorationInteraction();
+          break;
+        default:
+          return;
+      }
+
+      this.drawHighlights();
+      this.refreshUi();
+      return;
+    }
+
     switch (this.phase) {
       case 'player-items':
         audioDirector.playUiCancel();
@@ -4987,12 +5444,6 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async handleMenuPointer(x: number, y: number): Promise<boolean> {
-    const activeUnit = this.getActiveUnit();
-
-    if (!activeUnit || activeUnit.team !== 'player') {
-      return false;
-    }
-
     const hit = this.actionMenuStack.hitTest(x, y);
     if (!hit) {
       return false;
@@ -5000,6 +5451,32 @@ export class BattleScene extends Phaser.Scene {
 
     if (!hit.entryId) {
       return hit.blocksWorldInput;
+    }
+
+    if (this.isExplorationMode()) {
+      const npc = this.getInteractionNpc();
+      if (!npc || hit.panelId !== 'npc-actions') {
+        return hit.blocksWorldInput;
+      }
+
+      const action = npc.actions.find((entry) => entry.id === hit.entryId);
+      if (!action) {
+        return true;
+      }
+
+      audioDirector.playUiConfirm();
+      this.selectedNpcActionId = action.id;
+      this.phase = 'exploration-detail';
+      this.setInspectionTarget({ kind: 'npc', npcId: npc.id }, false);
+      this.drawHighlights();
+      this.refreshUi();
+      return true;
+    }
+
+    const activeUnit = this.getActiveUnit();
+
+    if (!activeUnit || activeUnit.team !== 'player') {
+      return false;
     }
 
     if (hit.panelId === 'command-list') {
@@ -5218,6 +5695,11 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    if (this.isExplorationMode()) {
+      await this.handleExplorationTileSelection(tile);
+      return;
+    }
+
     if (this.phase === 'player-move') {
       const node = this.moveNodes.get(pointKey(tile));
 
@@ -5309,6 +5791,11 @@ export class BattleScene extends Phaser.Scene {
 
   private async handleSpaceKey(): Promise<void> {
     if (this.busy || this.phase === 'complete' || this.headerMenuOpen) {
+      return;
+    }
+
+    if (this.isExplorationMode()) {
+      this.cancelPlayerSelectionPhase();
       return;
     }
 
@@ -7303,29 +7790,46 @@ export class BattleScene extends Phaser.Scene {
     this.mapIntroFlavorText.setText(this.getMapIntroSummary());
     this.headerMenuTitleText.setText('PAUSED');
     this.autoBattleToggleText.setText('');
-    this.headerMenuOptionTexts[0]?.setText(`AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`);
-    this.headerMenuOptionTexts[1]?.setText(`AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`);
-    this.headerMenuOptionTexts[2]?.setText('RESTART');
-    this.headerMenuOptionTexts[3]?.setText('SETUP');
+    const headerMenuLabels: Record<HeaderMenuAction, string> = {
+      auto: `AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`,
+      audio: `AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`,
+      restart: this.isExplorationMode() ? 'RESTART VISIT' : 'RESTART',
+      setup: 'SETUP',
+      title: 'TITLE'
+    };
+    const headerMenuActions = this.getHeaderMenuActions();
+    for (const [index, text] of this.headerMenuOptionTexts.entries()) {
+      const action = headerMenuActions[index];
+      text.setText(action ? headerMenuLabels[action] : '');
+    }
 
     const activeUnit = this.getActiveUnit();
-    const queue = activeUnit
-      ? [activeUnit, ...projectTurnOrder(this.units, this.visibleTurnOrderCount - 1)]
-      : projectTurnOrder(this.units, this.visibleTurnOrderCount);
-    this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, true);
+    if (this.isExplorationMode()) {
+      this.turnOrderPanel.setQueue([], this.activeUnitId, this.visibleTurnOrderCount, true);
+    } else {
+      const queue = activeUnit
+        ? [activeUnit, ...projectTurnOrder(this.units, this.visibleTurnOrderCount - 1)]
+        : projectTurnOrder(this.units, this.visibleTurnOrderCount);
+      this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, true);
+    }
     this.turnOrderPanel.setVisible(hudVisible && this.showTimelinePanel);
 
     this.hudViewModel = this.buildHudViewModel();
     const focusUnit = this.getDetailFocusUnit();
+    const inspectionUnit = this.getInspectionUnit();
+    const inspectionNpc = this.getInspectionNpc();
     const inspectionTarget = this.getResolvedInspectionTarget();
     const inspectionTile = this.getInspectionTile();
     if (inspectionTarget.kind !== 'mission') {
       let portraitTextureKey: string | null = null;
       let portraitKind: DetailPortraitKind = 'terrain';
 
-      if (focusUnit) {
-        portraitTextureKey = getUnitPortraitImageKey(focusUnit.spriteKey) ?? focusUnit.spriteKey;
-        portraitKind = portraitTextureKey === focusUnit.spriteKey ? 'unit' : 'unit-portrait';
+      if (inspectionUnit) {
+        portraitTextureKey = getUnitPortraitImageKey(inspectionUnit.spriteKey) ?? inspectionUnit.spriteKey;
+        portraitKind = portraitTextureKey === inspectionUnit.spriteKey ? 'unit' : 'unit-portrait';
+      } else if (inspectionNpc) {
+        portraitTextureKey = getUnitPortraitImageKey(inspectionNpc.spriteKey) ?? inspectionNpc.spriteKey;
+        portraitKind = portraitTextureKey === inspectionNpc.spriteKey ? 'unit' : 'unit-portrait';
       } else if (inspectionTile) {
         const chest = this.getChestAt(inspectionTile.x, inspectionTile.y);
         const prop = this.getPropAt(inspectionTile.x, inspectionTile.y);
@@ -7345,7 +7849,13 @@ export class BattleScene extends Phaser.Scene {
         this.showDetailPortrait(
           portraitTextureKey,
           portraitKind,
-          portraitKind === 'unit' && focusUnit ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(focusUnit.id)) : false
+          portraitKind === 'unit'
+            ? inspectionUnit
+              ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(inspectionUnit.id))
+              : inspectionNpc
+                ? this.shouldFlipSpriteForFacing(this.getUnitViewFacing(inspectionNpc.id))
+                : false
+            : false
         );
       } else {
         this.portrait.setVisible(false);
@@ -7542,11 +8052,16 @@ export class BattleScene extends Phaser.Scene {
       this.uiPanels.topRight.width,
       this.uiPanels.topRight.height
     );
+    const inspectionUnit = this.getInspectionUnit();
 
     const accentColor = focusUnit
       ? focusUnit.team === 'player'
         ? UI_COLOR_ACCENT_COOL
         : UI_COLOR_ACCENT_DANGER
+      : this.isExplorationMode() && inspectionUnit
+        ? UI_COLOR_ACCENT_COOL
+      : this.getInspectionNpc()
+        ? UI_COLOR_ACCENT_WARM
       : this.getInspectionTile()
         ? UI_COLOR_ACCENT_WARM
         : UI_COLOR_ACCENT_NEUTRAL;
@@ -7668,11 +8183,84 @@ export class BattleScene extends Phaser.Scene {
     const inspectionTarget = this.getResolvedInspectionTarget();
     const activeUnit = this.getActiveUnit();
     const inspectionUnit = this.getInspectionUnit();
+    const inspectionNpc = this.getInspectionNpc();
     const inspectionTile = this.getInspectionTile();
     const commandFocusUnit =
       inspectionUnit && activeUnit && inspectionUnit.id === activeUnit.id && activeUnit.team === 'player' && this.isPlayerTurnPhase()
         ? activeUnit
         : null;
+
+    if (this.isExplorationMode()) {
+      if (inspectionNpc) {
+        return {
+          badgeText: 'CAMP CONTACT',
+          metaText: `${getFactionProfile(inspectionNpc.factionId).displayName}  •  ${inspectionNpc.className}`,
+          titleText: inspectionNpc.name,
+          bodyText: inspectionNpc.summary,
+          statValues: inspectionNpc.actions.slice(0, 4).map((action) => action.label.toUpperCase()),
+          healthRatio: null,
+          healthColor: UI_COLOR_ACCENT_WARM,
+          actionEntries: []
+        };
+      }
+
+      if (inspectionUnit) {
+        return {
+          badgeText: 'EXPEDITION LEADER',
+          metaText: `${getFactionProfile(inspectionUnit.factionId).displayName}  •  ${inspectionUnit.className}`,
+          titleText: inspectionUnit.name,
+          bodyText: 'Move freely through the camp. Stand beside a contact to open their action menu.',
+          statValues: [
+            `MOVE FREE`,
+            `JUMP ${inspectionUnit.jump}`,
+            `STYLE ${inspectionUnit.movementStyle.toUpperCase()}`,
+            `FOCUS READY`
+          ],
+          healthRatio: null,
+          healthColor: UI_COLOR_SUCCESS,
+          actionEntries: []
+        };
+      }
+
+      if (inspectionTile) {
+        const prop = this.getPropAt(inspectionTile.x, inspectionTile.y);
+        const terrainName = this.formatTerrainName(inspectionTile.terrain);
+        return {
+          badgeText: prop ? 'FIELD PROP' : 'TERRAIN TILE',
+          metaText: `${terrainName}  •  ${inspectionTile.x}, ${inspectionTile.y}`,
+          titleText: prop ? this.getPropTitle(prop.assetId) : `${terrainName} Ground`,
+          bodyText: [
+            `Height ${inspectionTile.height}  •  ${terrainName}`,
+            prop ? this.describeProp(prop.assetId) : this.describeTerrain(inspectionTile.terrain)
+          ].join('\n'),
+          statValues: [
+            `HEIGHT ${inspectionTile.height}`,
+            terrainName.toUpperCase(),
+            prop ? 'OCCUPIED' : 'OPEN TILE',
+            prop && PROP_RENDER_CONFIG[prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+          ],
+          healthRatio: null,
+          healthColor: UI_COLOR_SUCCESS,
+          actionEntries: []
+        };
+      }
+
+      return {
+        badgeText: 'WAYSTATION',
+        metaText: `${TIME_OF_DAY_CONFIG[this.timeOfDay].label}  •  ${this.level.encounterType ?? 'Sanctuary Visit'}`,
+        titleText: this.level.name,
+        bodyText: `${this.level.shortObjective ?? this.level.objective}\nWalk the grounds and stand beside a contact to see what they offer.`,
+        statValues: [
+          `CONTACTS ${this.explorationNpcs.length}`,
+          `PROPS ${this.level.props.length}`,
+          `SCENE ${TIME_OF_DAY_CONFIG[this.timeOfDay].label.toUpperCase()}`,
+          ''
+        ],
+        healthRatio: null,
+        healthColor: UI_COLOR_SUCCESS,
+        actionEntries: []
+      };
+    }
 
     if (inspectionUnit) {
       return {
@@ -7992,6 +8580,15 @@ export class BattleScene extends Phaser.Scene {
     this.stopTurnStartCatchPhraseSound();
   }
 
+  private getInspectionNpc(): ExplorationNpcRuntime | null {
+    const target = this.getResolvedInspectionTarget();
+    if (target.kind !== 'npc') {
+      return null;
+    }
+
+    return this.getExplorationNpc(target.npcId);
+  }
+
   private getInspectionUnit(): BattleUnit | null {
     const target = this.getResolvedInspectionTarget();
     if (target.kind !== 'unit') {
@@ -8020,6 +8617,13 @@ export class BattleScene extends Phaser.Scene {
       }
     }
 
+    if (inspectionTarget.kind === 'npc') {
+      const npc = this.getExplorationNpc(inspectionTarget.npcId);
+      if (npc) {
+        return inspectionTarget;
+      }
+    }
+
     if (inspectionTarget.kind === 'tile') {
       if (getTile(this.map, inspectionTarget.x, inspectionTarget.y)) {
         return inspectionTarget;
@@ -8035,6 +8639,7 @@ export class BattleScene extends Phaser.Scene {
       current.kind === target.kind &&
       (current.kind === 'mission' ||
         (current.kind === 'unit' && target.kind === 'unit' && current.unitId === target.unitId) ||
+        (current.kind === 'npc' && target.kind === 'npc' && current.npcId === target.npcId) ||
         (current.kind === 'tile' && target.kind === 'tile' && current.x === target.x && current.y === target.y));
 
     if (toggleIfSame && unchanged && target.kind !== 'mission') {
@@ -8062,6 +8667,12 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    if (target.kind === 'npc') {
+      const npc = this.getExplorationNpc(target.npcId);
+      this.hoverTile = npc ? getTile(this.map, npc.x, npc.y) : this.hoverTile;
+      return;
+    }
+
     if (target.kind === 'tile') {
       this.hoverTile = getTile(this.map, target.x, target.y);
       return;
@@ -8085,10 +8696,23 @@ export class BattleScene extends Phaser.Scene {
       return unit ? getTile(this.map, unit.x, unit.y) : null;
     }
 
+    if (target.kind === 'npc') {
+      const npc = this.getExplorationNpc(target.npcId);
+      return npc ? getTile(this.map, npc.x, npc.y) : null;
+    }
+
     return null;
   }
 
   private inspectTile(tile: TileData): void {
+    const npc = this.getExplorationNpcAt(tile.x, tile.y);
+    if (npc) {
+      this.setInspectionTarget({ kind: 'npc', npcId: npc.id }, false, true);
+      this.drawHighlights();
+      this.refreshUi();
+      return;
+    }
+
     const unit = this.units.find((candidate) => candidate.alive && candidate.x === tile.x && candidate.y === tile.y);
     if (unit) {
       this.setInspectionTarget({ kind: 'unit', unitId: unit.id }, false, true);
@@ -8108,7 +8732,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getDetailFocusUnit(): BattleUnit | null {
-    return this.getInspectionUnit();
+    return this.isExplorationMode() ? null : this.getInspectionUnit();
   }
 
   private updateDetailPanelForSelection(target: InspectionTarget): void {
@@ -8134,6 +8758,8 @@ export class BattleScene extends Phaser.Scene {
       if (selectionChanged && unit) {
         this.playTurnStartCatchPhraseVoice(unit);
       }
+    } else if (target.kind === 'npc') {
+      this.stopTurnStartCatchPhraseSound();
     } else {
       this.stopTurnStartCatchPhraseSound();
     }
@@ -8167,6 +8793,8 @@ export class BattleScene extends Phaser.Scene {
     switch (target.kind) {
       case 'unit':
         return `unit:${target.unitId}`;
+      case 'npc':
+        return `npc:${target.npcId}`;
       case 'tile':
         return `tile:${target.x},${target.y}`;
       case 'mission':

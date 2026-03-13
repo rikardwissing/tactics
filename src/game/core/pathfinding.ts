@@ -22,20 +22,25 @@ export function getReachableNodes(
   units: BattleUnit[],
   blockedPoints: Point[] = []
 ): Map<string, ReachNode> {
-  const blocked = new Set(
-    units
-      .filter((entry) => entry.alive && entry.id !== unit.id)
-      .map((entry) => keyFor(entry.x, entry.y))
-  );
+  const blocked = units
+    .filter((entry) => entry.alive && entry.id !== unit.id)
+    .map((entry) => ({ x: entry.x, y: entry.y }));
 
-  for (const point of blockedPoints) {
-    blocked.add(keyFor(point.x, point.y));
-  }
+  return getTraversalNodes(map, unit, unit.move, [...blocked, ...blockedPoints]);
+}
 
-  const startKey = keyFor(unit.x, unit.y);
+export function getTraversalNodes(
+  map: TileData[],
+  origin: Point & { jump: number },
+  maxCost: number,
+  blockedPoints: Point[] = []
+): Map<string, ReachNode> {
+  const blocked = new Set(blockedPoints.map((point) => keyFor(point.x, point.y)));
+  const startKey = keyFor(origin.x, origin.y);
   const reachable = new Map<string, ReachNode>();
-  const queue: ReachNode[] = [{ x: unit.x, y: unit.y, cost: 0, previousKey: null }];
+  const queue: ReachNode[] = [{ x: origin.x, y: origin.y, cost: 0, previousKey: null }];
 
+  blocked.delete(startKey);
   reachable.set(startKey, queue[0]);
 
   while (queue.length > 0) {
@@ -67,11 +72,11 @@ export function getReachableNodes(
 
       const nextCost = current.cost + 1;
 
-      if (nextCost > unit.move) {
+      if (Number.isFinite(maxCost) && nextCost > maxCost) {
         continue;
       }
 
-      if (Math.abs(tile.height - currentTile.height) > unit.jump) {
+      if (Math.abs(tile.height - currentTile.height) > origin.jump) {
         continue;
       }
 

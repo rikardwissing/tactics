@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { audioDirector } from '../audio/audioDirector';
+import { DEFAULT_EXPLORATION_LOCATION_ID } from '../exploration';
+import type { BoardSceneStartData } from '../sceneSession';
 
 const SOFT_LIGHT_TEXTURE_KEY = 'title-soft-light';
 const TITLE_LOGO_MAX_WIDTH = 620;
@@ -18,6 +20,7 @@ export class TitleScene extends Phaser.Scene {
   private logo!: Phaser.GameObjects.Image;
   private subtitleText!: Phaser.GameObjects.Text;
   private promptText!: Phaser.GameObjects.Text;
+  private explorePromptText!: Phaser.GameObjects.Text;
   private editorPromptText!: Phaser.GameObjects.Text;
   private embers!: Phaser.GameObjects.Particles.ParticleEmitter;
 
@@ -69,6 +72,15 @@ export class TitleScene extends Phaser.Scene {
         letterSpacing: 5
       })
       .setOrigin(0.5);
+    this.explorePromptText = this.add
+      .text(0, 0, 'EXPLORE CAMP', {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '22px',
+        fontStyle: 'bold',
+        color: '#e9d2a2',
+        letterSpacing: 4
+      })
+      .setOrigin(0.5);
     this.editorPromptText = this.add
       .text(0, 0, 'UNIT EDITOR', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
@@ -102,14 +114,17 @@ export class TitleScene extends Phaser.Scene {
     this.logo.setDepth(6);
     this.subtitleText.setDepth(7);
     this.promptText.setDepth(8);
+    this.explorePromptText.setDepth(8);
     this.editorPromptText.setDepth(8);
     this.embers.setDepth(9);
 
     this.input.keyboard?.on('keydown-ENTER', this.beginSetup, this);
     this.input.keyboard?.on('keydown-SPACE', this.beginSetup, this);
     this.input.keyboard?.on('keydown-Z', this.beginSetup, this);
+    this.input.keyboard?.on('keydown-X', this.beginExploration, this);
     this.input.keyboard?.on('keydown-U', this.beginUnitEditor, this);
     this.promptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginSetup, this);
+    this.explorePromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginExploration, this);
     this.editorPromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginUnitEditor, this);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 
@@ -117,6 +132,7 @@ export class TitleScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-ENTER', this.beginSetup, this);
       this.input.keyboard?.off('keydown-SPACE', this.beginSetup, this);
       this.input.keyboard?.off('keydown-Z', this.beginSetup, this);
+      this.input.keyboard?.off('keydown-X', this.beginExploration, this);
       this.input.keyboard?.off('keydown-U', this.beginUnitEditor, this);
       this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
       this.promptPulseTween?.stop();
@@ -132,11 +148,18 @@ export class TitleScene extends Phaser.Scene {
     this.beginScene('setup');
   }
 
+  private beginExploration(): void {
+    this.beginScene('battle', {
+      mode: 'exploration',
+      locationId: DEFAULT_EXPLORATION_LOCATION_ID
+    });
+  }
+
   private beginUnitEditor(): void {
     this.beginScene('unit-editor');
   }
 
-  private beginScene(sceneKey: 'setup' | 'unit-editor'): void {
+  private beginScene(sceneKey: 'setup' | 'unit-editor' | 'battle', sceneData?: BoardSceneStartData): void {
     if (this.transitionStarted) {
       return;
     }
@@ -146,7 +169,7 @@ export class TitleScene extends Phaser.Scene {
     this.input.enabled = false;
 
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start(sceneKey);
+      this.scene.start(sceneKey, sceneData);
     });
     this.cameras.main.fadeOut(700, 12, 6, 10);
   }
@@ -168,6 +191,8 @@ export class TitleScene extends Phaser.Scene {
     this.subtitleText.y += 18;
     this.promptText.setAlpha(0);
     this.promptText.y += 12;
+    this.explorePromptText.setAlpha(0);
+    this.explorePromptText.y += 12;
     this.editorPromptText.setAlpha(0);
     this.editorPromptText.y += 12;
     this.embers.stop();
@@ -245,11 +270,20 @@ export class TitleScene extends Phaser.Scene {
     });
 
     this.tweens.add({
-      targets: this.editorPromptText,
+      targets: this.explorePromptText,
       alpha: 1,
       y: '-=12',
       duration: 720,
       delay: 1910,
+      ease: 'Quad.Out'
+    });
+
+    this.tweens.add({
+      targets: this.editorPromptText,
+      alpha: 1,
+      y: '-=12',
+      duration: 720,
+      delay: 2040,
       ease: 'Quad.Out'
     });
   }
@@ -280,7 +314,7 @@ export class TitleScene extends Phaser.Scene {
   private startPromptPulse(): void {
     this.promptPulseTween?.stop();
     this.promptPulseTween = this.tweens.add({
-      targets: [this.promptText, this.editorPromptText],
+      targets: [this.promptText, this.explorePromptText, this.editorPromptText],
       alpha: { from: 0.42, to: 1 },
       duration: 1300,
       yoyo: true,
@@ -324,7 +358,9 @@ export class TitleScene extends Phaser.Scene {
 
     this.promptText.setPosition(centerX, height * 0.74);
     this.promptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.019), 18, 26)}px`);
-    this.editorPromptText.setPosition(centerX, height * 0.8);
+    this.explorePromptText.setPosition(centerX, height * 0.79);
+    this.explorePromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.017), 17, 24)}px`);
+    this.editorPromptText.setPosition(centerX, height * 0.84);
     this.editorPromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.016), 16, 22)}px`);
 
     const emitBounds = new Phaser.Geom.Rectangle(width * 0.08, height * 0.16, width * 0.84, height * 0.52);
