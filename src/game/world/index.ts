@@ -1,23 +1,30 @@
 import type { BattleUnit, Point } from '../core/types';
 import type { WorldSceneStartData } from '../sceneSession';
 import { UNIT_BLUEPRINT_BATTLE_SCALE } from '../levels';
-import type { MapPropAssetId } from '../levels/types';
 import { getUnitBlueprint } from '../levels/unitBlueprints';
 import emberCaveInteriorMap from './data/ember-cave-interior.tiled.json';
 import pilgrimCampExteriorMap from './data/pilgrim-camp-exterior.tiled.json';
 import pilgrimStorehouseInteriorMap from './data/pilgrim-storehouse-interior.tiled.json';
 import sableCityApproachMap from './data/sable-city-approach.tiled.json';
 import wildernessPassageMap from './data/wilderness-passage.tiled.json';
+import worldLayoutData from './data/world.json';
 import { clearWorldSessionState, getWorldSessionState, setWorldSessionState } from './session';
 import { asInteriorMap, asOutdoorChunkMap, parseTiledWorldMap } from './tiled';
 import type {
   ResolvedWorldSpawn,
   WorldChunkDefinition,
+  WorldChunkLayoutDefinition,
   WorldChunkRuntime,
+  WorldChunkVariantDefinition,
   WorldInteriorDefinition,
+  WorldInteriorLayoutDefinition,
+  WorldLayoutDefinition,
+  WorldMapTransform,
   WorldNpcDefinition,
   WorldNpcRuntime,
-  WorldSessionState
+  WorldSessionState,
+  WorldTiledMapSource,
+  WorldVariantPropDefinition
 } from './types';
 
 const WORLD_LEADER_BLUEPRINT_ID = 'time-travelers-aion-trooper';
@@ -77,290 +84,48 @@ interface TiledMap {
   properties?: TiledProperty[];
 }
 
-type ChunkTransform = 'none' | 'mirrorX' | 'mirrorY' | 'rotate180';
+const WORLD_LAYOUT = worldLayoutData as WorldLayoutDefinition;
+const WORLD_MAP_SOURCES: Record<string, WorldTiledMapSource> = {
+  'ember-cave-interior': emberCaveInteriorMap,
+  'pilgrim-camp-exterior': pilgrimCampExteriorMap,
+  'pilgrim-storehouse-interior': pilgrimStorehouseInteriorMap,
+  'sable-city-approach': sableCityApproachMap,
+  'wilderness-passage': wildernessPassageMap
+};
 
-interface VariantPropDefinition {
-  x: number;
-  y: number;
-  assetId: MapPropAssetId;
+export const WORLD_CHUNK_SIZE = WORLD_LAYOUT.chunkSize;
+export const DEFAULT_WORLD_SPAWN_ID = WORLD_LAYOUT.defaultSpawnId;
+
+if (!Number.isInteger(WORLD_CHUNK_SIZE) || WORLD_CHUNK_SIZE <= 0) {
+  throw new Error(`World chunk size must be a positive integer, received ${WORLD_CHUNK_SIZE}.`);
 }
 
-interface OutdoorChunkVariantConfig {
-  mapId: string;
-  displayName: string;
-  backdropAssetId: string;
-  transform?: ChunkTransform;
-  props?: readonly VariantPropDefinition[];
+if (DEFAULT_WORLD_SPAWN_ID.trim().length === 0) {
+  throw new Error('World default spawn id must be defined in world.json.');
 }
 
-export const WORLD_CHUNK_SIZE = 16;
-export const DEFAULT_WORLD_SPAWN_ID = 'overworld-start';
-
-const cinderHeathMap = createOutdoorChunkVariant(wildernessPassageMap, {
-  mapId: 'cinder-heath',
-  displayName: 'Cinder Heath',
-  backdropAssetId: 'renations-global-backdrop',
-  transform: 'rotate180',
-  props: [
-    { x: 4, y: 11, assetId: 'obstacle-rubble-barricade' },
-    { x: 11, y: 6, assetId: 'light-torch' }
-  ]
-});
-
-const ridgeRoadMap = createOutdoorChunkVariant(wildernessPassageMap, {
-  mapId: 'ridge-road',
-  displayName: 'Ridge Road',
-  backdropAssetId: 'renations-global-backdrop',
-  transform: 'mirrorY',
-  props: [
-    { x: 8, y: 5, assetId: 'light-torch' },
-    { x: 11, y: 10, assetId: 'obstacle-rubble-barricade' }
-  ]
-});
-
-const pilgrimHeightsMap = createOutdoorChunkVariant(pilgrimCampExteriorMap, {
-  mapId: 'pilgrim-heights',
-  displayName: 'Pilgrim Heights',
-  backdropAssetId: 'setup-war-council-backdrop',
-  transform: 'mirrorY',
-  props: [
-    { x: 6, y: 5, assetId: 'sanctum-brazier' },
-    { x: 10, y: 10, assetId: 'light-torch' }
-  ]
-});
-
-const northGateRidgeMap = createOutdoorChunkVariant(sableCityApproachMap, {
-  mapId: 'north-gate-ridge',
-  displayName: 'North Gate Ridge',
-  backdropAssetId: 'iron-basilica-backdrop',
-  transform: 'mirrorY',
-  props: [
-    { x: 4, y: 5, assetId: 'light-torch' },
-    { x: 12, y: 9, assetId: 'obstacle-rubble-barricade' }
-  ]
-});
-
-const gatewatchRidgeMap = createOutdoorChunkVariant(sableCityApproachMap, {
-  mapId: 'gatewatch-ridge',
-  displayName: 'Gatewatch Ridge',
-  backdropAssetId: 'iron-basilica-backdrop',
-  transform: 'rotate180',
-  props: [
-    { x: 3, y: 7, assetId: 'light-torch' },
-    { x: 12, y: 7, assetId: 'light-torch' }
-  ]
-});
-
-const hollowMarchMap = createOutdoorChunkVariant(wildernessPassageMap, {
-  mapId: 'hollow-march',
-  displayName: 'Hollow March',
-  backdropAssetId: 'renations-global-backdrop',
-  transform: 'mirrorX',
-  props: [
-    { x: 6, y: 8, assetId: 'obstacle-rubble-barricade' },
-    { x: 12, y: 5, assetId: 'light-torch' }
-  ]
-});
-
-const easternCausewayMap = createOutdoorChunkVariant(sableCityApproachMap, {
-  mapId: 'eastern-causeway',
-  displayName: 'Eastern Causeway',
-  backdropAssetId: 'iron-basilica-backdrop',
-  transform: 'mirrorX',
-  props: [
-    { x: 3, y: 6, assetId: 'light-torch' },
-    { x: 9, y: 10, assetId: 'obstacle-rubble-barricade' }
-  ]
-});
-
-const reedMireMap = createOutdoorChunkVariant(wildernessPassageMap, {
-  mapId: 'reed-mire',
-  displayName: 'Reed Mire',
-  backdropAssetId: 'renations-global-backdrop',
-  transform: 'none',
-  props: [
-    { x: 5, y: 4, assetId: 'obstacle-rubble-barricade' },
-    { x: 12, y: 11, assetId: 'light-torch' }
-  ]
-});
-
-const emberFenMap = createOutdoorChunkVariant(wildernessPassageMap, {
-  mapId: 'ember-fen',
-  displayName: 'Ember Fen',
-  backdropAssetId: 'renations-global-backdrop',
-  transform: 'mirrorY',
-  props: [
-    { x: 7, y: 7, assetId: 'sanctum-brazier' },
-    { x: 11, y: 4, assetId: 'obstacle-rubble-barricade' }
-  ]
-});
-
-const pilgrimLowfieldsMap = createOutdoorChunkVariant(pilgrimCampExteriorMap, {
-  mapId: 'pilgrim-lowfields',
-  displayName: 'Pilgrim Lowfields',
-  backdropAssetId: 'setup-war-council-backdrop',
-  transform: 'mirrorX',
-  props: [
-    { x: 5, y: 10, assetId: 'light-torch' },
-    { x: 10, y: 6, assetId: 'sanctum-brazier' }
-  ]
-});
-
-const southGateMoorMap = createOutdoorChunkVariant(sableCityApproachMap, {
-  mapId: 'south-gate-moor',
-  displayName: 'South Gate Moor',
-  backdropAssetId: 'iron-basilica-backdrop',
-  transform: 'none',
-  props: [
-    { x: 4, y: 9, assetId: 'light-torch' },
-    { x: 11, y: 6, assetId: 'obstacle-rubble-barricade' }
-  ]
-});
-
-const sunkenCausewayMap = createOutdoorChunkVariant(sableCityApproachMap, {
-  mapId: 'sunken-causeway',
-  displayName: 'Sunken Causeway',
-  backdropAssetId: 'iron-basilica-backdrop',
-  transform: 'rotate180',
-  props: [
-    { x: 6, y: 5, assetId: 'light-torch' },
-    { x: 11, y: 10, assetId: 'light-torch' }
-  ]
-});
-
-const WORLD_CHUNKS: readonly WorldChunkDefinition[] = [
-  {
-    id: 'cinder-heath',
-    chunkX: -1,
-    chunkY: -1,
-    variants: {
-      default: cinderHeathMap
-    }
-  },
-  {
-    id: 'ridge-road',
-    chunkX: 0,
-    chunkY: -1,
-    variants: {
-      default: ridgeRoadMap
-    }
-  },
-  {
-    id: 'pilgrim-heights',
-    chunkX: 1,
-    chunkY: -1,
-    variants: {
-      default: pilgrimHeightsMap
-    }
-  },
-  {
-    id: 'north-gate-ridge',
-    chunkX: 2,
-    chunkY: -1,
-    variants: {
-      default: northGateRidgeMap
-    }
-  },
-  {
-    id: 'gatewatch-ridge',
-    chunkX: 3,
-    chunkY: -1,
-    variants: {
-      default: gatewatchRidgeMap
-    }
-  },
-  {
-    id: 'hollow-march',
-    chunkX: -1,
-    chunkY: 0,
-    variants: {
-      default: hollowMarchMap
-    }
-  },
-  {
-    id: 'wilderness-passage',
-    chunkX: 0,
-    chunkY: 0,
-    variants: {
-      default: wildernessPassageMap
-    }
-  },
-  {
-    id: 'pilgrim-camp-exterior',
-    chunkX: 1,
-    chunkY: 0,
-    variants: {
-      default: pilgrimCampExteriorMap
-    }
-  },
-  {
-    id: 'sable-city-approach',
-    chunkX: 2,
-    chunkY: 0,
-    variants: {
-      default: sableCityApproachMap
-    }
-  },
-  {
-    id: 'eastern-causeway',
-    chunkX: 3,
-    chunkY: 0,
-    variants: {
-      default: easternCausewayMap
-    }
-  },
-  {
-    id: 'reed-mire',
-    chunkX: -1,
-    chunkY: 1,
-    variants: {
-      default: reedMireMap
-    }
-  },
-  {
-    id: 'ember-fen',
-    chunkX: 0,
-    chunkY: 1,
-    variants: {
-      default: emberFenMap
-    }
-  },
-  {
-    id: 'pilgrim-lowfields',
-    chunkX: 1,
-    chunkY: 1,
-    variants: {
-      default: pilgrimLowfieldsMap
-    }
-  },
-  {
-    id: 'south-gate-moor',
-    chunkX: 2,
-    chunkY: 1,
-    variants: {
-      default: southGateMoorMap
-    }
-  },
-  {
-    id: 'sunken-causeway',
-    chunkX: 3,
-    chunkY: 1,
-    variants: {
-      default: sunkenCausewayMap
-    }
+const WORLD_CHUNKS: readonly WorldChunkDefinition[] = WORLD_LAYOUT.chunks.map((definition) => ({
+  id: definition.id,
+  chunkX: definition.chunkX,
+  chunkY: definition.chunkY,
+  variants: {
+    default: resolveOutdoorChunkMapSource(definition)
   }
-] as const;
+}));
 
-const WORLD_INTERIORS = [
-  asInteriorMap(parseTiledWorldMap(pilgrimStorehouseInteriorMap)),
-  asInteriorMap(parseTiledWorldMap(emberCaveInteriorMap))
-] as const satisfies readonly WorldInteriorDefinition[];
+const WORLD_INTERIORS: readonly WorldInteriorDefinition[] = WORLD_LAYOUT.interiors.map((definition) =>
+  resolveWorldInterior(definition)
+);
 
 const WORLD_CHUNK_RUNTIMES = WORLD_CHUNKS.map((definition) => {
   const parsed = asOutdoorChunkMap(parseTiledWorldMap(definition.variants.default));
 
   if (parsed.width !== WORLD_CHUNK_SIZE || parsed.height !== WORLD_CHUNK_SIZE) {
     throw new Error(`Outdoor world chunk ${definition.id} must be ${WORLD_CHUNK_SIZE}x${WORLD_CHUNK_SIZE}.`);
+  }
+
+  if (parsed.id !== definition.id) {
+    throw new Error(`Outdoor world chunk ${definition.id} resolved to map ${parsed.id}; keep world.json aligned.`);
   }
 
   return {
@@ -399,14 +164,19 @@ for (const interior of WORLD_INTERIORS) {
   }
 }
 
+if (!SPAWNS_BY_ID.has(DEFAULT_WORLD_SPAWN_ID)) {
+  throw new Error(`World default spawn ${DEFAULT_WORLD_SPAWN_ID} is not defined in world.json.`);
+}
+
 function chunkKey(chunkX: number, chunkY: number): string {
   return `${chunkX},${chunkY}`;
 }
 
 function createOutdoorChunkVariant(
-  source: Record<string, unknown>,
-  config: OutdoorChunkVariantConfig
-): Record<string, unknown> {
+  source: WorldTiledMapSource,
+  mapId: string,
+  config: WorldChunkVariantDefinition
+): WorldTiledMapSource {
   const map = cloneTiledMap(source);
   const transform = config.transform ?? 'none';
 
@@ -434,7 +204,7 @@ function createOutdoorChunkVariant(
   map.properties = [
     {
       name: 'mapId',
-      value: config.mapId
+      value: mapId
     },
     {
       name: 'displayName',
@@ -446,10 +216,36 @@ function createOutdoorChunkVariant(
     }
   ];
 
-  return map as unknown as Record<string, unknown>;
+  return map as unknown as WorldTiledMapSource;
 }
 
-function cloneTiledMap(source: Record<string, unknown>): TiledMap {
+function resolveOutdoorChunkMapSource(definition: WorldChunkLayoutDefinition): WorldTiledMapSource {
+  const source = resolveWorldMapSource(definition.sourceMapId);
+
+  return definition.variant ? createOutdoorChunkVariant(source, definition.id, definition.variant) : source;
+}
+
+function resolveWorldInterior(definition: WorldInteriorLayoutDefinition): WorldInteriorDefinition {
+  const resolved = asInteriorMap(parseTiledWorldMap(resolveWorldMapSource(definition.sourceMapId)));
+
+  if (resolved.id !== definition.id) {
+    throw new Error(`World interior ${definition.id} resolved to map ${resolved.id}; keep world.json aligned.`);
+  }
+
+  return resolved;
+}
+
+function resolveWorldMapSource(sourceMapId: string): WorldTiledMapSource {
+  const source = WORLD_MAP_SOURCES[sourceMapId];
+
+  if (!source) {
+    throw new Error(`Unknown world source map ${sourceMapId} in world.json.`);
+  }
+
+  return source;
+}
+
+function cloneTiledMap(source: WorldTiledMapSource): TiledMap {
   return JSON.parse(JSON.stringify(source)) as TiledMap;
 }
 
@@ -457,7 +253,7 @@ function transformTileLayerData(
   data: readonly number[],
   width: number,
   height: number,
-  transform: ChunkTransform
+  transform: WorldMapTransform
 ): number[] {
   if (transform === 'none') {
     return [...data];
@@ -487,7 +283,7 @@ function transformTileLayerData(
 
 function createPropObject(
   id: number,
-  prop: VariantPropDefinition,
+  prop: WorldVariantPropDefinition,
   tileWidth: number,
   tileHeight: number
 ): TiledObject {

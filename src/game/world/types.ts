@@ -1,9 +1,10 @@
 import type { BattleUnit, Point, TerrainType } from '../core/types';
-import type { MapPropPlacement } from '../levels/types';
+import type { MapPropAssetId, MapPropPlacement } from '../levels/types';
 import type { NpcActionDefinition } from '../exploration/types';
 
 export type WorldAreaKind = 'outdoor' | 'interior';
 export type WorldTransitionTargetKind = 'interior' | 'spawn' | 'return';
+export type WorldMapTransform = 'none' | 'mirrorX' | 'mirrorY' | 'rotate180';
 
 export type WorldTiledMapSource = Record<string, unknown>;
 
@@ -64,6 +65,37 @@ export interface WorldChunkRuntime extends WorldChunkMapDefinition {
   chunkX: number;
   chunkY: number;
   variantId: string;
+}
+
+export interface WorldVariantPropDefinition extends Point {
+  assetId: MapPropAssetId;
+}
+
+export interface WorldChunkVariantDefinition {
+  displayName: string;
+  backdropAssetId: string;
+  transform?: WorldMapTransform;
+  props?: readonly WorldVariantPropDefinition[];
+}
+
+export interface WorldChunkLayoutDefinition {
+  id: string;
+  chunkX: number;
+  chunkY: number;
+  sourceMapId: string;
+  variant?: WorldChunkVariantDefinition;
+}
+
+export interface WorldInteriorLayoutDefinition {
+  id: string;
+  sourceMapId: string;
+}
+
+export interface WorldLayoutDefinition {
+  chunkSize: number;
+  defaultSpawnId: string;
+  chunks: readonly WorldChunkLayoutDefinition[];
+  interiors: readonly WorldInteriorLayoutDefinition[];
 }
 
 export interface ResolvedWorldSpawn extends Point {

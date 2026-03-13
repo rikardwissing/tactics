@@ -1,0 +1,208 @@
+{
+  "chunkSize": 16,
+  "defaultSpawnId": "overworld-start",
+  "chunks": [
+    {
+      "id": "cinder-heath",
+      "chunkX": -1,
+      "chunkY": -1,
+      "sourceMapId": "wilderness-passage",
+      "variant": {
+        "displayName": "Cinder Heath",
+        "backdropAssetId": "renations-global-backdrop",
+        "transform": "rotate180",
+        "props": [
+          { "x": 4, "y": 11, "assetId": "obstacle-rubble-barricade" },
+          { "x": 11, "y": 6, "assetId": "light-torch" }
+        ]
+      }
+    },
+    {
+      "id": "ridge-road",
+      "chunkX": 0,
+      "chunkY": -1,
+      "sourceMapId": "wilderness-passage",
+      "variant": {
+        "displayName": "Ridge Road",
+        "backdropAssetId": "renations-global-backdrop",
+        "transform": "mirrorY",
+        "props": [
+          { "x": 8, "y": 5, "assetId": "light-torch" },
+          { "x": 11, "y": 10, "assetId": "obstacle-rubble-barricade" }
+        ]
+      }
+    },
+    {
+      "id": "pilgrim-heights",
+      "chunkX": 1,
+      "chunkY": -1,
+      "sourceMapId": "pilgrim-camp-exterior",
+      "variant": {
+        "displayName": "Pilgrim Heights",
+        "backdropAssetId": "setup-war-council-backdrop",
+        "transform": "mirrorY",
+        "props": [
+          { "x": 6, "y": 5, "assetId": "sanctum-brazier" },
+          { "x": 10, "y": 10, "assetId": "light-torch" }
+        ]
+      }
+    },
+    {
+      "id": "north-gate-ridge",
+      "chunkX": 2,
+      "chunkY": -1,
+      "sourceMapId": "sable-city-approach",
+      "variant": {
+        "displayName": "North Gate Ridge",
+        "backdropAssetId": "iron-basilica-backdrop",
+        "transform": "mirrorY",
+        "props": [
+          { "x": 4, "y": 5, "assetId": "light-torch" },
+          { "x": 12, "y": 9, "assetId": "obstacle-rubble-barricade" }
+        ]
+      }
+    },
+    {
+      "id": "gatewatch-ridge",
+      "chunkX": 3,
+      "chunkY": -1,
+      "sourceMapId": "sable-city-approach",
+      "variant": {
+        "displayName": "Gatewatch Ridge",
+        "backdropAssetId": "iron-basilica-backdrop",
+        "transform": "rotate180",
+        "props": [
+          { "x": 3, "y": 7, "assetId": "light-torch" },
+          { "x": 12, "y": 7, "assetId": "light-torch" }
+        ]
+      }
+    },
+    {
+      "id": "hollow-march",
+      "chunkX": -1,
+      "chunkY": 0,
+      "sourceMapId": "wilderness-passage",
+      "variant": {
+        "displayName": "Hollow March",
+        "backdropAssetId": "renations-global-backdrop",
+        "transform": "mirrorX",
+        "props": [
+          { "x": 6, "y": 8, "assetId": "obstacle-rubble-barricade" },
+          { "x": 12, "y": 5, "assetId": "light-torch" }
+        ]
+      }
+    },
+    {
+      "id": "wilderness-passage",
+      "chunkX": 0,
+      "chunkY": 0,
+      "sourceMapId": "wilderness-passage"
+    },
+    {
+      "id": "pilgrim-camp-exterior",
+      "chunkX": 1,
+      "chunkY": 0,
+      "sourceMapId": "pilgrim-camp-exterior"
+    },
+    {
+      "id": "sable-city-approach",
+      "chunkX": 2,
+      "chunkY": 0,
+      "sourceMapId": "sable-city-approach"
+    },
+    {
+      "id": "eastern-causeway",
+      "chunkX": 3,
+      "chunkY": 0,
+      "sourceMapId": "sable-city-approach",
+      "variant": {
+        "displayName": "Eastern Causeway",
+        "backdropAssetId": "iron-basilica-backdrop",
+        "transform": "mirrorX",
+        "props": [
+          { "x": 3, "y": 6, "assetId": "light-torch" },
+          { "x": 9, "y": 10, "assetId": "obstacle-rubble-barricade" }
+        ]
+      }
+    },
+    {
+      "id": "reed-mire",
+      "chunkX": -1,
+      "chunkY": 1,
+      "sourceMapId": "wilderness-passage",
+      "variant": {
+        "displayName": "Reed Mire",
+        "backdropAssetId": "renations-global-backdrop",
+        "transform": "none",
+        "props": [
+          { "x": 5, "y": 4, "assetId": "obstacle-rubble-barricade" },
+          { "x": 12, "y": 11, "assetId": "light-torch" }
+        ]
+      }
+    },
+    {
+      "id": "ember-fen",
+      "chunkX": 0,
+      "chunkY": 1,
+      "sourceMapId": "wilderness-passage",
+      "variant": {
+        "displayName": "Ember Fen",
+        "backdropAssetId": "renations-global-backdrop",
+        "transform": "mirrorY",
+        "props": [
+          { "x": 7, "y": 7, "assetId": "sanctum-brazier" },
+          { "x": 11, "y": 4, "assetId": "obstacle-rubble-barricade" }
+        ]
+      }
+    },
+    {
+      "id": "pilgrim-lowfields",
+      "chunkX": 1,
+      "chunkY": 1,
+      "sourceMapId": "pilgrim-camp-exterior",
+      "variant": {
+        "displayName": "Pilgrim Lowfields",
+        "backdropAssetId": "setup-war-council-backdrop",
+        "transform": "mirrorX",
+        "props": [
+          { "x": 5, "y": 10, "assetId": "light-torch" },
+          { "x": 10, "y": 6, "assetId": "sanctum-brazier" }
+        ]
+      }
+    },
+    {
+      "id": "south-gate-moor",
+      "chunkX": 2,
+      "chunkY": 1,
+      "sourceMapId": "sable-city-approach",
+      "variant": {
+        "displayName": "South Gate Moor",
+        "backdropAssetId": "iron-basilica-backdrop",
+        "transform": "none",
+        "props": [
+          { "x": 4, "y": 9, "assetId": "light-torch" },
+          { "x": 11, "y": 6, "assetId": "obstacle-rubble-barricade" }
+        ]
+      }
+    },
+    {
+      "id": "sunken-causeway",
+      "chunkX": 3,
+      "chunkY": 1,
+      "sourceMapId": "sable-city-approach",
+      "variant": {
+        "displayName": "Sunken Causeway",
+        "backdropAssetId": "iron-basilica-backdrop",
+        "transform": "rotate180",
+        "props": [
+          { "x": 6, "y": 5, "assetId": "light-torch" },
+          { "x": 11, "y": 10, "assetId": "light-torch" }
+        ]
+      }
+    }
+  ],
+  "interiors": [
+    { "id": "pilgrim-storehouse-interior", "sourceMapId": "pilgrim-storehouse-interior" },
+    { "id": "ember-cave-interior", "sourceMapId": "ember-cave-interior" }
+  ]
+}
