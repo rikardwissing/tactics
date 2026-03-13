@@ -7,3 +7,8 @@ export interface BoardSceneStartData {
   setup?: BattleSetup;
   locationId?: string;
 }
+
+export interface WorldSceneStartData {
+  spawnId?: string;
+  resumeSession?: boolean;
+}

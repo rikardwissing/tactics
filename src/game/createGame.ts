@@ -4,6 +4,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { SetupScene } from './scenes/SetupScene';
 import { TitleScene } from './scenes/TitleScene';
 import { UnitEditorScene } from './scenes/UnitEditorScene';
+import { WorldScene } from './scenes/WorldScene';
 
 export function createGame(
   parent: string,
@@ -25,6 +26,6 @@ export function createGame(
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    scene: [BootScene, TitleScene, SetupScene, BattleScene, UnitEditorScene]
+    scene: [BootScene, TitleScene, SetupScene, BattleScene, WorldScene, UnitEditorScene]
   });
 }

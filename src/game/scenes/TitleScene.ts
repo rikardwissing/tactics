@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { audioDirector } from '../audio/audioDirector';
-import { DEFAULT_EXPLORATION_LOCATION_ID } from '../exploration';
-import type { BoardSceneStartData } from '../sceneSession';
+import { DEFAULT_WORLD_SPAWN_ID, resetWorldSession } from '../world';
+import type { BoardSceneStartData, WorldSceneStartData } from '../sceneSession';
 
 const SOFT_LIGHT_TEXTURE_KEY = 'title-soft-light';
 const TITLE_LOGO_MAX_WIDTH = 620;
@@ -73,7 +73,7 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.explorePromptText = this.add
-      .text(0, 0, 'EXPLORE CAMP', {
+      .text(0, 0, 'TRAVERSE WORLD', {
         fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -149,9 +149,9 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private beginExploration(): void {
-    this.beginScene('battle', {
-      mode: 'exploration',
-      locationId: DEFAULT_EXPLORATION_LOCATION_ID
+    resetWorldSession();
+    this.beginScene('world', {
+      spawnId: DEFAULT_WORLD_SPAWN_ID
     });
   }
 
@@ -159,7 +159,10 @@ export class TitleScene extends Phaser.Scene {
     this.beginScene('unit-editor');
   }
 
-  private beginScene(sceneKey: 'setup' | 'unit-editor' | 'battle', sceneData?: BoardSceneStartData): void {
+  private beginScene(
+    sceneKey: 'setup' | 'unit-editor' | 'battle' | 'world',
+    sceneData?: BoardSceneStartData | WorldSceneStartData
+  ): void {
     if (this.transitionStarted) {
       return;
     }

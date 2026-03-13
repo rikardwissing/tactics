@@ -1,6 +1,12 @@
 import './style.css';
 import { createGame } from './game/createGame';
 
+declare global {
+  interface Window {
+    __RENATIONS_GAME__?: ReturnType<typeof createGame>;
+  }
+}
+
 const app = document.querySelector<HTMLDivElement>('#app');
 
 if (!app) {
@@ -29,6 +35,11 @@ const measureGameRoot = () => {
 };
 
 const game = createGame('game-root', measureGameRoot());
+
+if (import.meta.env.DEV) {
+  window.__RENATIONS_GAME__ = game;
+}
+
 const refreshGameScale = () => {
   game.scale.refresh();
 };

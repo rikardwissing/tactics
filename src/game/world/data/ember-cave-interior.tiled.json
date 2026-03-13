@@ -1,0 +1,340 @@
+{
+  "type": "map",
+  "orientation": "orthogonal",
+  "width": 10,
+  "height": 8,
+  "tilewidth": 96,
+  "tileheight": 48,
+  "layers": [
+    {
+      "type": "tilelayer",
+      "name": "terrain",
+      "width": 10,
+      "height": 8,
+      "data": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ]
+    },
+    {
+      "type": "tilelayer",
+      "name": "heights",
+      "width": 10,
+      "height": 8,
+      "data": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "props",
+      "objects": [
+        {
+          "id": 1,
+          "x": 480,
+          "y": 96,
+          "properties": [
+            {
+              "name": "assetId",
+              "value": "sanctum-brazier"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": 672,
+          "y": 240,
+          "properties": [
+            {
+              "name": "assetId",
+              "value": "obstacle-rubble-barricade"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "npcs",
+      "objects": []
+    },
+    {
+      "type": "objectgroup",
+      "name": "transitions",
+      "objects": [
+        {
+          "id": 1,
+          "x": 96,
+          "y": 288,
+          "properties": [
+            {
+              "name": "id",
+              "value": "ember-cave-exit"
+            },
+            {
+              "name": "kind",
+              "value": "cave-mouth"
+            },
+            {
+              "name": "targetKind",
+              "value": "return"
+            },
+            {
+              "name": "label",
+              "value": "Climb Out"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "spawnPoints",
+      "objects": [
+        {
+          "id": 1,
+          "x": 192,
+          "y": 288,
+          "properties": [
+            {
+              "name": "id",
+              "value": "ember-cave-entry"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "terrain",
+      "tilecount": 3,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "grass"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "stone"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "moss"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "firstgid": 1,
+      "name": "heights",
+      "tilecount": 2,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "height",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "height",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "name": "mapId",
+      "value": "ember-cave-interior"
+    },
+    {
+      "name": "displayName",
+      "value": "Ember Hollow"
+    },
+    {
+      "name": "backdropAssetId",
+      "value": "broken-chapel-backdrop"
+    }
+  ]
+}

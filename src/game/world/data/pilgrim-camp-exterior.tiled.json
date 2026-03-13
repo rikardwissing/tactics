@@ -1,0 +1,892 @@
+{
+  "type": "map",
+  "orientation": "orthogonal",
+  "width": 16,
+  "height": 16,
+  "tilewidth": 96,
+  "tileheight": 48,
+  "layers": [
+    {
+      "type": "tilelayer",
+      "name": "terrain",
+      "width": 16,
+      "height": 16,
+      "data": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "tilelayer",
+      "name": "heights",
+      "width": 16,
+      "height": 16,
+      "data": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "props",
+      "objects": [
+        {
+          "id": 1,
+          "x": 384,
+          "y": 192,
+          "properties": [
+            {
+              "name": "assetId",
+              "value": "light-torch"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "x": 1056,
+          "y": 192,
+          "properties": [
+            {
+              "name": "assetId",
+              "value": "sanctum-brazier"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "x": 1152,
+          "y": 528,
+          "properties": [
+            {
+              "name": "assetId",
+              "value": "obstacle-rubble-barricade"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "npcs",
+      "objects": [
+        {
+          "id": 1,
+          "name": "Quartermaster Vesna",
+          "x": 480,
+          "y": 384,
+          "properties": [
+            {
+              "name": "id",
+              "value": "quartermaster-vesna"
+            },
+            {
+              "name": "blueprintId",
+              "value": "the-order-banner-surgeon"
+            },
+            {
+              "name": "summary",
+              "value": "Keeps the cookfires fed and the ledgers honest while the road still holds."
+            },
+            {
+              "name": "actionKinds",
+              "value": "talk,buy,sell"
+            },
+            {
+              "name": "talkId",
+              "value": "vesna-talk"
+            },
+            {
+              "name": "talkLabel",
+              "value": "Talk"
+            },
+            {
+              "name": "talkTitle",
+              "value": "Quartermaster Vesna"
+            },
+            {
+              "name": "talkBody",
+              "value": "The road is still open to the city, but only barely. If you are marching farther, make your peace with dry bread and colder nights."
+            },
+            {
+              "name": "buyId",
+              "value": "vesna-buy"
+            },
+            {
+              "name": "buyLabel",
+              "value": "Buy"
+            },
+            {
+              "name": "buyTitle",
+              "value": "Supply Chest"
+            },
+            {
+              "name": "buyBody",
+              "value": "Trade is still placeholder-only, but this stall will become the camp market once world traversal starts feeding a proper economy."
+            },
+            {
+              "name": "sellId",
+              "value": "vesna-sell"
+            },
+            {
+              "name": "sellLabel",
+              "value": "Sell"
+            },
+            {
+              "name": "sellTitle",
+              "value": "Recovery Ledger"
+            },
+            {
+              "name": "sellBody",
+              "value": "Selling is also placeholder-only for now. This menu is here to anchor the world-side vendor flow while we keep traversal and interiors stable."
+            },
+            {
+              "name": "className",
+              "value": "Camp Quartermaster"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "Pathfinder Ione",
+          "x": 768,
+          "y": 288,
+          "properties": [
+            {
+              "name": "id",
+              "value": "pathfinder-ione"
+            },
+            {
+              "name": "blueprintId",
+              "value": "time-travelers-scavenger-marksman"
+            },
+            {
+              "name": "summary",
+              "value": "Keeps one eye on the scrubland and the other on the city road."
+            },
+            {
+              "name": "actionKinds",
+              "value": "talk"
+            },
+            {
+              "name": "talkId",
+              "value": "ione-talk"
+            },
+            {
+              "name": "talkLabel",
+              "value": "Talk"
+            },
+            {
+              "name": "talkTitle",
+              "value": "Road Conditions"
+            },
+            {
+              "name": "talkBody",
+              "value": "The old causeway is broken in three places, but the city gate is still reachable. Stay on the stones and the marsh will not swallow your pace."
+            },
+            {
+              "name": "className",
+              "value": "Road Scout"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "Marshal Serik",
+          "x": 960,
+          "y": 384,
+          "properties": [
+            {
+              "name": "id",
+              "value": "marshal-serik"
+            },
+            {
+              "name": "blueprintId",
+              "value": "the-order-house-marshal"
+            },
+            {
+              "name": "summary",
+              "value": "Keeps the sentries disciplined even while the camp calls itself a refuge."
+            },
+            {
+              "name": "actionKinds",
+              "value": "talk,train"
+            },
+            {
+              "name": "talkId",
+              "value": "serik-talk"
+            },
+            {
+              "name": "talkLabel",
+              "value": "Talk"
+            },
+            {
+              "name": "talkTitle",
+              "value": "Marshal Serik"
+            },
+            {
+              "name": "talkBody",
+              "value": "Marching without order is only another name for panic. If this road becomes a frontier, it will do so under clean watches and ready shields."
+            },
+            {
+              "name": "trainId",
+              "value": "serik-train"
+            },
+            {
+              "name": "trainLabel",
+              "value": "Train"
+            },
+            {
+              "name": "trainTitle",
+              "value": "Field Drill"
+            },
+            {
+              "name": "trainBody",
+              "value": "Training remains placeholder-only in this slice, but this action marks where world-side preparation will live before tactical deployments."
+            },
+            {
+              "name": "className",
+              "value": "Drillmaster"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "transitions",
+      "objects": [
+        {
+          "id": 1,
+          "x": 1056,
+          "y": 288,
+          "properties": [
+            {
+              "name": "id",
+              "value": "pilgrim-storehouse-door"
+            },
+            {
+              "name": "kind",
+              "value": "door"
+            },
+            {
+              "name": "targetKind",
+              "value": "interior"
+            },
+            {
+              "name": "label",
+              "value": "Enter Storehouse"
+            },
+            {
+              "name": "targetId",
+              "value": "pilgrim-storehouse-interior"
+            },
+            {
+              "name": "targetSpawnId",
+              "value": "storehouse-entry"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "objectgroup",
+      "name": "spawnPoints",
+      "objects": [
+        {
+          "id": 1,
+          "x": 768,
+          "y": 384,
+          "properties": [
+            {
+              "name": "id",
+              "value": "pilgrim-camp-center"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "terrain",
+      "tilecount": 3,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "grass"
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "stone"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "properties": [
+            {
+              "name": "terrain",
+              "value": "moss"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "firstgid": 1,
+      "name": "heights",
+      "tilecount": 2,
+      "tiles": [
+        {
+          "id": 0,
+          "properties": [
+            {
+              "name": "height",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "properties": [
+            {
+              "name": "height",
+              "value": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "name": "mapId",
+      "value": "pilgrim-camp-exterior"
+    },
+    {
+      "name": "displayName",
+      "value": "Pilgrim Camp"
+    },
+    {
+      "name": "backdropAssetId",
+      "value": "setup-war-council-backdrop"
+    }
+  ]
+}
