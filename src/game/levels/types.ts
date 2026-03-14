@@ -4,7 +4,8 @@ import { Team, TerrainType } from '../core/types';
 export type MapPropAssetId =
   | 'obstacle-rubble-barricade'
   | 'light-torch'
-  | 'sanctum-brazier';
+  | 'sanctum-brazier'
+  | 'cave-mouth-volcanic';
 
 export interface UnitPlacement {
   blueprintId: string;

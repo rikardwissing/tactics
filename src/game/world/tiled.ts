@@ -16,19 +16,18 @@ type TiledPropertyValue = string | number | boolean;
 
 interface TiledProperty {
   name: string;
+  type?: string;
   value: TiledPropertyValue;
-}
-
-interface TiledTileDefinition {
-  id: number;
-  properties?: TiledProperty[];
 }
 
 interface TiledTileset {
   firstgid: number;
   name: string;
   tilecount: number;
-  tiles?: TiledTileDefinition[];
+  tiles?: Array<{
+    id: number;
+    properties?: TiledProperty[];
+  }>;
 }
 
 interface TiledTileLayer {
@@ -74,6 +73,7 @@ const DEFAULT_NPC_ACTION_LABELS: Record<NpcActionKind, string> = {
   sell: 'Sell',
   train: 'Train'
 };
+const FLIPPED_FLAG_MASK = 0x1fffffff;
 
 export function parseTiledWorldMap(source: WorldTiledMapSource): WorldMapDefinition {
   const map = source as unknown as TiledMap;
@@ -103,15 +103,17 @@ export function parseTiledWorldMap(source: WorldTiledMapSource): WorldMapDefinit
 
     for (let x = 0; x < map.width; x += 1) {
       const index = y * map.width + x;
-      const terrainValue = terrainLookup.get(terrainLayer.data[index]);
-      const heightValue = heightLookup.get(heightsLayer.data[index]);
+      const terrainGid = normalizeGid(terrainLayer.data[index] ?? 0);
+      const heightGid = normalizeGid(heightsLayer.data[index] ?? 0);
+      const terrainValue = terrainLookup.get(terrainGid);
+      const heightValue = heightLookup.get(heightGid);
 
       if (typeof terrainValue !== 'string') {
-        throw new Error(`Missing terrain mapping at tile (${x}, ${y}).`);
+        throw new Error(`Missing terrain mapping for gid ${terrainGid} at tile (${x}, ${y}).`);
       }
 
       if (typeof heightValue !== 'number') {
-        throw new Error(`Missing height mapping at tile (${x}, ${y}).`);
+        throw new Error(`Missing height mapping for gid ${heightGid} at tile (${x}, ${y}).`);
       }
 
       terrainRow.push(terrainValue as TerrainType);
@@ -255,6 +257,10 @@ function getTileLayer(map: TiledMap, name: string): TiledTileLayer {
     throw new Error(`Missing tile layer ${name}.`);
   }
 
+  if (!Array.isArray(layer.data)) {
+    throw new Error(`Layer ${name} must use array-based tile data.`);
+  }
+
   return layer;
 }
 
@@ -350,4 +356,8 @@ function isWorldTransitionTargetKind(value: string): value is WorldTransitionTar
 
 function toTileCoordinate(position: number, tileSize: number): number {
   return Math.round(position / tileSize);
+}
+
+function normalizeGid(gid: number): number {
+  return gid & FLIPPED_FLAG_MASK;
 }

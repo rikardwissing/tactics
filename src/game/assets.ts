@@ -163,6 +163,7 @@ const terrainAevumB = new URL('../assets/game/terrain/terrain-aevum-b.png', impo
 const obstacleRubbleBarricade = new URL('../assets/game/props/obstacle-rubble-barricade.png', import.meta.url).href;
 const lightTorch = new URL('../assets/game/props/light-torch.png', import.meta.url).href;
 const sanctumBrazier = new URL('../assets/game/props/sanctum-brazier.png', import.meta.url).href;
+const caveMouthVolcanic = new URL('../assets/game/props/cave-mouth-volcanic.png', import.meta.url).href;
 
 export const DEFAULT_UNIT_IMAGE_KEY = 'time-travelers-aion-trooper' as const;
 export const SETUP_PLACEHOLDER_UNIT_IMAGE_KEY = 'setup-slot-placeholder' as const;
@@ -243,7 +244,8 @@ export const IMAGE_ASSETS = [
   { key: 'terrain-aevum-b', url: terrainAevumB },
   { key: 'obstacle-rubble-barricade', url: obstacleRubbleBarricade },
   { key: 'light-torch', url: lightTorch },
-  { key: 'sanctum-brazier', url: sanctumBrazier }
+  { key: 'sanctum-brazier', url: sanctumBrazier },
+  { key: 'cave-mouth-volcanic', url: caveMouthVolcanic }
 ] as const;
 
 export const AUDIO_ASSETS = [

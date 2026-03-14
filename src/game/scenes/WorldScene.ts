@@ -14,8 +14,11 @@ import type { BattleUnit, Point, ReachNode, SpriteFacing, TileData } from '../co
 import type { MapPropPlacement } from '../levels/types';
 import type { WorldSceneStartData } from '../sceneSession';
 import { BattleActionMenuStack, type ActionMenuPanelDescriptor } from './components/BattleActionMenuStack';
-import { UI_TEXT_BODY, UI_TEXT_LABEL, UI_TEXT_TITLE, UI_TEXT_WORLD_LABEL } from './components/UiTextStyles';
+import { TurnOrderPanel } from './components/TurnOrderPanel';
+import { UI_TEXT_TITLE, UI_TEXT_WORLD_LABEL } from './components/UiTextStyles';
 import { UI_COLOR_ACCENT_WARM, UI_COLOR_PANEL_SURFACE, UI_COLOR_TEXT } from './components/UiColors';
+import { createUiGrid } from './components/UiGrid';
+import { UI_PANEL_COMPACT_GAP, UI_PANEL_GAP, UI_PANEL_MICRO_GAP } from './components/UiMetrics';
 import {
   createWorldLeader,
   createWorldNpcs,
@@ -25,6 +28,7 @@ import {
   getWorldChunksForWindow,
   getWorldInterior,
   getWorldSpawn,
+  getWorldStateVersion,
   persistWorldSession,
   resolveWorldSceneStart,
   resetWorldSession,
@@ -96,7 +100,6 @@ export class WorldScene extends Phaser.Scene {
   private gridWidth = 0;
   private gridHeight = 0;
   private areaName = '';
-  private areaKindLabel = '';
   private outdoorWindowOrigin: Point | null = null;
   private outdoorCenterChunk: Point | null = null;
   private origin = new Phaser.Math.Vector2(0, 0);
@@ -113,11 +116,10 @@ export class WorldScene extends Phaser.Scene {
   private messages: string[] = [];
 
   private areaTitleText!: Phaser.GameObjects.Text;
-  private areaMetaText!: Phaser.GameObjects.Text;
-  private helpText!: Phaser.GameObjects.Text;
-  private messageText!: Phaser.GameObjects.Text;
   private actionMenuStack!: BattleActionMenuStack;
+  private playerAvatarPanel!: TurnOrderPanel;
   private boardGraphics!: Phaser.GameObjects.Graphics;
+  private turnOrderBounds = new Phaser.Geom.Rectangle();
 
   private terrainTileImages: Phaser.GameObjects.Image[] = [];
   private wallGraphics: Phaser.GameObjects.Graphics[] = [];
@@ -130,6 +132,7 @@ export class WorldScene extends Phaser.Scene {
   private worldCamera!: Phaser.Cameras.Scene2D.Camera;
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
   private cameraBounds = new Phaser.Geom.Rectangle();
+  private worldStateVersion = 0;
 
   constructor() {
     super('world');
@@ -143,6 +146,7 @@ export class WorldScene extends Phaser.Scene {
     this.moveNodes.clear();
     this.messages = [];
     this.sessionState = resolveWorldSceneStart(data ?? { spawnId: DEFAULT_WORLD_SPAWN_ID });
+    this.worldStateVersion = getWorldStateVersion();
     this.restarting = false;
     this.busy = false;
     this.outdoorWindowOrigin = null;
@@ -159,18 +163,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.addPointer(2);
 
     this.areaTitleText = this.registerUiObject(this.add.text(28, 22, '', UI_TEXT_TITLE).setScrollFactor(0).setDepth(950));
-    this.areaMetaText = this.registerUiObject(this.add.text(28, 54, '', UI_TEXT_LABEL).setScrollFactor(0).setDepth(950));
-    this.helpText = this.registerUiObject(
-      this.add.text(28, this.scale.height - 78, '', UI_TEXT_BODY).setScrollFactor(0).setDepth(950)
-    );
-    this.messageText = this.registerUiObject(
-      this.add.text(28, this.scale.height - 136, '', UI_TEXT_BODY).setScrollFactor(0).setDepth(950)
-    );
-    this.messageText.setWordWrapWidth(Math.max(260, this.scale.width - 56), true);
     this.areaTitleText.setColor(UI_COLOR_TEXT);
-    this.areaMetaText.setColor('#e4c98d');
-    this.helpText.setColor('#e9dbc1');
-    this.messageText.setColor('#f4ead7');
 
     this.boardGraphics = this.registerWorldObject(this.add.graphics().setDepth(40));
     this.actionMenuStack = new BattleActionMenuStack(this, {
@@ -178,17 +171,31 @@ export class WorldScene extends Phaser.Scene {
         this.registerUiObject(object);
       }
     });
+    this.playerAvatarPanel = new TurnOrderPanel(this, 1);
 
     this.rebuildArea(true);
     this.registerInputs();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize();
-
-    this.pushMessage('Walk the overland road, step through doors and cave mouths, and stand beside camp contacts to hear what they offer.');
   }
 
   update(_time: number, delta: number): void {
+    const worldStateVersion = getWorldStateVersion();
+
+    if (worldStateVersion !== this.worldStateVersion) {
+      this.worldStateVersion = worldStateVersion;
+
+      if (this.sessionState.areaKind === 'outdoor') {
+        this.rebuildArea(false);
+        return;
+      }
+    }
+
+    if (this.rebuildOutdoorAreaForCamera()) {
+      return;
+    }
+
     if (this.phase === 'transition' || this.isPanning) {
       return;
     }
@@ -338,19 +345,42 @@ export class WorldScene extends Phaser.Scene {
 
   private handleResize(): void {
     this.worldCamera.setSize(this.scale.width, this.scale.height);
-    this.helpText.setPosition(28, this.scale.height - 78);
-    this.messageText.setPosition(28, this.scale.height - 136);
-    this.messageText.setWordWrapWidth(Math.max(260, this.scale.width - 56), true);
+
+    const grid = createUiGrid(this.scale.width, this.scale.height);
+    const avatarSize = 38;
+    const actionMenuRootWidth = 172;
+    const actionMenuPanelHeight = 188;
+    const turnOrderGap = avatarSize + 12;
+    const turnOrderHeight = avatarSize;
+    const turnOrderColumn = grid.column(0, 1, grid.content.y, turnOrderHeight + UI_PANEL_GAP);
+    const turnOrderBand = grid.band(
+      Math.max(grid.content.y, grid.content.bottom - turnOrderHeight - UI_PANEL_COMPACT_GAP),
+      turnOrderHeight + UI_PANEL_GAP
+    );
+    this.turnOrderBounds.setTo(turnOrderColumn.x, turnOrderBand.y, turnOrderColumn.width, turnOrderBand.height);
+
+    this.playerAvatarPanel.setLayout({
+      x: this.turnOrderBounds.x,
+      startY: this.turnOrderBounds.y + UI_PANEL_MICRO_GAP,
+      gap: turnOrderGap,
+      avatarSize,
+      reverse: true
+    });
+    this.playerAvatarPanel.setVisible(true);
 
     this.actionMenuStack.setLayout({
-      rootX: this.scale.width - 590,
-      bottom: this.scale.height - 112,
-      rootWidth: 248,
-      panelHeight: 214,
+      rootX: this.turnOrderBounds.x + avatarSize + UI_PANEL_GAP,
+      bottom: grid.content.bottom,
+      rootWidth: actionMenuRootWidth,
+      panelHeight: actionMenuPanelHeight,
+      overlap: Math.round(actionMenuRootWidth * 0.7),
       panelWidths: {
-        list: 284,
-        detail: 260
+        list: actionMenuRootWidth,
+        detail: actionMenuRootWidth
       }
+    });
+    this.actionMenuStack.setTypography({
+      rowHeight: 26
     });
 
     this.uiCamera?.setViewport(0, 0, this.scale.width, this.scale.height).setSize(this.scale.width, this.scale.height);
@@ -358,11 +388,11 @@ export class WorldScene extends Phaser.Scene {
     this.configureCamera(false);
   }
 
-  private rebuildArea(centerCamera: boolean): void {
+  private rebuildArea(centerCamera: boolean, outdoorCenterChunkOverride?: Point, outdoorFocusPoint?: Point): void {
     this.destroyAreaObjects();
 
     if (this.sessionState.areaKind === 'outdoor') {
-      this.buildOutdoorArea();
+      this.buildOutdoorArea(outdoorCenterChunkOverride);
     } else {
       this.buildInteriorArea();
     }
@@ -374,13 +404,18 @@ export class WorldScene extends Phaser.Scene {
     this.createActors();
     this.setupCameras();
     this.configureCamera(centerCamera);
+
+    if (this.sessionState.areaKind === 'outdoor' && outdoorFocusPoint) {
+      this.centerCameraOnOutdoorPoint(outdoorFocusPoint);
+    }
+
     this.drawHighlights();
     this.refreshUi();
   }
 
-  private buildOutdoorArea(): void {
+  private buildOutdoorArea(centerChunkOverride?: Point): void {
     const outdoorPosition = { ...this.sessionState.outdoorPosition };
-    const centerChunk = getChunkCoordinatesForWorldPosition(outdoorPosition);
+    const centerChunk = centerChunkOverride ?? getChunkCoordinatesForWorldPosition(outdoorPosition);
     const loadedChunks = getWorldChunksForWindow(centerChunk.x, centerChunk.y);
     const playerChunk = getWorldChunkAt(centerChunk.x, centerChunk.y);
     const windowOrigin = {
@@ -450,7 +485,6 @@ export class WorldScene extends Phaser.Scene {
     this.player = createWorldLeader(localPlayerPoint);
     this.npcs = createWorldNpcs('outdoor', npcDefinitions);
     this.areaName = playerChunk?.name ?? 'Ruined March';
-    this.areaKindLabel = 'Overland Route';
   }
 
   private buildInteriorArea(): void {
@@ -479,7 +513,34 @@ export class WorldScene extends Phaser.Scene {
     this.player = createWorldLeader(localPlayerPoint);
     this.npcs = createWorldNpcs(interior.id, interior.npcs);
     this.areaName = interior.name;
-    this.areaKindLabel = 'Interior';
+  }
+
+  private rebuildOutdoorAreaForCamera(): boolean {
+    if (
+      this.sessionState.areaKind !== 'outdoor' ||
+      !this.outdoorCenterChunk ||
+      this.isPanning ||
+      this.phase === 'moving' ||
+      this.phase === 'transition'
+    ) {
+      return false;
+    }
+
+    const focusPoint = this.getOutdoorCameraCenterAbsolutePoint();
+
+    if (!focusPoint) {
+      return false;
+    }
+
+    const centerChunk = getChunkCoordinatesForWorldPosition(focusPoint);
+
+    if (centerChunk.x === this.outdoorCenterChunk.x && centerChunk.y === this.outdoorCenterChunk.y) {
+      return false;
+    }
+
+    this.rebuildArea(false, centerChunk, focusPoint);
+    this.phase = 'idle';
+    return true;
   }
 
   private destroyAreaObjects(): void {
@@ -745,9 +806,8 @@ export class WorldScene extends Phaser.Scene {
 
   private refreshUi(): void {
     this.areaTitleText.setText(this.areaName);
-    this.areaMetaText.setText(`${this.areaKindLabel.toUpperCase()}  •  Q/E ROTATE  •  W/A/S/D PAN  •  M MUTE`);
-    this.helpText.setText('Click to move. Right-click or middle-drag to pan. Step onto doors and cave mouths to transition.');
-    this.messageText.setText(this.messages.join('\n'));
+    this.playerAvatarPanel.setQueue([this.player], this.player.id, 1, true);
+    this.playerAvatarPanel.setVisible(true);
     this.actionMenuStack.setPanels(this.buildActionMenuPanels());
     this.actionMenuStack.setVisible(this.shouldShowActionMenu());
     this.actionMenuStack.draw();
@@ -972,15 +1032,7 @@ export class WorldScene extends Phaser.Scene {
     } finally {
       this.syncSessionWithPlayerPosition();
       this.busy = false;
-      const chunkBefore = this.outdoorCenterChunk ? `${this.outdoorCenterChunk.x},${this.outdoorCenterChunk.y}` : null;
-      const nextChunk = this.sessionState.areaKind === 'outdoor'
-        ? getChunkCoordinatesForWorldPosition(this.sessionState.outdoorPosition)
-        : null;
-      const chunkAfter = nextChunk ? `${nextChunk.x},${nextChunk.y}` : null;
-
-      if (chunkBefore && chunkAfter && chunkBefore !== chunkAfter) {
-        this.rebuildArea(true);
-      } else {
+      if (!this.rebuildOutdoorAreaForCamera()) {
         this.phase = 'idle';
         this.refreshNpcInteraction();
         this.positionActor(this.player);
@@ -1200,9 +1252,7 @@ export class WorldScene extends Phaser.Scene {
   private getUiObjects(): Phaser.GameObjects.GameObject[] {
     return [
       this.areaTitleText,
-      this.areaMetaText,
-      this.helpText,
-      this.messageText,
+      ...this.playerAvatarPanel.getDisplayObjects(),
       ...this.actionMenuStack.getDisplayObjects()
     ];
   }
@@ -1380,6 +1430,80 @@ export class WorldScene extends Phaser.Scene {
       x: this.outdoorWindowOrigin.x + point.x,
       y: this.outdoorWindowOrigin.y + point.y
     };
+  }
+
+  private absoluteToLocalOutdoorPoint(point: Point): Point {
+    if (!this.outdoorWindowOrigin) {
+      return point;
+    }
+
+    return {
+      x: point.x - this.outdoorWindowOrigin.x,
+      y: point.y - this.outdoorWindowOrigin.y
+    };
+  }
+
+  private centerCameraOnOutdoorPoint(point: Point): void {
+    const localPoint = this.absoluteToLocalOutdoorPoint(point);
+    const tile = getTile(this.map, localPoint.x, localPoint.y);
+
+    if (!tile) {
+      return;
+    }
+
+    const groundPoint = this.getUnitGroundPoint(tile);
+    const scroll = this.getCenteredScrollForPoint(groundPoint.x, groundPoint.y - 12);
+    this.setCameraScroll(scroll.x, scroll.y);
+  }
+
+  private getOutdoorCameraCenterAbsolutePoint(): Point | null {
+    if (this.sessionState.areaKind !== 'outdoor' || !this.outdoorWindowOrigin) {
+      return null;
+    }
+
+    const centerWorldPoint = this.worldCamera.getWorldPoint(this.worldCamera.width / 2, this.worldCamera.height / 2);
+    const localPoint = this.screenToTilePoint(centerWorldPoint);
+
+    if (!localPoint) {
+      return null;
+    }
+
+    return this.localToAbsoluteOutdoorPoint(localPoint);
+  }
+
+  private screenToTilePoint(point: Point): Point | null {
+    const relativeX = point.x - this.origin.x;
+    const relativeY = point.y - this.origin.y;
+    const visualX = (relativeX / (TILE_WIDTH / 2) + relativeY / (TILE_HEIGHT / 2)) / 2;
+    const visualY = (relativeY / (TILE_HEIGHT / 2) - relativeX / (TILE_WIDTH / 2)) / 2;
+    const tile = this.visualToLogicalGridPoint({ x: visualX, y: visualY });
+
+    return {
+      x: Phaser.Math.Clamp(Math.round(tile.x), 0, Math.max(0, this.gridWidth - 1)),
+      y: Phaser.Math.Clamp(Math.round(tile.y), 0, Math.max(0, this.gridHeight - 1))
+    };
+  }
+
+  private visualToLogicalGridPoint(point: Point): Point {
+    switch (((this.boardRotationStep % 4) + 4) % 4) {
+      case 1:
+        return {
+          x: point.y,
+          y: this.gridHeight - 1 - point.x
+        };
+      case 2:
+        return {
+          x: this.gridWidth - 1 - point.x,
+          y: this.gridHeight - 1 - point.y
+        };
+      case 3:
+        return {
+          x: this.gridWidth - 1 - point.y,
+          y: point.x
+        };
+      default:
+        return point;
+    }
   }
 
   private getBoardBounds(): Phaser.Geom.Rectangle {

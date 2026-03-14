@@ -83,6 +83,17 @@ export const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
       sourceOffsetY: 48,
       emberTint: [0xfff2bb, 0xffb45f, 0xc95924]
     }
+  },
+  'cave-mouth-volcanic': {
+    height: 172,
+    minWidth: 188,
+    groundOffsetY: 8,
+    baseFill: 0x120e0c,
+    baseAlpha: 0.24,
+    rim: 0x5c5346,
+    rimAlpha: 0.16,
+    blocksMovement: true,
+    description: 'A basalt cave mouth yawns open in the ridge, its ember-lit depth promising a descent below.'
   }
 };
 

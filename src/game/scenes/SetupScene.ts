@@ -775,20 +775,51 @@ export class SetupScene extends Phaser.Scene {
       view.background.strokeRoundedRect(10, 10, badgeWidth, badgeHeight, 8);
 
       if (blueprint) {
-        view.portrait.setTexture(blueprint.spriteKey).setVisible(true).setAlpha(1);
-        const portraitMaxHeight = Math.max(1, cardHeight - 10);
-        const portraitHeightScale = portraitMaxHeight / this.maxBlueprintSpriteDisplayHeight;
-        const portraitDisplayHeight = blueprint.spriteDisplayHeight * portraitHeightScale;
-        const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
-        const portraitOffsetX = (blueprint.spriteOffsetX ?? 0) * portraitHeightScale;
-        const portraitOffsetY = (blueprint.spriteOffsetY ?? 0) * portraitHeightScale;
-        const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
-        view.portrait
-          .setScale(portraitScale)
-          .setPosition(
-            cardWidth / 2 + portraitOffsetX,
-            portraitBaselineY + portraitOffsetY - portraitDisplayHeight / 2
-          );
+        const portraitImageKey = getUnitPortraitImageKey(blueprint.spriteKey);
+        if (portraitImageKey) {
+          view.portrait.setTexture(portraitImageKey).setVisible(true).setAlpha(1);
+          const frame = view.portrait.frame;
+          if (frame) {
+            const frameWidth = Math.max(1, frame.width);
+            const frameHeight = Math.max(1, frame.height);
+            const targetAspect = cardWidth / Math.max(1, cardHeight);
+            const frameAspect = frameWidth / frameHeight;
+            let cropWidth = frameWidth;
+            let cropHeight = frameHeight;
+            let cropX = 0;
+            let cropY = 0;
+
+            if (frameAspect > targetAspect) {
+              cropWidth = frameHeight * targetAspect;
+              cropX = (frameWidth - cropWidth) * 0.5;
+            } else {
+              cropHeight = frameWidth / targetAspect;
+              cropY = (frameHeight - cropHeight) * 0.5;
+            }
+
+            view.portrait
+              .setOrigin(0.5, 0.5)
+              .setCrop(cropX, cropY, cropWidth, cropHeight)
+              .setDisplaySize(cardWidth, cardHeight)
+              .setPosition(cardWidth / 2, cardHeight / 2);
+          }
+        } else {
+          view.portrait.setTexture(blueprint.spriteKey).setVisible(true).setAlpha(1).setCrop();
+          const portraitMaxHeight = Math.max(1, cardHeight - 10);
+          const portraitHeightScale = portraitMaxHeight / this.maxBlueprintSpriteDisplayHeight;
+          const portraitDisplayHeight = blueprint.spriteDisplayHeight * portraitHeightScale;
+          const portraitScale = portraitDisplayHeight / Math.max(1, view.portrait.height);
+          const portraitOffsetX = (blueprint.spriteOffsetX ?? 0) * portraitHeightScale;
+          const portraitOffsetY = (blueprint.spriteOffsetY ?? 0) * portraitHeightScale;
+          const portraitBaselineY = cardHeight - SLOT_CARD_PORTRAIT_BASELINE_INSET;
+          view.portrait
+            .setOrigin(0.5, 0.5)
+            .setScale(portraitScale)
+            .setPosition(
+              cardWidth / 2 + portraitOffsetX,
+              portraitBaselineY + portraitOffsetY - portraitDisplayHeight / 2
+            );
+        }
       } else {
         view.portrait.setVisible(false);
       }

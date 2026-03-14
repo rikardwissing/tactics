@@ -2,302 +2,380 @@ import type { BattleUnit, Point } from '../core/types';
 import type { WorldSceneStartData } from '../sceneSession';
 import { UNIT_BLUEPRINT_BATTLE_SCALE } from '../levels';
 import { getUnitBlueprint } from '../levels/unitBlueprints';
-import emberCaveInteriorMap from './data/ember-cave-interior.tiled.json';
-import pilgrimCampExteriorMap from './data/pilgrim-camp-exterior.tiled.json';
-import pilgrimStorehouseInteriorMap from './data/pilgrim-storehouse-interior.tiled.json';
-import sableCityApproachMap from './data/sable-city-approach.tiled.json';
-import wildernessPassageMap from './data/wilderness-passage.tiled.json';
-import worldLayoutData from './data/world.json';
-import { clearWorldSessionState, getWorldSessionState, setWorldSessionState } from './session';
+import worldDefinitionData from './data/overworld.world.json';
+import {
+  clearWorldPersistentState,
+  clearWorldSessionState,
+  getWorldPersistentState,
+  getWorldSessionState,
+  getWorldStateRevision,
+  setWorldPersistentState,
+  setWorldSessionState
+} from './session';
 import { asInteriorMap, asOutdoorChunkMap, parseTiledWorldMap } from './tiled';
 import type {
+  WorldDefinition,
+  WorldPersistentState,
   ResolvedWorldSpawn,
   WorldChunkDefinition,
-  WorldChunkLayoutDefinition,
   WorldChunkRuntime,
-  WorldChunkVariantDefinition,
   WorldInteriorDefinition,
-  WorldInteriorLayoutDefinition,
-  WorldLayoutDefinition,
-  WorldMapTransform,
   WorldNpcDefinition,
   WorldNpcRuntime,
   WorldSessionState,
-  WorldTiledMapSource,
-  WorldVariantPropDefinition
+  WorldTiledMapSource
 } from './types';
 
 const WORLD_LEADER_BLUEPRINT_ID = 'time-travelers-aion-trooper';
+const ACTIVE_WORLD_ID = 'overworld';
+const WORLD_CHUNK_FILE_PATTERN = /^([a-z0-9-]+)\.(\d+)\.(\d+)(?:\.([a-z0-9-]+))?\.tiled\.json$/;
 
-type TiledPropertyValue = string | number | boolean;
-
-interface TiledProperty {
-  name: string;
-  value: TiledPropertyValue;
+interface ParsedWorldChunkFileName {
+  worldId: string;
+  chunkX: number;
+  chunkY: number;
+  variantId: string | null;
 }
 
-interface TiledTileDefinition {
-  id: number;
-  properties?: TiledProperty[];
+interface WorldChunkRuntimeSet {
+  id: string;
+  chunkX: number;
+  chunkY: number;
+  base: WorldChunkRuntime;
+  variants: Readonly<Record<string, WorldChunkRuntime>>;
 }
 
-interface TiledTileset {
-  firstgid: number;
-  name: string;
-  tilecount: number;
-  tiles?: TiledTileDefinition[];
-}
+const WORLD_DEFINITION = parseWorldDefinition(worldDefinitionData as WorldDefinition);
+const WORLD_MAP_MODULES = import.meta.glob('./data/*.tiled.json', { eager: true });
+const WORLD_MAP_ENTRIES = Object.entries(WORLD_MAP_MODULES).flatMap(([modulePath, moduleValue]) => {
+  const fileName = modulePath.split('/').pop();
 
-interface TiledTileLayer {
-  type: 'tilelayer';
-  name: string;
-  width: number;
-  height: number;
-  data: number[];
-}
-
-interface TiledObject {
-  id: number;
-  name?: string;
-  x: number;
-  y: number;
-  properties?: TiledProperty[];
-}
-
-interface TiledObjectLayer {
-  type: 'objectgroup';
-  name: string;
-  objects: TiledObject[];
-}
-
-type TiledLayer = TiledTileLayer | TiledObjectLayer;
-
-interface TiledMap {
-  type: 'map';
-  orientation: 'orthogonal';
-  width: number;
-  height: number;
-  tilewidth: number;
-  tileheight: number;
-  layers: TiledLayer[];
-  tilesets: TiledTileset[];
-  properties?: TiledProperty[];
-}
-
-const WORLD_LAYOUT = worldLayoutData as WorldLayoutDefinition;
-const WORLD_MAP_SOURCES: Record<string, WorldTiledMapSource> = {
-  'ember-cave-interior': emberCaveInteriorMap,
-  'pilgrim-camp-exterior': pilgrimCampExteriorMap,
-  'pilgrim-storehouse-interior': pilgrimStorehouseInteriorMap,
-  'sable-city-approach': sableCityApproachMap,
-  'wilderness-passage': wildernessPassageMap
-};
-
-export const WORLD_CHUNK_SIZE = WORLD_LAYOUT.chunkSize;
-export const DEFAULT_WORLD_SPAWN_ID = WORLD_LAYOUT.defaultSpawnId;
-
-if (!Number.isInteger(WORLD_CHUNK_SIZE) || WORLD_CHUNK_SIZE <= 0) {
-  throw new Error(`World chunk size must be a positive integer, received ${WORLD_CHUNK_SIZE}.`);
-}
-
-if (DEFAULT_WORLD_SPAWN_ID.trim().length === 0) {
-  throw new Error('World default spawn id must be defined in world.json.');
-}
-
-const WORLD_CHUNKS: readonly WorldChunkDefinition[] = WORLD_LAYOUT.chunks.map((definition) => ({
-  id: definition.id,
-  chunkX: definition.chunkX,
-  chunkY: definition.chunkY,
-  variants: {
-    default: resolveOutdoorChunkMapSource(definition)
-  }
-}));
-
-const WORLD_INTERIORS: readonly WorldInteriorDefinition[] = WORLD_LAYOUT.interiors.map((definition) =>
-  resolveWorldInterior(definition)
-);
-
-const WORLD_CHUNK_RUNTIMES = WORLD_CHUNKS.map((definition) => {
-  const parsed = asOutdoorChunkMap(parseTiledWorldMap(definition.variants.default));
-
-  if (parsed.width !== WORLD_CHUNK_SIZE || parsed.height !== WORLD_CHUNK_SIZE) {
-    throw new Error(`Outdoor world chunk ${definition.id} must be ${WORLD_CHUNK_SIZE}x${WORLD_CHUNK_SIZE}.`);
+  if (!fileName) {
+    return [];
   }
 
-  if (parsed.id !== definition.id) {
-    throw new Error(`Outdoor world chunk ${definition.id} resolved to map ${parsed.id}; keep world.json aligned.`);
-  }
-
-  return {
-    ...parsed,
-    chunkX: definition.chunkX,
-    chunkY: definition.chunkY,
-    variantId: 'default'
-  } satisfies WorldChunkRuntime;
+  return [
+    {
+      fileName,
+      source: (moduleValue as { default: WorldTiledMapSource }).default
+    }
+  ];
 });
 
-const CHUNKS_BY_COORD = new Map(WORLD_CHUNK_RUNTIMES.map((chunk) => [chunkKey(chunk.chunkX, chunk.chunkY), chunk]));
+export const DEFAULT_WORLD_SPAWN_ID = `${ACTIVE_WORLD_ID}-start`;
+
+const WORLD_CHUNKS_BY_COORD = buildWorldChunkDefinitions(WORLD_MAP_ENTRIES);
+const WORLD_CHUNKS: readonly WorldChunkDefinition[] = [...WORLD_CHUNKS_BY_COORD.values()];
+
+const WORLD_INTERIORS: readonly WorldInteriorDefinition[] = WORLD_MAP_ENTRIES.flatMap(({ fileName, source }) => {
+  if (parseWorldChunkFileName(fileName)) {
+    return [];
+  }
+
+  return [resolveWorldInterior(fileName, source)];
+});
+
+const WORLD_CHUNK_RUNTIME_SETS_BY_COORD = new Map(
+  WORLD_CHUNKS.map((definition) => [chunkKey(definition.chunkX, definition.chunkY), resolveWorldChunkRuntimeSet(definition)])
+);
+const WORLD_CHUNK_RUNTIME_SETS_BY_ID = new Map(
+  [...WORLD_CHUNK_RUNTIME_SETS_BY_COORD.values()].map((runtimeSet) => [runtimeSet.id, runtimeSet])
+);
+export const WORLD_CHUNK_SIZE = resolveWorldChunkSize([...WORLD_CHUNK_RUNTIME_SETS_BY_COORD.values()]);
+
 const INTERIORS_BY_ID = new Map(WORLD_INTERIORS.map((interior) => [interior.id, interior]));
-const SPAWNS_BY_ID = new Map<string, ResolvedWorldSpawn>();
+const INTERIOR_SPAWNS_BY_ID = buildInteriorSpawnLookup(WORLD_INTERIORS);
 
-for (const chunk of WORLD_CHUNK_RUNTIMES) {
-  for (const spawnPoint of chunk.spawnPoints) {
-    SPAWNS_BY_ID.set(spawnPoint.id, {
-      id: spawnPoint.id,
-      areaKind: 'outdoor',
-      areaId: chunk.id,
-      x: chunk.chunkX * WORLD_CHUNK_SIZE + spawnPoint.x,
-      y: chunk.chunkY * WORLD_CHUNK_SIZE + spawnPoint.y
-    });
-  }
-}
-
-for (const interior of WORLD_INTERIORS) {
-  for (const spawnPoint of interior.spawnPoints) {
-    SPAWNS_BY_ID.set(spawnPoint.id, {
-      id: spawnPoint.id,
-      areaKind: 'interior',
-      areaId: interior.id,
-      x: spawnPoint.x,
-      y: spawnPoint.y
-    });
-  }
-}
-
-if (!SPAWNS_BY_ID.has(DEFAULT_WORLD_SPAWN_ID)) {
-  throw new Error(`World default spawn ${DEFAULT_WORLD_SPAWN_ID} is not defined in world.json.`);
+if (!hasWorldSpawn(DEFAULT_WORLD_SPAWN_ID)) {
+  throw new Error(`World default spawn ${DEFAULT_WORLD_SPAWN_ID} is not defined in any ${ACTIVE_WORLD_ID} chunk file.`);
 }
 
 function chunkKey(chunkX: number, chunkY: number): string {
   return `${chunkX},${chunkY}`;
 }
 
-function createOutdoorChunkVariant(
-  source: WorldTiledMapSource,
-  mapId: string,
-  config: WorldChunkVariantDefinition
-): WorldTiledMapSource {
-  const map = cloneTiledMap(source);
-  const transform = config.transform ?? 'none';
-
-  map.layers = map.layers.map((layer) => {
-    if (layer.type === 'tilelayer') {
-      return {
-        ...layer,
-        data: transformTileLayerData(layer.data, layer.width, layer.height, transform)
-      };
-    }
-
-    if (layer.name === 'props') {
-      return {
-        ...layer,
-        objects: (config.props ?? []).map((prop, index) => createPropObject(index + 1, prop, map.tilewidth, map.tileheight))
-      };
-    }
-
-    return {
-      ...layer,
-      objects: []
-    };
-  });
-
-  map.properties = [
-    {
-      name: 'mapId',
-      value: mapId
-    },
-    {
-      name: 'displayName',
-      value: config.displayName
-    },
-    {
-      name: 'backdropAssetId',
-      value: config.backdropAssetId
-    }
-  ];
-
-  return map as unknown as WorldTiledMapSource;
-}
-
-function resolveOutdoorChunkMapSource(definition: WorldChunkLayoutDefinition): WorldTiledMapSource {
-  const source = resolveWorldMapSource(definition.sourceMapId);
-
-  return definition.variant ? createOutdoorChunkVariant(source, definition.id, definition.variant) : source;
-}
-
-function resolveWorldInterior(definition: WorldInteriorLayoutDefinition): WorldInteriorDefinition {
-  const resolved = asInteriorMap(parseTiledWorldMap(resolveWorldMapSource(definition.sourceMapId)));
-
-  if (resolved.id !== definition.id) {
-    throw new Error(`World interior ${definition.id} resolved to map ${resolved.id}; keep world.json aligned.`);
+function parseWorldDefinition(source: WorldDefinition): WorldDefinition {
+  if (!Number.isInteger(source.width) || source.width <= 0) {
+    throw new Error(`World ${ACTIVE_WORLD_ID} width must be a positive integer, received ${source.width}.`);
   }
 
-  return resolved;
-}
-
-function resolveWorldMapSource(sourceMapId: string): WorldTiledMapSource {
-  const source = WORLD_MAP_SOURCES[sourceMapId];
-
-  if (!source) {
-    throw new Error(`Unknown world source map ${sourceMapId} in world.json.`);
+  if (!Number.isInteger(source.height) || source.height <= 0) {
+    throw new Error(`World ${ACTIVE_WORLD_ID} height must be a positive integer, received ${source.height}.`);
   }
 
   return source;
 }
 
-function cloneTiledMap(source: WorldTiledMapSource): TiledMap {
-  return JSON.parse(JSON.stringify(source)) as TiledMap;
-}
+function parseWorldChunkFileName(fileName: string): ParsedWorldChunkFileName | null {
+  const match = fileName.match(WORLD_CHUNK_FILE_PATTERN);
 
-function transformTileLayerData(
-  data: readonly number[],
-  width: number,
-  height: number,
-  transform: WorldMapTransform
-): number[] {
-  if (transform === 'none') {
-    return [...data];
+  if (!match) {
+    return null;
   }
 
-  const next = new Array<number>(data.length);
+  return {
+    worldId: match[1],
+    chunkX: Number(match[2]),
+    chunkY: Number(match[3]),
+    variantId: match[4] ?? null
+  };
+}
 
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let targetX = x;
-      let targetY = y;
+function createWorldChunkMapId(chunkX: number, chunkY: number): string {
+  return `${ACTIVE_WORLD_ID}.${chunkX}.${chunkY}`;
+}
 
-      if (transform === 'mirrorX' || transform === 'rotate180') {
-        targetX = width - 1 - x;
+function buildWorldChunkDefinitions(
+  entries: ReadonlyArray<{ fileName: string; source: WorldTiledMapSource }>
+): Map<string, WorldChunkDefinition> {
+  const definitions = new Map<
+    string,
+    {
+      id: string;
+      chunkX: number;
+      chunkY: number;
+      baseSource?: WorldTiledMapSource;
+      variantSources: Record<string, WorldTiledMapSource>;
+    }
+  >();
+
+  for (const { fileName, source } of entries) {
+    const placement = parseWorldChunkFileName(fileName);
+
+    if (!placement || placement.worldId !== ACTIVE_WORLD_ID) {
+      continue;
+    }
+
+    if (
+      placement.chunkX < 0 ||
+      placement.chunkX >= WORLD_DEFINITION.width ||
+      placement.chunkY < 0 ||
+      placement.chunkY >= WORLD_DEFINITION.height
+    ) {
+      throw new Error(
+        `World chunk file ${fileName} is outside ${ACTIVE_WORLD_ID}'s ${WORLD_DEFINITION.width}x${WORLD_DEFINITION.height} bounds.`
+      );
+    }
+
+    const id = createWorldChunkMapId(placement.chunkX, placement.chunkY);
+    const key = chunkKey(placement.chunkX, placement.chunkY);
+    const existing =
+      definitions.get(key) ??
+      {
+        id,
+        chunkX: placement.chunkX,
+        chunkY: placement.chunkY,
+        variantSources: {}
+      };
+
+    if (placement.variantId === null) {
+      if (existing.baseSource) {
+        throw new Error(`World chunk coordinate ${key} defines more than one base chunk file for ${ACTIVE_WORLD_ID}.`);
       }
 
-      if (transform === 'mirrorY' || transform === 'rotate180') {
-        targetY = height - 1 - y;
+      existing.baseSource = source;
+    } else {
+      if (existing.variantSources[placement.variantId]) {
+        throw new Error(`World chunk ${id} defines variant ${placement.variantId} more than once.`);
       }
 
-      next[targetY * width + targetX] = data[y * width + x];
+      existing.variantSources[placement.variantId] = source;
+    }
+
+    definitions.set(key, existing);
+  }
+
+  for (let chunkY = 0; chunkY < WORLD_DEFINITION.height; chunkY += 1) {
+    for (let chunkX = 0; chunkX < WORLD_DEFINITION.width; chunkX += 1) {
+      const key = chunkKey(chunkX, chunkY);
+      const definition = definitions.get(key);
+
+      if (!definition) {
+        throw new Error(`Missing world chunk file ${ACTIVE_WORLD_ID}.${chunkX}.${chunkY}.tiled.json.`);
+      }
+
+      if (!definition.baseSource) {
+        throw new Error(`World chunk ${definition.id} is missing its base file ${ACTIVE_WORLD_ID}.${chunkX}.${chunkY}.tiled.json.`);
+      }
     }
   }
 
-  return next;
+  return new Map(
+    [...definitions.entries()].map(([key, definition]) => [
+      key,
+      {
+        id: definition.id,
+        chunkX: definition.chunkX,
+        chunkY: definition.chunkY,
+        baseSource: definition.baseSource as WorldTiledMapSource,
+        variantSources: definition.variantSources
+      } satisfies WorldChunkDefinition
+    ])
+  );
 }
 
-function createPropObject(
-  id: number,
-  prop: WorldVariantPropDefinition,
-  tileWidth: number,
-  tileHeight: number
-): TiledObject {
+function resolveWorldChunkRuntimeSet(definition: WorldChunkDefinition): WorldChunkRuntimeSet {
+  const variants = Object.fromEntries(
+    Object.entries(definition.variantSources).map(([variantId, source]) => [
+      variantId,
+      resolveWorldChunkRuntime(definition, source, variantId)
+    ])
+  ) as Record<string, WorldChunkRuntime>;
+
   return {
-    id,
-    x: prop.x * tileWidth,
-    y: prop.y * tileHeight,
-    properties: [
-      {
-        name: 'assetId',
-        value: prop.assetId
-      }
-    ]
+    id: definition.id,
+    chunkX: definition.chunkX,
+    chunkY: definition.chunkY,
+    base: resolveWorldChunkRuntime(definition, definition.baseSource, null),
+    variants
   };
+}
+
+function resolveWorldChunkRuntime(
+  definition: WorldChunkDefinition,
+  source: WorldTiledMapSource,
+  variantId: string | null
+): WorldChunkRuntime {
+  const parsed = asOutdoorChunkMap(parseTiledWorldMap(source));
+
+  if (parsed.width !== parsed.height) {
+    throw new Error(`Outdoor world chunk ${definition.id} must be square, received ${parsed.width}x${parsed.height}.`);
+  }
+
+  if (parsed.id !== definition.id) {
+    const fileSuffix = variantId ? `.${variantId}` : '';
+    throw new Error(
+      `Outdoor world chunk ${definition.id}${fileSuffix} resolved to map ${parsed.id}; keep the filename and mapId aligned.`
+    );
+  }
+
+  return {
+    ...parsed,
+    chunkX: definition.chunkX,
+    chunkY: definition.chunkY,
+    variantId
+  };
+}
+
+function resolveWorldChunkSize(runtimeSets: readonly WorldChunkRuntimeSet[]): number {
+  const firstRuntimeSet = runtimeSets[0];
+
+  if (!firstRuntimeSet) {
+    throw new Error(`World ${ACTIVE_WORLD_ID} has no outdoor chunk files.`);
+  }
+
+  const chunkSize = firstRuntimeSet.base.width;
+
+  for (const runtimeSet of runtimeSets) {
+    const runtimes = [runtimeSet.base, ...Object.values(runtimeSet.variants)];
+
+    for (const runtime of runtimes) {
+      if (runtime.width !== chunkSize || runtime.height !== chunkSize) {
+        throw new Error(
+          `Outdoor world chunk ${runtime.id} must match the shared ${chunkSize}x${chunkSize} size, received ${runtime.width}x${runtime.height}.`
+        );
+      }
+    }
+  }
+
+  return chunkSize;
+}
+
+function buildInteriorSpawnLookup(interiors: readonly WorldInteriorDefinition[]): Map<string, ResolvedWorldSpawn> {
+  const lookup = new Map<string, ResolvedWorldSpawn>();
+
+  for (const interior of interiors) {
+    for (const spawnPoint of interior.spawnPoints) {
+      setResolvedWorldSpawn(
+        lookup,
+        {
+          id: spawnPoint.id,
+          areaKind: 'interior',
+          areaId: interior.id,
+          x: spawnPoint.x,
+          y: spawnPoint.y
+        },
+        `World interior ${interior.id}`
+      );
+    }
+  }
+
+  return lookup;
+}
+
+function getActiveWorldPersistentState(): WorldPersistentState {
+  return getWorldPersistentState();
+}
+
+function getActiveChunkRuntime(
+  runtimeSet: WorldChunkRuntimeSet,
+  state: WorldPersistentState = getActiveWorldPersistentState()
+): WorldChunkRuntime {
+  const variantId = state.chunkVariants[runtimeSet.id];
+
+  if (!variantId) {
+    return runtimeSet.base;
+  }
+
+  const variant = runtimeSet.variants[variantId];
+
+  if (!variant) {
+    throw new Error(`World chunk ${runtimeSet.id} has no variant named ${variantId}.`);
+  }
+
+  return variant;
+}
+
+function buildActiveOutdoorSpawnLookup(): Map<string, ResolvedWorldSpawn> {
+  const lookup = new Map<string, ResolvedWorldSpawn>();
+  const state = getActiveWorldPersistentState();
+
+  for (const runtimeSet of WORLD_CHUNK_RUNTIME_SETS_BY_COORD.values()) {
+    const chunk = getActiveChunkRuntime(runtimeSet, state);
+
+    for (const spawnPoint of chunk.spawnPoints) {
+      setResolvedWorldSpawn(
+        lookup,
+        {
+          id: spawnPoint.id,
+          areaKind: 'outdoor',
+          areaId: chunk.id,
+          x: chunk.chunkX * WORLD_CHUNK_SIZE + spawnPoint.x,
+          y: chunk.chunkY * WORLD_CHUNK_SIZE + spawnPoint.y
+        },
+        `World chunk ${chunk.id}${chunk.variantId ? ` variant ${chunk.variantId}` : ''}`
+      );
+    }
+  }
+
+  return lookup;
+}
+
+function setResolvedWorldSpawn(
+  lookup: Map<string, ResolvedWorldSpawn>,
+  spawn: ResolvedWorldSpawn,
+  context: string
+): void {
+  if (lookup.has(spawn.id)) {
+    throw new Error(`${context} defines duplicate world spawn ${spawn.id}.`);
+  }
+
+  lookup.set(spawn.id, spawn);
+}
+
+function hasWorldSpawn(spawnId: string): boolean {
+  return buildActiveOutdoorSpawnLookup().has(spawnId) || INTERIOR_SPAWNS_BY_ID.has(spawnId);
+}
+
+function resolveWorldInterior(fileName: string, source: WorldTiledMapSource): WorldInteriorDefinition {
+  const resolved = asInteriorMap(parseTiledWorldMap(source));
+  const expectedId = fileName.replace(/\.tiled\.json$/, '');
+
+  if (resolved.id !== expectedId) {
+    throw new Error(`World interior ${expectedId} resolved to map ${resolved.id}; keep the filename and mapId aligned.`);
+  }
+
+  return resolved;
 }
 
 function createWorldUnit(
@@ -373,7 +451,8 @@ export function createWorldNpcs(areaId: string, npcs: readonly WorldNpcDefinitio
 }
 
 export function getWorldChunkAt(chunkX: number, chunkY: number): WorldChunkRuntime | null {
-  return CHUNKS_BY_COORD.get(chunkKey(chunkX, chunkY)) ?? null;
+  const runtimeSet = WORLD_CHUNK_RUNTIME_SETS_BY_COORD.get(chunkKey(chunkX, chunkY));
+  return runtimeSet ? getActiveChunkRuntime(runtimeSet, getActiveWorldPersistentState()) : null;
 }
 
 export function getWorldChunksForWindow(centerChunkX: number, centerChunkY: number): WorldChunkRuntime[] {
@@ -403,7 +482,7 @@ export function getWorldInterior(interiorId: string): WorldInteriorDefinition {
 }
 
 export function getWorldSpawn(spawnId: string = DEFAULT_WORLD_SPAWN_ID): ResolvedWorldSpawn {
-  const spawn = SPAWNS_BY_ID.get(spawnId);
+  const spawn = buildActiveOutdoorSpawnLookup().get(spawnId) ?? INTERIOR_SPAWNS_BY_ID.get(spawnId);
 
   if (!spawn) {
     throw new Error(`Unknown world spawn ${spawnId}.`);
@@ -412,6 +491,58 @@ export function getWorldSpawn(spawnId: string = DEFAULT_WORLD_SPAWN_ID): Resolve
   return {
     ...spawn
   };
+}
+
+export function getWorldChunkId(chunkX: number, chunkY: number): string {
+  return createWorldChunkMapId(chunkX, chunkY);
+}
+
+export function getWorldChunkVariant(chunkId: string): string | null {
+  return getActiveWorldPersistentState().chunkVariants[chunkId] ?? null;
+}
+
+export function listWorldChunkVariants(chunkId: string): string[] {
+  const runtimeSet = WORLD_CHUNK_RUNTIME_SETS_BY_ID.get(chunkId);
+
+  if (!runtimeSet) {
+    throw new Error(`Unknown world chunk ${chunkId}.`);
+  }
+
+  return Object.keys(runtimeSet.variants).sort();
+}
+
+export function setWorldChunkVariant(chunkId: string, variantId: string | null): WorldPersistentState {
+  const runtimeSet = WORLD_CHUNK_RUNTIME_SETS_BY_ID.get(chunkId);
+
+  if (!runtimeSet) {
+    throw new Error(`Unknown world chunk ${chunkId}.`);
+  }
+
+  if (variantId && !runtimeSet.variants[variantId]) {
+    throw new Error(`World chunk ${chunkId} has no variant named ${variantId}.`);
+  }
+
+  const state = getActiveWorldPersistentState();
+  const nextChunkVariants = { ...state.chunkVariants };
+
+  if (variantId) {
+    nextChunkVariants[chunkId] = variantId;
+  } else {
+    delete nextChunkVariants[chunkId];
+  }
+
+  return setWorldPersistentState({
+    ...state,
+    chunkVariants: nextChunkVariants
+  });
+}
+
+export function clearWorldChunkVariant(chunkId: string): WorldPersistentState {
+  return setWorldChunkVariant(chunkId, null);
+}
+
+export function getWorldStateVersion(): number {
+  return getWorldStateRevision();
 }
 
 export function getChunkCoordinatesForWorldPosition(point: Point): Point {
@@ -457,4 +588,5 @@ export function persistWorldSession(state: WorldSessionState): WorldSessionState
 
 export function resetWorldSession(): void {
   clearWorldSessionState();
+  clearWorldPersistentState();
 }
