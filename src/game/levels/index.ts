@@ -1,5 +1,5 @@
 import type { BattleSetup } from '../battleSetup';
-import { BattleUnit, TileData } from '../core/types';
+import { BattleUnit, Point, TileData } from '../core/types';
 import aionRelayVaultTiledMap from './data/aion-relay-vault.tiled.json';
 import ashenCausewayTiledMap from './data/ashen-causeway.tiled.json';
 import brineCathedralTiledMap from './data/brine-cathedral.tiled.json';
@@ -78,6 +78,43 @@ export function createDefaultBattleSetup(levelOrId: LevelDefinition | string = C
   };
 }
 
+export function createBattleUnitFromBlueprint(
+  unitId: string,
+  blueprintId: string,
+  team: BattleUnit['team'],
+  position: Point,
+  overrides?: {
+    name?: string;
+    className?: string;
+  }
+): BattleUnit {
+  const blueprint = getUnitBlueprint(blueprintId);
+  const { id: resolvedBlueprintId, ...blueprintData } = blueprint;
+
+  return {
+    ...blueprintData,
+    id: unitId,
+    blueprintId: resolvedBlueprintId,
+    team,
+    name: overrides?.name ?? blueprint.name,
+    className: overrides?.className ?? blueprint.className,
+    spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_BLUEPRINT_BATTLE_SCALE),
+    spriteOffsetX:
+      typeof blueprint.spriteOffsetX === 'number'
+        ? Math.round(blueprint.spriteOffsetX * UNIT_BLUEPRINT_BATTLE_SCALE)
+        : undefined,
+    spriteOffsetY:
+      typeof blueprint.spriteOffsetY === 'number'
+        ? Math.round(blueprint.spriteOffsetY * UNIT_BLUEPRINT_BATTLE_SCALE)
+        : undefined,
+    x: position.x,
+    y: position.y,
+    hp: blueprint.maxHp,
+    ct: 0,
+    alive: true
+  };
+}
+
 export function createLevelMap(level: LevelDefinition): TileData[] {
   const width = getLevelWidth(level);
   const height = getLevelHeight(level);
@@ -123,30 +160,14 @@ export function createLevelUnits(
       return [];
     }
 
-    const blueprint = getUnitBlueprint(resolvedBlueprintId);
-
-    const { id: resolvedBlueprintKey, ...blueprintData } = blueprint;
-
-    return [{
-      ...blueprintData,
-      id: createBattleUnitId(level.id, placementIndex, resolvedBlueprintKey),
-      blueprintId: resolvedBlueprintKey,
-      team,
-      spriteDisplayHeight: Math.round(blueprint.spriteDisplayHeight * UNIT_BLUEPRINT_BATTLE_SCALE),
-      spriteOffsetX:
-        typeof blueprint.spriteOffsetX === 'number'
-          ? Math.round(blueprint.spriteOffsetX * UNIT_BLUEPRINT_BATTLE_SCALE)
-          : undefined,
-      spriteOffsetY:
-        typeof blueprint.spriteOffsetY === 'number'
-          ? Math.round(blueprint.spriteOffsetY * UNIT_BLUEPRINT_BATTLE_SCALE)
-          : undefined,
-      x,
-      y,
-      hp: blueprint.maxHp,
-      ct: 0,
-      alive: true
-    }];
+    return [
+      createBattleUnitFromBlueprint(
+        createBattleUnitId(level.id, placementIndex, resolvedBlueprintId),
+        resolvedBlueprintId,
+        team,
+        { x, y }
+      )
+    ];
   });
 }
 

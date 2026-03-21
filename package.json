@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "import:world-archive": "node scripts/import_world_archive.mjs"
   },
   "dependencies": {
     "phaser": "^3.90.0"

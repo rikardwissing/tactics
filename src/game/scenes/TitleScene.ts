@@ -22,6 +22,7 @@ export class TitleScene extends Phaser.Scene {
   private promptText!: Phaser.GameObjects.Text;
   private explorePromptText!: Phaser.GameObjects.Text;
   private editorPromptText!: Phaser.GameObjects.Text;
+  private worldMapEditorPromptText!: Phaser.GameObjects.Text;
   private embers!: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor() {
@@ -90,6 +91,15 @@ export class TitleScene extends Phaser.Scene {
         letterSpacing: 4
       })
       .setOrigin(0.5);
+    this.worldMapEditorPromptText = this.add
+      .text(0, 0, 'WORLD MAP EDITOR', {
+        fontFamily: '"Palatino Linotype", "Book Antiqua", serif',
+        fontSize: '20px',
+        fontStyle: 'bold',
+        color: '#d8cbb0',
+        letterSpacing: 4
+      })
+      .setOrigin(0.5);
 
     this.embers = this.add.particles(0, 0, 'spark', {
       x: { min: 110, max: 1170 },
@@ -116,6 +126,7 @@ export class TitleScene extends Phaser.Scene {
     this.promptText.setDepth(8);
     this.explorePromptText.setDepth(8);
     this.editorPromptText.setDepth(8);
+    this.worldMapEditorPromptText.setDepth(8);
     this.embers.setDepth(9);
 
     this.input.keyboard?.on('keydown-ENTER', this.beginSetup, this);
@@ -123,9 +134,11 @@ export class TitleScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-Z', this.beginSetup, this);
     this.input.keyboard?.on('keydown-X', this.beginExploration, this);
     this.input.keyboard?.on('keydown-U', this.beginUnitEditor, this);
+    this.input.keyboard?.on('keydown-W', this.beginWorldMapEditor, this);
     this.promptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginSetup, this);
     this.explorePromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginExploration, this);
     this.editorPromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginUnitEditor, this);
+    this.worldMapEditorPromptText.setInteractive({ useHandCursor: true }).on('pointerdown', this.beginWorldMapEditor, this);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -134,6 +147,7 @@ export class TitleScene extends Phaser.Scene {
       this.input.keyboard?.off('keydown-Z', this.beginSetup, this);
       this.input.keyboard?.off('keydown-X', this.beginExploration, this);
       this.input.keyboard?.off('keydown-U', this.beginUnitEditor, this);
+      this.input.keyboard?.off('keydown-W', this.beginWorldMapEditor, this);
       this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
       this.promptPulseTween?.stop();
       this.promptPulseTween = null;
@@ -159,8 +173,12 @@ export class TitleScene extends Phaser.Scene {
     this.beginScene('unit-editor');
   }
 
+  private beginWorldMapEditor(): void {
+    this.beginScene('world-map-editor');
+  }
+
   private beginScene(
-    sceneKey: 'setup' | 'unit-editor' | 'battle' | 'world',
+    sceneKey: 'setup' | 'unit-editor' | 'battle' | 'world' | 'world-map-editor',
     sceneData?: BoardSceneStartData | WorldSceneStartData
   ): void {
     if (this.transitionStarted) {
@@ -198,6 +216,8 @@ export class TitleScene extends Phaser.Scene {
     this.explorePromptText.y += 12;
     this.editorPromptText.setAlpha(0);
     this.editorPromptText.y += 12;
+    this.worldMapEditorPromptText.setAlpha(0);
+    this.worldMapEditorPromptText.y += 12;
     this.embers.stop();
   }
 
@@ -289,6 +309,15 @@ export class TitleScene extends Phaser.Scene {
       delay: 2040,
       ease: 'Quad.Out'
     });
+
+    this.tweens.add({
+      targets: this.worldMapEditorPromptText,
+      alpha: 1,
+      y: '-=12',
+      duration: 720,
+      delay: 2170,
+      ease: 'Quad.Out'
+    });
   }
 
   private startBackdropDrift(): void {
@@ -317,7 +346,7 @@ export class TitleScene extends Phaser.Scene {
   private startPromptPulse(): void {
     this.promptPulseTween?.stop();
     this.promptPulseTween = this.tweens.add({
-      targets: [this.promptText, this.explorePromptText, this.editorPromptText],
+      targets: [this.promptText, this.explorePromptText, this.editorPromptText, this.worldMapEditorPromptText],
       alpha: { from: 0.42, to: 1 },
       duration: 1300,
       yoyo: true,
@@ -361,10 +390,12 @@ export class TitleScene extends Phaser.Scene {
 
     this.promptText.setPosition(centerX, height * 0.74);
     this.promptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.019), 18, 26)}px`);
-    this.explorePromptText.setPosition(centerX, height * 0.79);
+    this.explorePromptText.setPosition(centerX, height * 0.785);
     this.explorePromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.017), 17, 24)}px`);
-    this.editorPromptText.setPosition(centerX, height * 0.84);
+    this.editorPromptText.setPosition(centerX, height * 0.83);
     this.editorPromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.016), 16, 22)}px`);
+    this.worldMapEditorPromptText.setPosition(centerX, height * 0.875);
+    this.worldMapEditorPromptText.setFontSize(`${Phaser.Math.Clamp(Math.round(width * 0.015), 15, 21)}px`);
 
     const emitBounds = new Phaser.Geom.Rectangle(width * 0.08, height * 0.16, width * 0.84, height * 0.52);
     this.embers.setPosition(0, 0);

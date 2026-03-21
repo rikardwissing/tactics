@@ -19,6 +19,7 @@ import type {
   ResolvedWorldSpawn,
   WorldChunkDefinition,
   WorldChunkRuntime,
+  WorldEncounterDefinition,
   WorldInteriorDefinition,
   WorldNpcDefinition,
   WorldNpcRuntime,
@@ -417,10 +418,18 @@ export function createWorldLeader(position: Point): BattleUnit {
   return createWorldUnit('world:leader', WORLD_LEADER_BLUEPRINT_ID, position, 'player');
 }
 
+export function getWorldNpcRuntimeId(areaId: string, npcId: string): string {
+  return `world:npc:${areaId}:${npcId}`;
+}
+
 export function createWorldNpcs(areaId: string, npcs: readonly WorldNpcDefinition[]): WorldNpcRuntime[] {
-  return npcs.map((npc) => {
+  return npcs.flatMap((npc) => {
+    if (npc.disposition === 'hostile' && npc.encounterId && isWorldEncounterCleared(npc.encounterId)) {
+      return [];
+    }
+
     const unit = createWorldUnit(
-      `world:npc:${areaId}:${npc.id}`,
+      getWorldNpcRuntimeId(areaId, npc.id),
       npc.blueprintId,
       { x: npc.x, y: npc.y },
       'enemy',
@@ -428,7 +437,7 @@ export function createWorldNpcs(areaId: string, npcs: readonly WorldNpcDefinitio
       npc.className
     );
 
-    return {
+    return [{
       id: unit.id,
       blueprintId: unit.blueprintId,
       factionId: unit.factionId,
@@ -445,8 +454,17 @@ export function createWorldNpcs(areaId: string, npcs: readonly WorldNpcDefinitio
       movementStyle: unit.movementStyle,
       idleStyle: unit.idleStyle,
       summary: npc.summary,
+      disposition: npc.disposition,
+      aggressive: npc.aggressive,
+      aggressionRadius: npc.aggressionRadius,
+      chaseLeashRadius: npc.chaseLeashRadius,
+      encounterId: npc.encounterId,
+      encounterLevelId: npc.encounterLevelId,
+      encounterLabel: npc.encounterLabel,
+      clearOnVictory: npc.clearOnVictory,
+      patrolPath: npc.patrolPath,
       actions: npc.actions
-    };
+    }];
   });
 }
 
@@ -455,11 +473,15 @@ export function getWorldChunkAt(chunkX: number, chunkY: number): WorldChunkRunti
   return runtimeSet ? getActiveChunkRuntime(runtimeSet, getActiveWorldPersistentState()) : null;
 }
 
-export function getWorldChunksForWindow(centerChunkX: number, centerChunkY: number): WorldChunkRuntime[] {
+export function getWorldChunksForWindow(
+  centerChunkX: number,
+  centerChunkY: number,
+  radius: number = 1
+): WorldChunkRuntime[] {
   const chunks: WorldChunkRuntime[] = [];
 
-  for (let chunkY = centerChunkY - 1; chunkY <= centerChunkY + 1; chunkY += 1) {
-    for (let chunkX = centerChunkX - 1; chunkX <= centerChunkX + 1; chunkX += 1) {
+  for (let chunkY = centerChunkY - radius; chunkY <= centerChunkY + radius; chunkY += 1) {
+    for (let chunkX = centerChunkX - radius; chunkX <= centerChunkX + radius; chunkX += 1) {
       const chunk = getWorldChunkAt(chunkX, chunkY);
 
       if (chunk) {
@@ -545,6 +567,78 @@ export function getWorldStateVersion(): number {
   return getWorldStateRevision();
 }
 
+function getWorldEncounterDefinition(encounterId: string): WorldEncounterDefinition | null {
+  for (const runtimeSet of WORLD_CHUNK_RUNTIME_SETS_BY_COORD.values()) {
+    const chunk = getActiveChunkRuntime(runtimeSet, getActiveWorldPersistentState());
+    const encounter = chunk.encounters.find((entry) => entry.id === encounterId);
+
+    if (encounter) {
+      return encounter;
+    }
+
+    const hostileNpcEncounter = chunk.npcs
+      .filter((npc) => npc.disposition === 'hostile' && npc.encounterId === encounterId && npc.encounterLevelId)
+      .map((npc) => ({
+        id: npc.encounterId as string,
+        levelId: npc.encounterLevelId as string,
+        label: npc.encounterLabel,
+        x: npc.x,
+        y: npc.y,
+        clearOnVictory: npc.clearOnVictory ?? true
+      } satisfies WorldEncounterDefinition))[0];
+
+    if (hostileNpcEncounter) {
+      return hostileNpcEncounter;
+    }
+  }
+
+  for (const interior of WORLD_INTERIORS) {
+    const encounter = interior.encounters.find((entry) => entry.id === encounterId);
+
+    if (encounter) {
+      return encounter;
+    }
+
+    const hostileNpcEncounter = interior.npcs
+      .filter((npc) => npc.disposition === 'hostile' && npc.encounterId === encounterId && npc.encounterLevelId)
+      .map((npc) => ({
+        id: npc.encounterId as string,
+        levelId: npc.encounterLevelId as string,
+        label: npc.encounterLabel,
+        x: npc.x,
+        y: npc.y,
+        clearOnVictory: npc.clearOnVictory ?? true
+      } satisfies WorldEncounterDefinition))[0];
+
+    if (hostileNpcEncounter) {
+      return hostileNpcEncounter;
+    }
+  }
+
+  return null;
+}
+
+export function isWorldEncounterCleared(encounterId: string): boolean {
+  return getActiveWorldPersistentState().clearedEncounterIds[encounterId] === true;
+}
+
+export function markWorldEncounterCleared(encounterId: string): WorldPersistentState {
+  const encounter = getWorldEncounterDefinition(encounterId);
+  const state = getActiveWorldPersistentState();
+
+  if (!encounter?.clearOnVictory || state.clearedEncounterIds[encounterId]) {
+    return state;
+  }
+
+  return setWorldPersistentState({
+    ...state,
+    clearedEncounterIds: {
+      ...state.clearedEncounterIds,
+      [encounterId]: true
+    }
+  });
+}
+
 export function getChunkCoordinatesForWorldPosition(point: Point): Point {
   return {
     x: Math.floor(point.x / WORLD_CHUNK_SIZE),
@@ -569,14 +663,18 @@ export function resolveWorldSceneStart(data?: WorldSceneStartData): WorldSession
           areaId: spawn.areaId,
           outdoorPosition: { x: spawn.x, y: spawn.y },
           interiorPosition: null,
-          returnOutdoorPosition: null
+          returnOutdoorPosition: null,
+          suppressedEncounterId: null,
+          outdoorNpcStates: {}
         }
       : {
           areaKind: 'interior',
           areaId: spawn.areaId,
           outdoorPosition: { x: 0, y: 0 },
           interiorPosition: { x: spawn.x, y: spawn.y },
-          returnOutdoorPosition: null
+          returnOutdoorPosition: null,
+          suppressedEncounterId: null,
+          outdoorNpcStates: {}
         };
 
   return setWorldSessionState(state);

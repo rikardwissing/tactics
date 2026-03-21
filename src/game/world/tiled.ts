@@ -2,9 +2,11 @@ import type { TerrainType } from '../core/types';
 import type { MapPropAssetId, MapPropPlacement } from '../levels/types';
 import type {
   WorldChunkMapDefinition,
+  WorldEncounterDefinition,
   WorldInteriorDefinition,
   WorldMapDefinition,
   WorldNpcDefinition,
+  WorldNpcDisposition,
   WorldSpawnDefinition,
   WorldTiledMapSource,
   WorldTransitionDefinition,
@@ -86,6 +88,7 @@ export function parseTiledWorldMap(source: WorldTiledMapSource): WorldMapDefinit
   const heightsLayer = getTileLayer(map, 'heights');
   const propsLayer = getOptionalObjectLayer(map, 'props');
   const npcsLayer = getOptionalObjectLayer(map, 'npcs');
+  const encountersLayer = getOptionalObjectLayer(map, 'encounters');
   const transitionsLayer = getOptionalObjectLayer(map, 'transitions');
   const spawnPointsLayer = getOptionalObjectLayer(map, 'spawnPoints');
 
@@ -138,6 +141,7 @@ export function parseTiledWorldMap(source: WorldTiledMapSource): WorldMapDefinit
     terrain,
     props: (propsLayer?.objects ?? []).map((object) => parseProp(map, object, mapId)),
     npcs: (npcsLayer?.objects ?? []).map((object) => parseNpc(map, object, mapId)),
+    encounters: (encountersLayer?.objects ?? []).map((object) => parseEncounter(map, object, mapId)),
     transitions: (transitionsLayer?.objects ?? []).map((object) => parseTransition(map, object, mapId)),
     spawnPoints: (spawnPointsLayer?.objects ?? []).map((object) => parseSpawnPoint(map, object, mapId))
   };
@@ -175,6 +179,25 @@ function parseNpc(map: TiledMap, object: TiledObject, mapId: string): WorldNpcDe
   const summary = getRequiredStringProperty(object.properties, 'summary', context);
   const name = normalizeOptionalString(object.name) ?? getOptionalStringProperty(object.properties, 'name');
   const className = getOptionalStringProperty(object.properties, 'className');
+  const disposition = getOptionalNpcDispositionProperty(object.properties, 'disposition') ?? 'friendly';
+  const aggressive = getOptionalBooleanProperty(object.properties, 'aggressive') ?? false;
+  const aggressionRadius = getOptionalNumberProperty(object.properties, 'aggressionRadius') ?? 0;
+  const chaseLeashRadius = getOptionalNumberProperty(object.properties, 'chaseLeashRadius');
+  const encounterId = getOptionalStringProperty(object.properties, 'encounterId');
+  const encounterLevelId = getOptionalStringProperty(object.properties, 'encounterLevelId');
+  const encounterLabel = getOptionalStringProperty(object.properties, 'encounterLabel');
+  const clearOnVictory = getOptionalBooleanProperty(object.properties, 'clearOnVictory') ?? true;
+  const patrolPath = parseNpcPatrolPath(object.properties, context);
+
+  if (disposition === 'hostile') {
+    if (!encounterId) {
+      throw new Error(`${context} is missing the string property encounterId.`);
+    }
+
+    if (!encounterLevelId) {
+      throw new Error(`${context} is missing the string property encounterLevelId.`);
+    }
+  }
 
   return {
     id,
@@ -184,7 +207,29 @@ function parseNpc(map: TiledMap, object: TiledObject, mapId: string): WorldNpcDe
     name,
     className,
     summary,
-    actions: parseNpcActions(object.properties, context)
+    disposition,
+    aggressive,
+    aggressionRadius: Math.max(0, aggressionRadius),
+    chaseLeashRadius: Math.max(0, chaseLeashRadius ?? (aggressive ? Math.max(8, aggressionRadius + 2) : 0)),
+    encounterId,
+    encounterLevelId,
+    encounterLabel,
+    clearOnVictory,
+    patrolPath,
+    actions: parseNpcActions(object.properties, context, disposition === 'friendly')
+  };
+}
+
+function parseEncounter(map: TiledMap, object: TiledObject, mapId: string): WorldEncounterDefinition {
+  const context = `Encounter ${object.id} in ${mapId}`;
+
+  return {
+    id: getRequiredStringProperty(object.properties, 'id', context),
+    levelId: getRequiredStringProperty(object.properties, 'levelId', context),
+    label: getOptionalStringProperty(object.properties, 'label'),
+    x: toTileCoordinate(object.x, map.tilewidth),
+    y: toTileCoordinate(object.y, map.tileheight),
+    clearOnVictory: getOptionalBooleanProperty(object.properties, 'clearOnVictory') ?? true
   };
 }
 
@@ -216,15 +261,30 @@ function parseSpawnPoint(map: TiledMap, object: TiledObject, mapId: string): Wor
   };
 }
 
-function parseNpcActions(properties: TiledProperty[] | undefined, context: string): NpcActionDefinition[] {
-  const actionKindsValue = getRequiredStringProperty(properties, 'actionKinds', context);
+function parseNpcActions(
+  properties: TiledProperty[] | undefined,
+  context: string,
+  required: boolean
+): NpcActionDefinition[] {
+  const actionKindsValue = required
+    ? getRequiredStringProperty(properties, 'actionKinds', context)
+    : getOptionalStringProperty(properties, 'actionKinds');
+
+  if (!actionKindsValue) {
+    return [];
+  }
+
   const actionKinds = actionKindsValue
     .split(',')
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
   if (actionKinds.length === 0) {
-    throw new Error(`${context} must define at least one action.`);
+    if (required) {
+      throw new Error(`${context} must define at least one action.`);
+    }
+
+    return [];
   }
 
   const uniqueActionKinds = new Set<string>();
@@ -248,6 +308,35 @@ function parseNpcActions(properties: TiledProperty[] | undefined, context: strin
       body: getRequiredStringProperty(properties, `${value}Body`, `${context} ${value} action`)
     };
   });
+}
+
+function parseNpcPatrolPath(properties: TiledProperty[] | undefined, context: string): readonly { x: number; y: number }[] {
+  const patrolPathValue = getOptionalStringProperty(properties, 'patrolPath');
+
+  if (!patrolPathValue) {
+    return [];
+  }
+
+  return patrolPathValue
+    .split('|')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const [rawX, rawY] = entry.split(':').map((value) => value.trim());
+
+      if (!rawX || !rawY) {
+        throw new Error(`${context} has malformed patrolPath entry "${entry}". Use x:y|x:y.`);
+      }
+
+      const x = Number(rawX);
+      const y = Number(rawY);
+
+      if (!Number.isInteger(x) || !Number.isInteger(y)) {
+        throw new Error(`${context} has malformed patrolPath coordinate "${entry}".`);
+      }
+
+      return { x, y };
+    });
 }
 
 function getTileLayer(map: TiledMap, name: string): TiledTileLayer {
@@ -346,8 +435,35 @@ function normalizeOptionalString(value: string | undefined): string | undefined 
   return normalized ? normalized : undefined;
 }
 
+function getOptionalBooleanProperty(properties: TiledProperty[] | undefined, propertyName: string): boolean | undefined {
+  const value = getProperty(properties, propertyName);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function getOptionalNumberProperty(properties: TiledProperty[] | undefined, propertyName: string): number | undefined {
+  const value = getProperty(properties, propertyName);
+  return typeof value === 'number' ? value : undefined;
+}
+
 function isNpcActionKind(value: string): value is NpcActionKind {
   return NPC_ACTION_KINDS.has(value as NpcActionKind);
+}
+
+function getOptionalNpcDispositionProperty(
+  properties: TiledProperty[] | undefined,
+  propertyName: string
+): WorldNpcDisposition | undefined {
+  const value = getOptionalStringProperty(properties, propertyName);
+
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === 'friendly' || value === 'hostile') {
+    return value;
+  }
+
+  throw new Error(`Unsupported NPC disposition ${value}.`);
 }
 
 function isWorldTransitionTargetKind(value: string): value is WorldTransitionTargetKind {

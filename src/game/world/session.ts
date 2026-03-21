@@ -2,7 +2,8 @@ import type { WorldPersistentState, WorldSessionState } from './types';
 
 let worldSessionState: WorldSessionState | null = null;
 let worldPersistentState: WorldPersistentState = {
-  chunkVariants: {}
+  chunkVariants: {},
+  clearedEncounterIds: {}
 };
 let worldStateRevision = 0;
 
@@ -11,13 +12,26 @@ function cloneState(state: WorldSessionState): WorldSessionState {
     ...state,
     outdoorPosition: { ...state.outdoorPosition },
     interiorPosition: state.interiorPosition ? { ...state.interiorPosition } : null,
-    returnOutdoorPosition: state.returnOutdoorPosition ? { ...state.returnOutdoorPosition } : null
+    returnOutdoorPosition: state.returnOutdoorPosition ? { ...state.returnOutdoorPosition } : null,
+    suppressedEncounterId: state.suppressedEncounterId,
+    outdoorNpcStates: Object.fromEntries(
+      Object.entries(state.outdoorNpcStates).map(([npcId, npcState]) => [
+        npcId,
+        npcState
+          ? {
+              absolutePosition: { ...npcState.absolutePosition },
+              patrolIndex: npcState.patrolIndex
+            }
+          : undefined
+      ])
+    )
   };
 }
 
 function clonePersistentState(state: WorldPersistentState): WorldPersistentState {
   return {
-    chunkVariants: { ...state.chunkVariants }
+    chunkVariants: { ...state.chunkVariants },
+    clearedEncounterIds: { ...state.clearedEncounterIds }
   };
 }
 
@@ -46,7 +60,8 @@ export function setWorldPersistentState(state: WorldPersistentState): WorldPersi
 
 export function clearWorldPersistentState(): void {
   worldPersistentState = {
-    chunkVariants: {}
+    chunkVariants: {},
+    clearedEncounterIds: {}
   };
   worldStateRevision += 1;
 }

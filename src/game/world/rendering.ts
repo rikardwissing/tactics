@@ -83,17 +83,6 @@ export const PROP_RENDER_CONFIG: Record<MapPropAssetId, PropRenderConfig> = {
       sourceOffsetY: 48,
       emberTint: [0xfff2bb, 0xffb45f, 0xc95924]
     }
-  },
-  'cave-mouth-volcanic': {
-    height: 172,
-    minWidth: 188,
-    groundOffsetY: 8,
-    baseFill: 0x120e0c,
-    baseAlpha: 0.24,
-    rim: 0x5c5346,
-    rimAlpha: 0.16,
-    blocksMovement: true,
-    description: 'A basalt cave mouth yawns open in the ridge, its ember-lit depth promising a descent below.'
   }
 };
 
@@ -116,6 +105,13 @@ export const ACTIVE_TILE_HIGHLIGHT_COLORS = {
   strokeInner: 0x8c5d1b,
   center: 0xfff5cb
 } as const;
+
+interface DrawActiveTileMarkerOptions {
+  createGraphics: () => Phaser.GameObjects.Graphics;
+  tilePoints: Phaser.Math.Vector2[];
+  center: Phaser.Math.Vector2;
+  depth: number;
+}
 
 export interface TerrainPalette {
   top: number;
@@ -198,6 +194,62 @@ export function getTerrainPalette(terrain: TerrainType): TerrainPalette {
   return TERRAIN_PALETTES[terrain] ?? TERRAIN_PALETTES.stone;
 }
 
+export function drawActiveTileMarker({
+  createGraphics,
+  tilePoints,
+  center,
+  depth
+}: DrawActiveTileMarkerOptions): [Phaser.GameObjects.Graphics, Phaser.GameObjects.Graphics] {
+  const scaleTilePolygon = (scale: number) =>
+    tilePoints.map(
+      (point) =>
+        new Phaser.Math.Vector2(
+          center.x + (point.x - center.x) * scale,
+          center.y + (point.y - center.y) * scale
+        )
+    );
+  const outer = scaleTilePolygon(0.98);
+  const mid = scaleTilePolygon(0.82);
+  const inner = scaleTilePolygon(0.62);
+
+  const glow = createGraphics().setBlendMode(Phaser.BlendModes.ADD);
+  glow.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.glowOuter, 0.12);
+  glow.fillPoints(scaleTilePolygon(1.16), true);
+  glow.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.glowInner, 0.16);
+  glow.fillPoints(scaleTilePolygon(1.02), true);
+  glow.setDepth(depth);
+
+  const overlay = createGraphics();
+  overlay.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.fillDark, 0.18);
+  overlay.fillPoints(outer, true);
+  overlay.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.fillMid, 0.2);
+  overlay.fillPoints(mid, true);
+  overlay.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.fillLight, 0.16);
+  overlay.fillPoints(inner, true);
+  overlay.lineStyle(3, ACTIVE_TILE_HIGHLIGHT_COLORS.strokeOuter, 0.95);
+  overlay.strokePoints(outer, true, true);
+  overlay.lineStyle(2, ACTIVE_TILE_HIGHLIGHT_COLORS.strokeMid, 0.85);
+  overlay.strokePoints(mid, true, true);
+  overlay.lineStyle(1, ACTIVE_TILE_HIGHLIGHT_COLORS.strokeInner, 0.8);
+  overlay.strokePoints(inner, true, true);
+  overlay.lineStyle(3, ACTIVE_TILE_HIGHLIGHT_COLORS.fillLight, 0.9);
+  for (const point of tilePoints) {
+    const dx = point.x - center.x;
+    const dy = point.y - center.y;
+    overlay.lineBetween(
+      center.x + dx * 0.24,
+      center.y + dy * 0.24,
+      center.x + dx * 0.44,
+      center.y + dy * 0.44
+    );
+  }
+  overlay.fillStyle(ACTIVE_TILE_HIGHLIGHT_COLORS.center, 0.85);
+  overlay.fillCircle(center.x, center.y, 3.2);
+  overlay.setDepth(depth + 0.1);
+
+  return [glow, overlay];
+}
+
 export function getTerrainTileAssetKey(tile: Pick<TileData, 'x' | 'y' | 'height' | 'terrain'>): string {
   const assetKeys = TERRAIN_TILE_ASSETS[tile.terrain];
   return assetKeys[(tile.x * 17 + tile.y * 31 + tile.height * 7) % assetKeys.length];
@@ -268,6 +320,8 @@ export function redrawBoardWalls({
     }
 
     const wall = createWallGraphics();
+    wall.setData('tileX', tile.x);
+    wall.setData('tileY', tile.y);
 
     if (rightDrop > 0) {
       const rightFace = [

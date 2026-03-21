@@ -635,24 +635,6 @@
           "width": 96,
           "x": 1056,
           "y": 192
-        },
-        {
-          "height": 48,
-          "id": 6,
-          "name": "Cave Mouth",
-          "properties": [
-            {
-              "name": "assetId",
-              "type": "string",
-              "value": "cave-mouth-volcanic"
-            }
-          ],
-          "rotation": 0,
-          "type": "world_prop",
-          "visible": true,
-          "width": 96,
-          "x": 864,
-          "y": 96
         }
       ],
       "opacity": 1,
@@ -665,6 +647,159 @@
       "draworder": "topdown",
       "id": 4,
       "name": "npcs",
+      "objects": [
+        {
+          "height": 48,
+          "id": 8,
+          "name": "Road Hunter",
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "road-hunter"
+            },
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "myrmidons-hunter"
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "value": "A lean scout stalking the ash road for stragglers."
+            },
+            {
+              "name": "disposition",
+              "type": "string",
+              "value": "hostile"
+            },
+            {
+              "name": "aggressive",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "aggressionRadius",
+              "type": "int",
+              "value": 6
+            },
+            {
+              "name": "chaseLeashRadius",
+              "type": "int",
+              "value": 8
+            },
+            {
+              "name": "encounterId",
+              "type": "string",
+              "value": "road-hunter-skirmish"
+            },
+            {
+              "name": "encounterLevelId",
+              "type": "string",
+              "value": "broken-chapel"
+            },
+            {
+              "name": "encounterLabel",
+              "type": "string",
+              "value": "Road Hunter Skirmish"
+            },
+            {
+              "name": "clearOnVictory",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "patrolPath",
+              "type": "string",
+              "value": "7:6|8:6|8:7|7:7"
+            }
+          ],
+          "rotation": 0,
+          "type": "world_npc",
+          "visible": true,
+          "width": 96,
+          "x": 672,
+          "y": 288
+        },
+        {
+          "height": 48,
+          "id": 9,
+          "name": "Causeway Legionary",
+          "properties": [
+            {
+              "name": "id",
+              "type": "string",
+              "value": "causeway-legionary"
+            },
+            {
+              "name": "blueprintId",
+              "type": "string",
+              "value": "myrmidons-tide-legionary"
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "value": "A mailed legionary holding the road as if it were already conquered."
+            },
+            {
+              "name": "disposition",
+              "type": "string",
+              "value": "hostile"
+            },
+            {
+              "name": "aggressive",
+              "type": "bool",
+              "value": false
+            },
+            {
+              "name": "aggressionRadius",
+              "type": "int",
+              "value": 0
+            },
+            {
+              "name": "encounterId",
+              "type": "string",
+              "value": "causeway-legionary-stand"
+            },
+            {
+              "name": "encounterLevelId",
+              "type": "string",
+              "value": "ashen-causeway"
+            },
+            {
+              "name": "encounterLabel",
+              "type": "string",
+              "value": "Causeway Legionary Stand"
+            },
+            {
+              "name": "clearOnVictory",
+              "type": "bool",
+              "value": true
+            },
+            {
+              "name": "patrolPath",
+              "type": "string",
+              "value": "11:8|11:7|10:7|10:8"
+            }
+          ],
+          "rotation": 0,
+          "type": "world_npc",
+          "visible": true,
+          "width": 96,
+          "x": 1056,
+          "y": 384
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 7,
+      "name": "encounters",
       "objects": [],
       "opacity": 1,
       "type": "objectgroup",
@@ -714,8 +849,8 @@
       "y": 0
     }
   ],
-  "nextlayerid": 7,
-  "nextobjectid": 7,
+  "nextlayerid": 8,
+  "nextobjectid": 10,
   "orientation": "orthogonal",
   "properties": [
     {

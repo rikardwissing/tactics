@@ -1,5 +1,14 @@
 import Phaser from 'phaser';
 import {
+  ACTIVE_UNIT_OUTLINE_OFFSETS as SHARED_ACTIVE_UNIT_OUTLINE_OFFSETS,
+  applyBattleActorFacing,
+  applyBattleIdleAnimation,
+  createBattleActorView,
+  DEFAULT_BATTLE_FACING,
+  getSpriteOffsetXForFacing as getSharedSpriteOffsetXForFacing,
+  shouldFlipSpriteForFacing as getSharedShouldFlipSpriteForFacing
+} from '../battle/actorViews';
+import {
   DEFAULT_UNIT_IMAGE_KEY,
   FACTION_MOTTO_AUDIO_KEYS,
   UNIT_TURN_START_AUDIO_KEYS,
@@ -7,7 +16,58 @@ import {
 } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
-import { calculateDamage, pickNextActor, projectTurnOrder } from '../core/combat';
+import {
+  type BattleIntroPhase,
+  coverImageBounds as coverHudImageBounds,
+  type DetailPortraitKind,
+  type HeaderMenuAction,
+  MAP_TITLE_INTRO_DURATION,
+  MAP_TITLE_INTRO_HOLD,
+  MAP_TITLE_OUTRO_DURATION,
+  formatBattleTerrainName,
+  formatPlaqueHeaderTitle,
+  getBattlePropTitle
+} from '../battle/hudShared';
+import {
+  drawSharedDetailPlaque,
+  drawSharedHeaderMenuOverlay,
+  drawSharedMapPlaque,
+  drawSharedMapTitleIntro,
+  drawSharedPortraitFrame,
+  measureDetailPanelLayout,
+  renderDetailPortrait,
+  type DetailPanelLayoutMetrics
+} from '../battle/hudRenderer';
+import {
+  BATTLE_INSPECTION_HIGHLIGHT_STYLE,
+  buildBattleTurnQueue,
+  chooseEnemyBattleTurnPlan,
+  chooseAutoBattleActionPlan as chooseSharedAutoBattleActionPlan,
+  chooseAutoBattleItem as chooseSharedAutoBattleItem,
+  chooseAutoBattleMoveTile as chooseSharedAutoBattleMoveTile,
+  getBasicAttackAbility as getSharedBasicAttackAbility,
+  getBattleMovementFacing as getSharedBattleMovementFacing,
+  getBlockedPropPoints as getSharedBlockedPropPoints,
+  getInitialBattleFacing as getSharedInitialBattleFacing,
+  shouldShowBattleActiveUnitAura as shouldShowSharedBattleActiveUnitAura,
+  shouldShowBattleActiveUnitFocus as shouldShowSharedBattleActiveUnitFocus,
+  getTargetableUnitsForAbility as getSharedTargetableUnitsForAbility,
+  getTargetableUnitsForItem as getSharedTargetableUnitsForItem,
+  isAbilityInRange as isSharedAbilityInRange,
+  rotateFacingForBoardRotation as rotateSharedFacingForBoardRotation
+} from '../battle/shared';
+import {
+  showSharedTurnStartCatchPhrase,
+  TURN_START_CATCH_PHRASE_HEIGHT_FACTOR
+} from '../battle/presentation';
+import {
+  SHARED_BATTLE_ACTION_MENU_ROW_HEIGHT,
+  SHARED_BATTLE_VISIBLE_TURN_ORDER_COUNT,
+  getSharedBattleMapPlaqueHeight,
+  resolveSharedBattleChromeLayout,
+  resolveSharedBattleTopPanelLayout
+} from '../battle/hudLayout';
+import { calculateDamage, pickNextActor } from '../core/combat';
 import { CombatEffectDefinition, CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
 import {
   getBasePlanePoint,
@@ -32,12 +92,19 @@ import type { ExplorationLocationDefinition, ExplorationNpcRuntime, NpcActionDef
 import { createDefaultBattleSetup, createLevelMap, createLevelUnits, CURRENT_LEVEL, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import { ChestPlacement, LevelDefinition, MapPropAssetId, MapPropPlacement } from '../levels/types';
-import type { BoardSceneStartData, SceneMode } from '../sceneSession';
+import type {
+  BoardSceneStartData,
+  RuntimeBattleArenaBounds,
+  RuntimeBattleIntroEntryState,
+  RuntimeBattleStartData,
+  SceneMode
+} from '../sceneSession';
 import {
   ACTIVE_TILE_HIGHLIGHT_COLORS as ACTIVE_TURN_HIGHLIGHT_COLORS,
   BASE_MIN_BOARD_ZOOM,
   BOARD_ZOOM_SENSITIVITY,
   DEFAULT_BOARD_ZOOM,
+  drawActiveTileMarker,
   MAX_BOARD_ZOOM,
   PROP_RENDER_CONFIG,
   TERRAIN_TILE_ASSETS,
@@ -47,6 +114,7 @@ import {
   getTerrainTileAssetKey,
   redrawBoardWalls
 } from '../world/rendering';
+import { markWorldEncounterCleared } from '../world';
 import { ActionMenuPanelDescriptor, BattleActionMenuStack } from './components/BattleActionMenuStack';
 import {
   BattleUiChrome,
@@ -89,8 +157,7 @@ import {
   UI_TEXT_DISPLAY_CENTER,
   UI_TEXT_LABEL,
   UI_TEXT_TITLE,
-  UI_TEXT_WORLD_BARK,
-  UI_TEXT_WORLD_LABEL
+  UI_TEXT_WORLD_BARK
 } from './components/UiTextStyles';
 import { TurnOrderPanel } from './components/TurnOrderPanel';
 
@@ -112,29 +179,13 @@ type Phase =
 
 type MenuAction = 'move' | 'undo-move' | 'abilities' | 'items' | 'wait';
 type UiLayoutMode = 'portrait' | 'landscape' | 'wide';
-type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup' | 'title';
 type InspectionTarget =
   | { kind: 'unit'; unitId: string }
   | { kind: 'npc'; npcId: string }
   | { kind: 'tile'; x: number; y: number }
   | { kind: 'mission' };
-type BattleIntroPhase = 'intro' | 'hud';
 type ResultOverlayAction = 'retry' | 'setup';
-
-interface UnitView {
-  container: Phaser.GameObjects.Container;
-  shadow: Phaser.GameObjects.Ellipse;
-  marker: Phaser.GameObjects.Ellipse;
-  activeGlow: Phaser.GameObjects.Image;
-  activeOutlineSprites: Phaser.GameObjects.Image[];
-  sprite: Phaser.GameObjects.Image;
-  hpBack: Phaser.GameObjects.Rectangle;
-  hpFill: Phaser.GameObjects.Rectangle;
-  label: Phaser.GameObjects.Text;
-  facing: SpriteFacing;
-  spriteBaseScale: number;
-  spriteBaseY: number;
-}
+type UnitView = ReturnType<typeof createBattleActorView>;
 
 interface ChestState extends ChestPlacement {
   opened: boolean;
@@ -242,21 +293,6 @@ interface BattleHudViewModel {
   actionEntries: DockActionEntry[];
 }
 
-interface DetailPanelLayoutMetrics {
-  contentBounds: Phaser.Geom.Rectangle;
-  infoBounds: Phaser.Geom.Rectangle;
-  portraitBounds: Phaser.Geom.Rectangle;
-  healthBarBounds: Phaser.Geom.Rectangle;
-  bodyBoxBounds: Phaser.Geom.Rectangle;
-  statChipBounds: Phaser.Geom.Rectangle[];
-  statPositions: Array<Phaser.Math.Vector2 | null>;
-  metaY: number;
-  titleY: number;
-  bodyTextX: number;
-  bodyTextY: number;
-  requiredHeight: number;
-}
-
 type PanKeys = {
   up: Phaser.Input.Keyboard.Key;
   down: Phaser.Input.Keyboard.Key;
@@ -313,7 +349,6 @@ interface HudControl {
 }
 
 type TimeOfDayId = 'day' | 'dusk' | 'night' | 'dawn';
-type DetailPortraitKind = 'unit' | 'unit-portrait' | 'prop' | 'chest' | 'terrain';
 
 const TIME_OF_DAY_ORDER: readonly TimeOfDayId[] = ['day', 'dusk', 'night', 'dawn'];
 
@@ -377,24 +412,14 @@ const TIME_OF_DAY_CONFIG: Record<
   }
 };
 
-const DEFAULT_UNIT_FACING: SpriteFacing = 'right';
+const DEFAULT_UNIT_FACING: SpriteFacing = DEFAULT_BATTLE_FACING;
 const SOFT_LIGHT_TEXTURE_KEY = 'soft-light';
-const ACTIVE_UNIT_OUTLINE_OFFSETS = [
-  { x: -1.8, y: 0, alpha: 0.82 },
-  { x: 1.8, y: 0, alpha: 0.82 },
-  { x: 0, y: -1.8, alpha: 0.88 },
-  { x: 0, y: 1.8, alpha: 0.72 },
-  { x: -1.35, y: -1.35, alpha: 0.7 },
-  { x: 1.35, y: -1.35, alpha: 0.7 },
-  { x: -1.35, y: 1.35, alpha: 0.62 },
-  { x: 1.35, y: 1.35, alpha: 0.62 }
-] as const;
+const ACTIVE_UNIT_OUTLINE_OFFSETS = SHARED_ACTIVE_UNIT_OUTLINE_OFFSETS;
 const ACTIVE_UNIT_BORDER_FADE_SPEED = 0.008;
-const MAP_TITLE_INTRO_DURATION = 320;
-const MAP_TITLE_INTRO_HOLD = 880;
-const MAP_TITLE_OUTRO_DURATION = 360;
 export class BattleScene extends Phaser.Scene {
   private sceneMode: SceneMode = 'battle';
+  private worldEncounterId: string | null = null;
+  private runtimeBattle: RuntimeBattleStartData | null = null;
   private sceneStartData: BoardSceneStartData = { mode: 'battle' };
   private level: LevelDefinition = CURRENT_LEVEL;
   private battleSetup: BattleSetup = createDefaultBattleSetup(CURRENT_LEVEL);
@@ -584,6 +609,7 @@ export class BattleScene extends Phaser.Scene {
   private resultOverlayBody?: Phaser.GameObjects.Text;
   private resultOverlayButtons: ResultOverlayButtonView[] = [];
   private resultOverlayPanelBounds = new Phaser.Geom.Rectangle();
+  private preserveNextTurnCamera = false;
   private rng = new Phaser.Math.RandomDataGenerator(['renations-tactics']);
 
   constructor() {
@@ -596,6 +622,8 @@ export class BattleScene extends Phaser.Scene {
 
   init(data?: BoardSceneStartData): void {
     this.sceneMode = data?.mode ?? 'battle';
+    this.worldEncounterId = this.sceneMode === 'battle' ? data?.worldEncounter?.encounterId ?? null : null;
+    this.runtimeBattle = this.sceneMode === 'battle' ? data?.runtimeBattle ?? null : null;
 
     if (this.sceneMode === 'exploration') {
       this.explorationLocation = getExplorationLocation(data?.locationId ?? DEFAULT_EXPLORATION_LOCATION_ID);
@@ -609,10 +637,23 @@ export class BattleScene extends Phaser.Scene {
 
     this.explorationLocation = null;
     this.battleSetup = data?.setup ?? createDefaultBattleSetup(CURRENT_LEVEL);
-    this.level = getLevel(this.battleSetup.levelId);
+    this.level = this.runtimeBattle?.seamlessEntry?.sourceLevel ?? this.runtimeBattle?.level ?? getLevel(this.battleSetup.levelId);
     this.sceneStartData = {
       mode: 'battle',
-      setup: this.battleSetup
+      ...(this.runtimeBattle
+        ? {
+            runtimeBattle: this.runtimeBattle
+          }
+        : {
+            setup: this.battleSetup
+          }),
+      ...(this.worldEncounterId
+        ? {
+            worldEncounter: {
+              encounterId: this.worldEncounterId
+            }
+          }
+        : {})
     };
   }
 
@@ -629,7 +670,9 @@ export class BattleScene extends Phaser.Scene {
     this.uiCamera = undefined;
     if (this.sceneMode === 'battle') {
       this.map = createLevelMap(this.level);
-      this.units = createLevelUnits(this.level, this.battleSetup.playerAssignments);
+      this.units = this.runtimeBattle
+        ? this.runtimeBattle.units.map((unit) => ({ ...unit }))
+        : createLevelUnits(this.level, this.battleSetup.playerAssignments);
       this.explorationNpcs = [];
       this.chests = this.level.chests.map((chest) => ({ ...chest, opened: false }));
     } else {
@@ -670,7 +713,13 @@ export class BattleScene extends Phaser.Scene {
     this.turnMoveUsed = false;
     this.turnActionUsed = false;
     this.pendingMoveUndo = null;
-    this.boardRotationStep = 0;
+    this.boardRotationStep = this.runtimeBattle?.camera.boardRotationStep ?? 0;
+    if (this.runtimeBattle) {
+      this.origin = {
+        x: this.runtimeBattle.camera.origin.x,
+        y: this.runtimeBattle.camera.origin.y
+      };
+    }
     this.boardPivot = this.getBaseBoardPivot();
     this.touchPointerId = null;
     this.touchSecondaryPointerId = null;
@@ -687,6 +736,7 @@ export class BattleScene extends Phaser.Scene {
     this.resultOverlayBody = undefined;
     this.resultOverlayButtons = [];
     this.resultOverlayPanelBounds.setTo(0, 0, 0, 0);
+    this.preserveNextTurnCamera = false;
     this.mapIntroAlpha = 0;
     this.mapIntroOffsetY = 18;
     this.mapPlaqueAlpha = 0;
@@ -736,15 +786,25 @@ export class BattleScene extends Phaser.Scene {
     this.createChests();
     this.createUnits();
     this.createExplorationNpcs();
-    this.applyTimeOfDay();
+    if (this.isSeamlessWorldEncounterBattle()) {
+      this.applySeamlessArenaPreviewState();
+    }
+    if (!this.isSeamlessWorldEncounterBattle()) {
+      this.applyTimeOfDay();
+    }
     this.configureCamera(true);
     this.createUi();
-    this.createParticles();
+    if (!this.isSeamlessWorldEncounterBattle()) {
+      this.createParticles();
+    }
     this.setupCameras();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.registerInputs();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize(this.scale.gameSize);
+    if (this.isSeamlessWorldEncounterBattle()) {
+      this.applyRuntimeBattlePresentation();
+    }
 
     if (this.sceneMode === 'battle') {
       this.pushLog(`${this.getFactionDisplayNameForTeam('player')} and ${this.getFactionDisplayNameForTeam('enemy')} clash on the ruined ridge.`);
@@ -757,6 +817,11 @@ export class BattleScene extends Phaser.Scene {
     this.refreshUi();
     this.updateUiLayout(this.scale.width, this.scale.height);
     this.refreshUi();
+    if (this.isSeamlessWorldEncounterBattle()) {
+      void this.beginSeamlessEncounterEntry();
+      return;
+    }
+
     this.startMapTitleSequence();
 
     this.time.delayedCall(MAP_TITLE_INTRO_DURATION + MAP_TITLE_INTRO_HOLD + MAP_TITLE_OUTRO_DURATION + 120, () => {
@@ -936,6 +1001,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private returnToSetup(): void {
+    if (this.isWorldEncounterBattle()) {
+      this.returnToWorld();
+      return;
+    }
+
     if (this.restarting) {
       return;
     }
@@ -948,6 +1018,21 @@ export class BattleScene extends Phaser.Scene {
     this.input.enabled = false;
     this.input.keyboard?.removeAllListeners();
     this.scene.start('setup', { setup: this.battleSetup });
+  }
+
+  private returnToWorld(): void {
+    if (this.restarting) {
+      return;
+    }
+
+    this.setPauseMenuOpen(false);
+    this.clearTurnStartCatchPhrase();
+    this.restarting = true;
+    this.busy = true;
+    this.phase = 'animating';
+    this.input.enabled = false;
+    this.input.keyboard?.removeAllListeners();
+    this.scene.start('world', { resumeSession: true });
   }
 
   private returnToTitle(): void {
@@ -971,6 +1056,24 @@ export class BattleScene extends Phaser.Scene {
 
   private isExplorationMode(): boolean {
     return this.sceneMode === 'exploration';
+  }
+
+  private isWorldEncounterBattle(): boolean {
+    return this.sceneMode === 'battle' && Boolean(this.worldEncounterId);
+  }
+
+  private isSeamlessWorldEncounterBattle(): boolean {
+    return this.isWorldEncounterBattle() && Boolean(this.runtimeBattle?.seamlessEntry);
+  }
+
+  private getSeamlessWorldEncounterEntry():
+    | {
+        sourceLevel: LevelDefinition;
+        arenaBounds: RuntimeBattleArenaBounds;
+        introEntries: readonly RuntimeBattleIntroEntryState[];
+      }
+    | null {
+    return this.isSeamlessWorldEncounterBattle() ? this.runtimeBattle?.seamlessEntry ?? null : null;
   }
 
   private completeExplorationIntro(): void {
@@ -1491,6 +1594,422 @@ export class BattleScene extends Phaser.Scene {
         tint: [0xf6dea3, 0xc99c66, 0xfff0d5]
       })
       .setDepth(950);
+  }
+
+  private async beginSeamlessEncounterEntry(): Promise<void> {
+    const entry = this.getSeamlessWorldEncounterEntry();
+
+    this.busy = true;
+    this.phase = 'animating';
+    this.input.enabled = false;
+    this.hoverTile = null;
+    this.drawHighlights();
+    this.refreshUi();
+
+    if (!entry) {
+      this.battleIntroPhase = 'hud';
+      this.busy = false;
+      this.applyMapTitlePresentation();
+      this.refreshUi();
+      this.preserveNextTurnCamera = true;
+      await this.beginNextTurn();
+      this.input.enabled = true;
+      return;
+    }
+
+    this.startMapTitleSequence();
+    const titlePromise = this.wait(MAP_TITLE_INTRO_DURATION + MAP_TITLE_INTRO_HOLD + MAP_TITLE_OUTRO_DURATION + 120);
+    const arenaFocusPoint = this.getSeamlessArenaFocusPoint(entry.arenaBounds);
+    const cameraPromise = this.panCameraToPoint(arenaFocusPoint.x, arenaFocusPoint.y, 960);
+    const collapsePromise = this.animateSeamlessArenaCollapse(entry.arenaBounds);
+    const formationPromise = this.animateSeamlessArenaIntroUnits(entry.introEntries);
+
+    await Promise.all([cameraPromise, collapsePromise, formationPromise]);
+    this.swapToSeamlessArenaBattlefield(entry.arenaBounds);
+    await titlePromise;
+
+    this.busy = false;
+    this.applyMapTitlePresentation();
+    this.refreshUi();
+    this.preserveNextTurnCamera = true;
+    await this.beginNextTurn();
+    this.input.enabled = true;
+  }
+
+  private applySeamlessArenaPreviewState(): void {
+    const entry = this.getSeamlessWorldEncounterEntry();
+
+    if (!entry) {
+      return;
+    }
+
+    for (const introEntry of entry.introEntries) {
+      const view = this.views.get(introEntry.unitId);
+      const unit = this.units.find((candidate) => candidate.id === introEntry.unitId);
+      const startTile = getTile(this.map, introEntry.start.x, introEntry.start.y);
+
+      if (!view || !unit || !startTile) {
+        continue;
+      }
+
+      this.positionUnitViewAtTile(view, unit.name, startTile, introEntry.kind === 'visible' ? 1 : 0);
+      view.container.setScale(introEntry.kind === 'visible' ? 1 : 0.88);
+    }
+  }
+
+  private positionUnitViewAtTile(
+    view: UnitView,
+    unitName: string,
+    tile: TileData,
+    alpha = 1
+  ): void {
+    const point = this.getUnitGroundPoint(tile);
+    view.container.setPosition(point.x, point.y);
+    view.container.setDepth(this.getUnitDepth(tile));
+    view.container.setVisible(true);
+    view.container.setAlpha(alpha);
+    view.label.setText(unitName);
+  }
+
+  private async animateSeamlessArenaIntroUnits(
+    introEntries: readonly RuntimeBattleIntroEntryState[]
+  ): Promise<void> {
+    const movements = introEntries.flatMap((entry, index) => {
+      const unit = this.units.find((candidate) => candidate.id === entry.unitId);
+      const view = this.views.get(entry.unitId);
+      const destinationTile = getTile(this.map, entry.target.x, entry.target.y);
+
+      if (!unit || !view || !destinationTile) {
+        return [];
+      }
+
+      return [
+        new Promise<void>((resolve) => {
+          const delay = entry.kind === 'visible' ? index * 90 : 220 + index * 90;
+          this.time.delayedCall(delay, async () => {
+            const startPoint = this.getSeamlessIntroStartPoint(entry);
+            const destinationPoint = this.getUnitGroundPoint(destinationTile);
+            const startDepth = view.container.depth;
+            const destinationDepth = this.getUnitDepth(destinationTile);
+
+            view.container.setVisible(true);
+            view.container.setAlpha(entry.kind === 'visible' ? 1 : 0);
+            view.container.setScale(entry.kind === 'visible' ? 1 : 0.88);
+            view.container.setPosition(startPoint.x, startPoint.y);
+            view.container.setDepth(startDepth);
+            view.label.setText(unit.name);
+            this.updateUnitFacingForMovement(
+              unit,
+              view,
+              startPoint,
+              destinationPoint
+            );
+
+            if (entry.kind === 'emerge') {
+              this.tweens.add({
+                targets: view.container,
+                alpha: 1,
+                scaleX: 1,
+                scaleY: 1,
+                duration: 180,
+                ease: 'Quad.easeOut'
+              });
+              await this.wait(40);
+            }
+
+            if (Phaser.Math.Distance.Between(startPoint.x, startPoint.y, destinationPoint.x, destinationPoint.y) > 0.5) {
+              audioDirector.playStep();
+              await this.animateStandardMovementStep(
+                view,
+                destinationPoint,
+                startDepth,
+                destinationDepth
+              );
+            }
+
+            view.container.setPosition(destinationPoint.x, destinationPoint.y);
+            view.container.setDepth(destinationDepth);
+            view.container.setAlpha(1);
+            view.container.setScale(1);
+            resolve();
+          });
+        })
+      ];
+    });
+
+    await Promise.all(movements);
+  }
+
+  private getSeamlessIntroStartPoint(entry: RuntimeBattleIntroEntryState): Phaser.Math.Vector2 {
+    const anchorView = entry.anchorUnitId ? this.views.get(entry.anchorUnitId) : null;
+
+    if (entry.kind === 'emerge' && anchorView) {
+      return new Phaser.Math.Vector2(anchorView.container.x, anchorView.container.y);
+    }
+
+    const startTile = getTile(this.map, entry.start.x, entry.start.y);
+    if (!startTile) {
+      return new Phaser.Math.Vector2(0, 0);
+    }
+
+    return this.getUnitGroundPoint(startTile);
+  }
+
+  private getSeamlessArenaFocusPoint(arenaBounds: RuntimeBattleArenaBounds): Phaser.Math.Vector2 {
+    const layout = {
+      origin: this.origin,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      rotationStep: this.boardRotationStep
+    };
+    const point = getBasePlanePoint(
+      {
+        x: arenaBounds.x + (arenaBounds.width - 1) / 2,
+        y: arenaBounds.y + (arenaBounds.height - 1) / 2
+      },
+      layout
+    );
+
+    return new Phaser.Math.Vector2(point.x, point.y);
+  }
+
+  private async animateSeamlessArenaCollapse(arenaBounds: RuntimeBattleArenaBounds): Promise<void> {
+    const animations: Promise<void>[] = [];
+
+    for (const image of this.terrainTileImages) {
+      const tilePoint = this.getSceneObjectTilePoint(image);
+
+      if (!tilePoint || this.isPointInsideArena(tilePoint, arenaBounds)) {
+        continue;
+      }
+
+      animations.push(this.animateArenaCollapseObjects([image], tilePoint, arenaBounds));
+    }
+
+    for (const wall of this.wallGraphics) {
+      const tilePoint = this.getSceneObjectTilePoint(wall);
+
+      if (!tilePoint || this.isPointInsideArena(tilePoint, arenaBounds)) {
+        continue;
+      }
+
+      animations.push(this.animateArenaCollapseObjects([wall], tilePoint, arenaBounds));
+    }
+
+    for (const prop of this.level.props) {
+      if (this.isPointInsideArena(prop, arenaBounds)) {
+        continue;
+      }
+
+      const view = this.propViews.get(prop.id);
+
+      if (!view) {
+        continue;
+      }
+
+      animations.push(
+        this.animateArenaCollapseObjects(
+          [
+            view.base,
+            view.image,
+            view.shadowOverlay,
+            view.groundGlow,
+            view.haloGlow,
+            view.embers
+          ],
+          prop,
+          arenaBounds
+        )
+      );
+    }
+
+    if (animations.length === 0) {
+      return;
+    }
+
+    await Promise.all(animations);
+  }
+
+  private getSceneObjectTilePoint(object: Phaser.GameObjects.GameObject): Point | null {
+    const tileX = object.getData('tileX');
+    const tileY = object.getData('tileY');
+
+    return typeof tileX === 'number' && typeof tileY === 'number'
+      ? { x: tileX, y: tileY }
+      : null;
+  }
+
+  private isPointInsideArena(point: Point, arenaBounds: RuntimeBattleArenaBounds): boolean {
+    return (
+      point.x >= arenaBounds.x &&
+      point.x < arenaBounds.x + arenaBounds.width &&
+      point.y >= arenaBounds.y &&
+      point.y < arenaBounds.y + arenaBounds.height
+    );
+  }
+
+  private getArenaBorderDistance(point: Point, arenaBounds: RuntimeBattleArenaBounds): number {
+    const minX = arenaBounds.x;
+    const maxX = arenaBounds.x + arenaBounds.width - 1;
+    const minY = arenaBounds.y;
+    const maxY = arenaBounds.y + arenaBounds.height - 1;
+    const dx = point.x < minX ? minX - point.x : point.x > maxX ? point.x - maxX : 0;
+    const dy = point.y < minY ? minY - point.y : point.y > maxY ? point.y - maxY : 0;
+
+    return dx + dy;
+  }
+
+  private animateArenaCollapseObjects(
+    objects: Array<Phaser.GameObjects.GameObject | undefined>,
+    point: Point,
+    arenaBounds: RuntimeBattleArenaBounds
+  ): Promise<void> {
+    const displayObjects = objects.filter(
+      (candidate): candidate is Phaser.GameObjects.GameObject =>
+        candidate !== undefined && 'setVisible' in candidate
+    );
+
+    if (displayObjects.length === 0) {
+      return Promise.resolve();
+    }
+
+    const distance = this.getArenaBorderDistance(point, arenaBounds);
+    const centerX = arenaBounds.x + (arenaBounds.width - 1) / 2;
+    const horizontalDrift = Phaser.Math.Clamp(point.x - centerX, -3, 3) * 10;
+    const delay = distance * 55;
+    const duration = 340 + distance * 45;
+
+    return new Promise<void>((resolve) => {
+      let completed = 0;
+
+      for (const object of displayObjects) {
+        const target = object as Phaser.GameObjects.GameObject & {
+          x: number;
+          y: number;
+          alpha: number;
+          setVisible: (value: boolean) => Phaser.GameObjects.GameObject;
+        };
+        const startX = target.x;
+        const startY = target.y;
+
+        this.tweens.add({
+          targets: target,
+          x: startX + horizontalDrift,
+          y: startY + 260 + distance * 20,
+          alpha: 0,
+          delay,
+          duration,
+          ease: 'Cubic.easeIn',
+          onComplete: () => {
+            target.setVisible(false);
+            completed += 1;
+
+            if (completed >= displayObjects.length) {
+              resolve();
+            }
+          }
+        });
+      }
+    });
+  }
+
+  private swapToSeamlessArenaBattlefield(arenaBounds: RuntimeBattleArenaBounds): void {
+    const runtimeBattleLevel = this.runtimeBattle?.level;
+
+    if (!runtimeBattleLevel) {
+      return;
+    }
+
+    const sourceAnchorPoint = getBasePlanePoint(
+      { x: arenaBounds.x, y: arenaBounds.y },
+      {
+        origin: this.origin,
+        gridWidth: this.gridWidth,
+        gridHeight: this.gridHeight,
+        rotationStep: this.boardRotationStep
+      }
+    );
+    const nextMap = createLevelMap(runtimeBattleLevel);
+    const nextGridWidth = Math.max(...nextMap.map((tile) => tile.x)) + 1;
+    const nextGridHeight = Math.max(...nextMap.map((tile) => tile.y)) + 1;
+    const croppedAnchorPoint = getBasePlanePoint(
+      { x: 0, y: 0 },
+      {
+        origin: { x: 0, y: 0 },
+        gridWidth: nextGridWidth,
+        gridHeight: nextGridHeight,
+        rotationStep: this.boardRotationStep
+      }
+    );
+
+    this.destroyBattlefieldBoardVisuals();
+    this.level = runtimeBattleLevel;
+    this.map = nextMap;
+    this.chests = this.level.chests.map((chest) => ({ ...chest, opened: false }));
+    this.gridWidth = nextGridWidth;
+    this.gridHeight = nextGridHeight;
+    this.origin = {
+      x: sourceAnchorPoint.x - croppedAnchorPoint.x,
+      y: sourceAnchorPoint.y - croppedAnchorPoint.y
+    };
+    this.boardPivot = this.getBaseBoardPivot();
+    this.backdropImage.setTexture(this.getLevelBackdropImageKey());
+    this.mapPlaqueArt.setTexture(this.getLevelBackdropImageKey());
+    this.mapIntroArt.setTexture(this.getLevelBackdropImageKey());
+    this.drawBoard();
+    this.createTerrainTiles();
+    this.createProps();
+    this.createChests();
+    this.applyTimeOfDay();
+    this.applyRuntimeBattlePresentation();
+
+    for (const unit of this.units) {
+      this.positionUnit(unit);
+    }
+
+    this.configureCamera(false);
+    this.drawHighlights();
+    this.refreshUi();
+  }
+
+  private destroyBattlefieldBoardVisuals(): void {
+    for (const image of this.terrainTileImages) {
+      image.destroy();
+    }
+    this.terrainTileImages = [];
+
+    for (const wall of this.wallGraphics) {
+      wall.destroy();
+    }
+    this.wallGraphics = [];
+
+    for (const view of this.propViews.values()) {
+      view.base.destroy();
+      view.image.destroy();
+      view.shadowOverlay?.destroy();
+      view.groundGlow?.destroy();
+      view.haloGlow?.destroy();
+      view.embers?.destroy();
+    }
+    this.propViews.clear();
+
+    for (const view of this.chestViews.values()) {
+      view.container.destroy();
+    }
+    this.chestViews.clear();
+
+    for (const overlay of this.lightGroundOverlays) {
+      overlay.destroy();
+    }
+    this.lightGroundOverlays = [];
+
+    for (const overlay of this.lightShadowOverlays) {
+      overlay.destroy();
+    }
+    this.lightShadowOverlays = [];
+
+    this.boardGraphics.clear();
+    this.lightShadowGraphics.clear();
   }
 
   private createChests(): void {
@@ -2199,6 +2718,9 @@ export class BattleScene extends Phaser.Scene {
 
     this.updateUiLayout(width, height);
     this.configureCamera(false);
+    if (this.isSeamlessWorldEncounterBattle()) {
+      this.applyRuntimeBattlePresentation();
+    }
     this.drawHighlights();
     this.layoutResultOverlay();
     this.refreshUi();
@@ -2214,6 +2736,26 @@ export class BattleScene extends Phaser.Scene {
     this.ambientOverlay.setScale(inverseZoom);
   }
 
+  private applyRuntimeBattlePresentation(): void {
+    if (!this.runtimeBattle) {
+      return;
+    }
+
+    const camera = this.getWorldCamera();
+    camera.setZoom(this.runtimeBattle.camera.zoom);
+    this.syncBackdropScreenScale();
+    this.setBoardScroll(this.runtimeBattle.camera.scrollX, this.runtimeBattle.camera.scrollY);
+
+    if (!this.isSeamlessWorldEncounterBattle()) {
+      return;
+    }
+
+    this.backdropImage.setAlpha(0);
+    this.backdropShade.setFillStyle(0x03050a, 0.94).setAlpha(1);
+    this.ambientOverlay.setFillStyle(0x0b1420, 0.32).setAlpha(1);
+    this.applyMapTitlePresentation();
+  }
+
   private updateUiLayout(width: number, height: number): void {
     const grid = createUiGrid(width, height);
     const margin = grid.margin;
@@ -2225,40 +2767,46 @@ export class BattleScene extends Phaser.Scene {
     this.showDetailPanel = this.getResolvedInspectionTarget().kind !== 'mission';
     this.showTimelinePanel = !this.isExplorationMode();
     this.showPortraitPanel = true;
-    this.visibleTurnOrderCount = 6;
+    this.visibleTurnOrderCount = SHARED_BATTLE_VISIBLE_TURN_ORDER_COUNT;
     this.visibleLogLines = 2;
-    this.actionMenuRowHeight = 28;
+    this.actionMenuRowHeight = SHARED_BATTLE_ACTION_MENU_ROW_HEIGHT;
 
-    const contentGap = UI_PANEL_GAP;
-    const avatarSize = 38;
-    const turnOrderGap = avatarSize + 12;
-    const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
-    const turnOrderWidth = avatarSize + 28;
-
-    const detailPanelWidth = this.getResolvedDetailPanelWidth(width);
-    const stackedTopPanels = this.shouldStackTopPanels(width, height, detailPanelWidth);
-    const headerWidth = stackedTopPanels ? grid.content.width : MAP_PLAQUE_FIXED_WIDTH;
-    const plaqueHeight = this.getTargetMapPlaqueHeight(headerWidth, height);
-
-    this.headerRect.setTo(grid.content.x, margin, headerWidth, plaqueHeight);
-    this.uiPanels.topLeft.setTo(this.headerRect.x, this.headerRect.y, this.headerRect.width, this.headerRect.height);
-    const detailHeight = this.getTargetDetailPanelHeight(detailPanelWidth, height);
-    const detailRect = new Phaser.Geom.Rectangle(
-      width - margin - detailPanelWidth,
-      stackedTopPanels ? this.headerRect.bottom + contentGap : margin,
-      detailPanelWidth,
-      detailHeight
+    const topPanelLayout = resolveSharedBattleTopPanelLayout(width, height);
+    const plaqueHeight = getSharedBattleMapPlaqueHeight(
+      topPanelLayout.headerWidth,
+      this.mapPlaqueMetaText,
+      this.mapObjectiveText
     );
-    const detailY = detailRect.y;
-    const topContentBottom = stackedTopPanels
-      ? detailY + detailHeight
-      : Math.max(this.headerRect.bottom, detailY + detailHeight);
+    this.headerRect.setTo(
+      topPanelLayout.grid.content.x,
+      topPanelLayout.grid.margin,
+      topPanelLayout.headerWidth,
+      plaqueHeight
+    );
+    const detailHeight = this.getTargetDetailPanelHeight(topPanelLayout.detailPanelWidth, height);
+    const chromeLayout = resolveSharedBattleChromeLayout(
+      width,
+      height,
+      topPanelLayout,
+      plaqueHeight,
+      detailHeight,
+      this.visibleTurnOrderCount
+    );
+
+    this.headerRect.setTo(
+      chromeLayout.headerRect.x,
+      chromeLayout.headerRect.y,
+      chromeLayout.headerRect.width,
+      chromeLayout.headerRect.height
+    );
+    this.uiPanels.topLeft.setTo(this.headerRect.x, this.headerRect.y, this.headerRect.width, this.headerRect.height);
+    const detailRect = chromeLayout.detailRect;
     this.dockRect.setTo(0, 0, 0, 0);
     this.playAreaRect.setTo(
-      grid.content.x,
-      topContentBottom + contentGap,
-      grid.content.width,
-      Math.max(48, grid.content.bottom - (topContentBottom + contentGap))
+      chromeLayout.playAreaRect.x,
+      chromeLayout.playAreaRect.y,
+      chromeLayout.playAreaRect.width,
+      chromeLayout.playAreaRect.height
     );
     this.uiPanels.topRight.setTo(detailRect.x, detailRect.y, detailRect.width, detailRect.height);
     this.uiPanels.bottomLeft.setTo(margin, height - margin - UI_PANEL_COMPACT_GAP, 0, 0);
@@ -2271,16 +2819,15 @@ export class BattleScene extends Phaser.Scene {
       DETAIL_PANEL_PORTRAIT_HEIGHT
     );
 
-    this.layoutTurnOrderBounds(grid, turnOrderHeight);
+    this.turnOrderBounds.setTo(
+      chromeLayout.turnOrderBounds.x,
+      chromeLayout.turnOrderBounds.y,
+      chromeLayout.turnOrderBounds.width,
+      chromeLayout.turnOrderBounds.height
+    );
 
     this.turnOrderPanel.setVisible(true);
-    this.turnOrderPanel.setLayout({
-      x: this.turnOrderBounds.x,
-      startY: this.turnOrderBounds.y + UI_PANEL_MICRO_GAP,
-      gap: turnOrderGap,
-      avatarSize,
-      reverse: true
-    });
+    this.turnOrderPanel.setLayout(chromeLayout.turnOrderLayout);
 
     this.mapObjectiveTagText.setVisible(false);
     this.mapObjectiveText.setVisible(false);
@@ -2294,25 +2841,7 @@ export class BattleScene extends Phaser.Scene {
       text.setVisible(false);
     }
 
-    const actionMenuRootWidth = 172;
-    const actionMenuPanelHeight = 188;
-    const actionMenuRootX = Math.min(
-      grid.content.right - actionMenuRootWidth,
-      this.turnOrderBounds.x + avatarSize + UI_PANEL_GAP
-    );
-    const actionMenuBottom = Math.max(grid.content.bottom, this.headerRect.bottom + actionMenuPanelHeight + UI_PANEL_GAP);
-
-    this.actionMenuStack.setLayout({
-      rootX: actionMenuRootX,
-      bottom: actionMenuBottom,
-      rootWidth: actionMenuRootWidth,
-      panelHeight: actionMenuPanelHeight,
-      overlap: Math.round(actionMenuRootWidth * 0.7),
-      panelWidths: {
-        list: actionMenuRootWidth,
-        detail: actionMenuRootWidth
-      }
-    });
+    this.actionMenuStack.setLayout(chromeLayout.actionMenuLayout);
     this.actionMenuStack.setTypography({
       rowHeight: 26
     });
@@ -2326,91 +2855,49 @@ export class BattleScene extends Phaser.Scene {
   private syncDynamicDetailPanelHeight(): void {
     const width = this.scale.width;
     const height = this.scale.height;
-    const grid = createUiGrid(width, height);
-    const margin = grid.margin;
-    const contentGap = UI_PANEL_GAP;
-    const detailPanelWidth = this.getResolvedDetailPanelWidth(width);
-    const stackedTopPanels = this.shouldStackTopPanels(width, height, detailPanelWidth);
-    const detailHeight = this.getTargetDetailPanelHeight(detailPanelWidth, height);
-    const detailY = stackedTopPanels ? this.headerRect.bottom + contentGap : margin;
+    const topPanelLayout = resolveSharedBattleTopPanelLayout(width, height);
+    const plaqueHeight = getSharedBattleMapPlaqueHeight(
+      topPanelLayout.headerWidth,
+      this.mapPlaqueMetaText,
+      this.mapObjectiveText
+    );
+    this.headerRect.setTo(
+      topPanelLayout.grid.content.x,
+      topPanelLayout.grid.margin,
+      topPanelLayout.headerWidth,
+      plaqueHeight
+    );
+    const detailHeight = this.getTargetDetailPanelHeight(topPanelLayout.detailPanelWidth, height);
+    const chromeLayout = resolveSharedBattleChromeLayout(
+      width,
+      height,
+      topPanelLayout,
+      plaqueHeight,
+      detailHeight,
+      this.visibleTurnOrderCount
+    );
 
     this.uiPanels.topRight.setTo(
-      width - margin - detailPanelWidth,
-      detailY,
-      detailPanelWidth,
-      detailHeight
+      chromeLayout.detailRect.x,
+      chromeLayout.detailRect.y,
+      chromeLayout.detailRect.width,
+      chromeLayout.detailRect.height
     );
-
-    const topContentBottom = stackedTopPanels
-      ? this.uiPanels.topRight.bottom
-      : Math.max(this.headerRect.bottom, this.uiPanels.topRight.bottom);
 
     this.playAreaRect.setTo(
-      grid.content.x,
-      topContentBottom + contentGap,
-      Math.max(48, grid.content.width),
-      Math.max(48, grid.content.bottom - (topContentBottom + contentGap))
+      chromeLayout.playAreaRect.x,
+      chromeLayout.playAreaRect.y,
+      chromeLayout.playAreaRect.width,
+      chromeLayout.playAreaRect.height
     );
 
-    const avatarSize = 38;
-    const turnOrderGap = avatarSize + 12;
-    const turnOrderHeight = avatarSize + Math.max(0, this.visibleTurnOrderCount - 1) * turnOrderGap;
-    this.layoutTurnOrderBounds(grid, turnOrderHeight);
-    this.turnOrderPanel.setLayout({
-      x: this.turnOrderBounds.x,
-      startY: this.turnOrderBounds.y + UI_PANEL_MICRO_GAP,
-      gap: turnOrderGap,
-      avatarSize,
-      reverse: true
-    });
-  }
-
-  private layoutTurnOrderBounds(grid: ReturnType<typeof createUiGrid>, turnOrderHeight: number): void {
-    const turnOrderColumn = grid.column(0, 1, grid.content.y, turnOrderHeight + UI_PANEL_GAP);
-    const turnOrderBand = grid.band(
-      Math.max(grid.content.y, grid.content.bottom - turnOrderHeight - UI_PANEL_COMPACT_GAP),
-      turnOrderHeight + UI_PANEL_GAP
+    this.turnOrderBounds.setTo(
+      chromeLayout.turnOrderBounds.x,
+      chromeLayout.turnOrderBounds.y,
+      chromeLayout.turnOrderBounds.width,
+      chromeLayout.turnOrderBounds.height
     );
-    this.turnOrderBounds.setTo(turnOrderColumn.x, turnOrderBand.y, turnOrderColumn.width, turnOrderBand.height);
-  }
-
-  private getMapPlaqueRequiredHeight(panelWidth: number): number {
-    const plaqueContentGap = UI_PANEL_MINI_GAP;
-
-    this.mapPlaqueMetaText
-      .setWordWrapWidth(Math.max(80, panelWidth - 28), true);
-
-    this.mapObjectiveText
-      .setWordWrapWidth(Math.max(100, panelWidth - 28), true);
-
-    const headerHeight = UI_NARROW_PLAQUE_HEADER_HEIGHT;
-    const mainBlockHeight =
-      this.mapPlaqueMetaText.height +
-      plaqueContentGap +
-      this.mapObjectiveText.height;
-    const bottomPadding = UI_PANEL_COMPACT_INSET;
-
-    return Math.ceil(headerHeight + UI_PANEL_COMPACT_GAP + mainBlockHeight + bottomPadding);
-  }
-
-  private getTargetMapPlaqueHeight(panelWidth: number, height: number): number {
-    const baseHeight = 96;
-
-    return Math.max(baseHeight, this.getMapPlaqueRequiredHeight(panelWidth));
-  }
-
-  private shouldStackTopPanels(viewportWidth: number, viewportHeight: number, detailPanelWidth: number): boolean {
-    const grid = createUiGrid(viewportWidth, viewportHeight);
-    if (grid.columns < 12) {
-      return true;
-    }
-
-    return MAP_PLAQUE_FIXED_WIDTH + detailPanelWidth + UI_PANEL_GAP > grid.content.width;
-  }
-
-  private getResolvedDetailPanelWidth(viewportWidth: number): number {
-    const maxWidth = Math.max(DETAIL_PANEL_MIN_WIDTH, viewportWidth - UI_SCREEN_MARGIN * 2);
-    return Math.round(Phaser.Math.Clamp(DETAIL_PANEL_FIXED_WIDTH, DETAIL_PANEL_MIN_WIDTH, maxWidth));
+    this.turnOrderPanel.setLayout(chromeLayout.turnOrderLayout);
   }
 
   private measureDetailPanelLayout(
@@ -2418,107 +2905,15 @@ export class BattleScene extends Phaser.Scene {
     portraitVisible = this.showPortraitPanel && this.showDetailPanel,
     hasHealthBar = Boolean(this.getDetailFocusUnit())
   ): DetailPanelLayoutMetrics {
-    const contentBounds = BattleUiChrome.getContentBounds(panel, 'narrow');
-    const portraitWidth = portraitVisible ? DETAIL_PANEL_PORTRAIT_WIDTH : 0;
-    const portraitHeight = portraitVisible ? DETAIL_PANEL_PORTRAIT_HEIGHT : 0;
-    const portraitGap = portraitVisible ? DETAIL_PANEL_PORTRAIT_GAP : 0;
-    const infoWidth = Math.max(132, contentBounds.width - portraitWidth - portraitGap);
-    const infoBounds = new Phaser.Geom.Rectangle(contentBounds.x, contentBounds.y, infoWidth, contentBounds.height);
-    const portraitBounds = portraitVisible
-      ? new Phaser.Geom.Rectangle(
-          contentBounds.right - portraitWidth,
-          contentBounds.y,
-          portraitWidth,
-          portraitHeight
-        )
-      : new Phaser.Geom.Rectangle(0, 0, 0, 0);
-    const statColumnGap = UI_PANEL_GAP;
-    const statColumnWidth = Math.max(72, Math.floor((infoBounds.width - statColumnGap) / 2));
-    const bodyBoxWidth = Math.max(180, contentBounds.width);
-    const bodyTextWidth = Math.max(144, bodyBoxWidth - DETAIL_PANEL_BODY_PADDING_X * 2);
-
-    this.detailMetaText.setWordWrapWidth(infoBounds.width, true);
-    this.detailTitleText.setWordWrapWidth(infoBounds.width, true);
-    this.detailBodyText.setWordWrapWidth(bodyTextWidth, true);
-
-    const metaY = Math.round(contentBounds.y + DETAIL_PANEL_TOP_PADDING_Y);
-    const titleY = Math.round(metaY + this.detailMetaText.height + DETAIL_PANEL_META_GAP);
-    let cursorY = titleY + this.detailTitleText.height + DETAIL_PANEL_TITLE_GAP;
-    const healthBarBounds = hasHealthBar
-      ? new Phaser.Geom.Rectangle(infoBounds.x, Math.round(cursorY), infoBounds.width, 10)
-      : new Phaser.Geom.Rectangle(0, 0, 0, 0);
-
-    if (hasHealthBar) {
-      cursorY = healthBarBounds.bottom + DETAIL_PANEL_HEALTH_GAP;
-    }
-
-    const statRowHeights: number[] = [];
-    for (const [index, text] of this.detailStatTexts.entries()) {
-      if (!text.text) {
-        continue;
-      }
-      const row = Math.floor(index / 2);
-      statRowHeights[row] = Math.max(statRowHeights[row] ?? 0, text.height + DETAIL_PANEL_CHIP_PADDING_Y * 2);
-    }
-
-    const statPositions: Array<Phaser.Math.Vector2 | null> = this.detailStatTexts.map(() => null);
-    const statChipBounds: Phaser.Geom.Rectangle[] = this.detailStatTexts.map(() => new Phaser.Geom.Rectangle(0, 0, 0, 0));
-    if (statRowHeights.length > 0) {
-      for (const [index, text] of this.detailStatTexts.entries()) {
-        if (!text.text) {
-          continue;
-        }
-        const column = index % 2;
-        const row = Math.floor(index / 2);
-        const rowHeight = statRowHeights[row] ?? text.height;
-        const rowTop = cursorY + statRowHeights.slice(0, row).reduce((sum, height) => sum + height + DETAIL_PANEL_STAT_ROW_GAP, 0);
-        const chipX = infoBounds.x + column * (statColumnWidth + statColumnGap);
-        const chipY = Math.round(rowTop);
-        const chipWidth = statColumnWidth;
-        statPositions[index] = new Phaser.Math.Vector2(
-          chipX + DETAIL_PANEL_CHIP_PADDING_X,
-          Math.round(chipY + Math.max(0, (rowHeight - text.height) * 0.5) - 1)
-        );
-        statChipBounds[index].setTo(chipX, chipY, chipWidth, rowHeight);
-      }
-      cursorY += statRowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, statRowHeights.length - 1) * DETAIL_PANEL_STAT_ROW_GAP;
-    }
-
-    const topSectionHeight = Math.max(cursorY - contentBounds.y, portraitHeight);
-    const portraitY = portraitVisible
-      ? Math.round(contentBounds.y + Math.max(0, (topSectionHeight - portraitHeight) * 0.5))
-      : 0;
-    const bodyBoxBounds = new Phaser.Geom.Rectangle(
-      contentBounds.x,
-      Math.round(contentBounds.y + topSectionHeight + DETAIL_PANEL_SECTION_GAP),
-      bodyBoxWidth,
-      Math.max(52, this.detailBodyText.height + DETAIL_PANEL_BODY_PADDING_Y * 2)
-    );
-    const topOffset = 2 + UI_NARROW_PLAQUE_HEADER_HEIGHT + UI_PANEL_CONTENT_GAP;
-    const requiredHeight = Math.ceil(
-      topOffset +
-      topSectionHeight +
-      DETAIL_PANEL_SECTION_GAP +
-      bodyBoxBounds.height +
-      UI_PANEL_CONTENT_INSET
-    );
-
-    return {
-      contentBounds,
-      infoBounds,
-      portraitBounds: portraitVisible
-        ? new Phaser.Geom.Rectangle(portraitBounds.x, portraitY, portraitBounds.width, portraitBounds.height)
-        : portraitBounds,
-      healthBarBounds,
-      bodyBoxBounds,
-      statChipBounds,
-      statPositions,
-      metaY,
-      titleY,
-      bodyTextX: bodyBoxBounds.x + DETAIL_PANEL_BODY_PADDING_X,
-      bodyTextY: Math.round(bodyBoxBounds.y + DETAIL_PANEL_BODY_PADDING_Y),
-      requiredHeight
-    };
+    return measureDetailPanelLayout({
+      panel,
+      portraitVisible,
+      hasHealthBar,
+      metaText: this.detailMetaText,
+      titleText: this.detailTitleText,
+      bodyText: this.detailBodyText,
+      statTexts: this.detailStatTexts
+    });
   }
 
   private getDetailPanelRequiredHeight(
@@ -2645,6 +3040,7 @@ export class BattleScene extends Phaser.Scene {
         UI_INSET_RADIUS
       );
     }
+    this.portraitMask.setVisible(false);
 
     for (const bounds of this.dockActionBounds) {
       bounds.setTo(0, 0, 0, 0);
@@ -2956,9 +3352,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getMapPlaqueHeaderTitle(): string {
-    const prefix = this.level.titlePrefix ?? 'Mission';
-    const region = this.level.region ?? this.level.name;
-    return `${prefix} - ${region}`.toUpperCase();
+    return formatPlaqueHeaderTitle(this.level.titlePrefix, this.level.region, this.level.name);
   }
 
   private getMapPlaqueMeta(timeOfDayLabel: string): string {
@@ -3091,7 +3485,7 @@ export class BattleScene extends Phaser.Scene {
       16
     );
 
-    this.coverImageBounds(this.resultOverlayArt, artBounds, 1.06);
+    coverHudImageBounds(this.resultOverlayArt, artBounds, 1.06);
     this.resultOverlayArt
       .setVisible(true)
       .setAlpha(this.resultOverlayResult === 'Victory' ? 0.74 : 0.54)
@@ -3161,7 +3555,7 @@ export class BattleScene extends Phaser.Scene {
         },
         {
           action: 'setup',
-          label: 'MAP SELECT',
+          label: this.isWorldEncounterBattle() ? 'RETURN TO ROAD' : 'MAP SELECT',
           fillColor: UI_COLOR_SUCCESS,
           strokeColor: UI_COLOR_PANEL_BORDER,
           fillAlpha: 0.3
@@ -3179,7 +3573,7 @@ export class BattleScene extends Phaser.Scene {
       },
       {
         action: 'setup',
-        label: 'MAP SELECT',
+        label: this.isWorldEncounterBattle() ? 'RETURN TO ROAD' : 'MAP SELECT',
         fillColor: UI_COLOR_ACCENT_COOL,
         strokeColor: UI_COLOR_PANEL_BORDER,
         fillAlpha: 0.82
@@ -3309,58 +3703,9 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private createActorView(actor: VisualActor, initialFacing: SpriteFacing): UnitView {
-    const spriteFlipX = this.shouldFlipSpriteForFacing(initialFacing);
-    const spriteOffsetX = this.getSpriteOffsetXForFacing(actor.spriteOffsetX, initialFacing);
-    const spriteOffsetY = actor.spriteOffsetY ?? 0;
-    const marker = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 62, 26, actor.accentColor, 0);
-    const shadow = this.add.ellipse(0, UNIT_FOOTPRINT_OFFSET_Y, 50, 18, 0x060205, 0.42);
-    const activeGlow = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
-    activeGlow.displayHeight = actor.spriteDisplayHeight;
-    activeGlow.scaleX = activeGlow.scaleY;
-    activeGlow
-      .setPosition(spriteOffsetX, spriteOffsetY)
-      .setFlipX(spriteFlipX)
-      .setTint(actor.accentColor)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0)
-      .setVisible(false);
-    const activeOutlineSprites = ACTIVE_UNIT_OUTLINE_OFFSETS.map(() => {
-      const outline = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
-      outline.displayHeight = actor.spriteDisplayHeight;
-      outline.scaleX = outline.scaleY;
-      outline
-        .setPosition(spriteOffsetX, spriteOffsetY)
-        .setFlipX(spriteFlipX)
-        .setTintFill(actor.accentColor)
-        .setAlpha(0)
-        .setVisible(false);
-      return outline;
+    return createBattleActorView(this, actor, initialFacing, (object) => {
+      this.registerWorldObject(object);
     });
-    const sprite = this.add.image(0, 0, actor.spriteKey).setOrigin(0.5, 1);
-    sprite.displayHeight = actor.spriteDisplayHeight;
-    sprite.scaleX = sprite.scaleY;
-    sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-
-    const hpBack = this.add.rectangle(0, sprite.y - actor.spriteDisplayHeight - 12, 60, 8, 0x12070d, 0.92);
-    const hpFill = this.add.rectangle(-29, sprite.y - actor.spriteDisplayHeight - 12, 56, 4, 0x65d99e, 1).setOrigin(0, 0.5);
-    const label = this.add.text(0, sprite.y - actor.spriteDisplayHeight - 28, actor.name, UI_TEXT_WORLD_LABEL);
-    label.setOrigin(0.5);
-
-    const container = this.add.container(0, 0, [marker, shadow, activeGlow, ...activeOutlineSprites, sprite, hpBack, hpFill, label]);
-    return {
-      container,
-      shadow,
-      marker,
-      activeGlow,
-      activeOutlineSprites,
-      sprite,
-      hpBack,
-      hpFill,
-      label,
-      facing: initialFacing,
-      spriteBaseScale: sprite.scaleX,
-      spriteBaseY: sprite.y
-    };
   }
 
   private applyChestIdleAnimation(chestId: string): void {
@@ -3409,128 +3754,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private applyIdleAnimation(actor: VisualActor, view: UnitView): void {
-    const delay = (actor.x + actor.y) * 110;
-    const profile = this.getIdleProfile(actor.idleStyle);
-
-    this.tweens.add({
-      targets: view.sprite,
-      y: view.spriteBaseY - profile.spriteLift,
-      angle: profile.spriteTilt,
-      duration: profile.duration,
-      ease: 'Sine.easeInOut',
-      yoyo: true,
-      repeat: -1,
-      delay,
-      onUpdate: () => this.syncActiveUnitGlow(view)
-    });
-
-    this.tweens.add({
-      targets: view.shadow,
-      scaleX: profile.shadowScaleX,
-      scaleY: profile.shadowScaleY,
-      alpha: profile.shadowAlpha,
-      duration: profile.duration,
-      ease: 'Sine.easeInOut',
-      yoyo: true,
-      repeat: -1,
-      delay
-    });
-
-    if (profile.markerScale > 1) {
-      this.tweens.add({
-        targets: view.marker,
-        scaleX: profile.markerScale,
-        scaleY: profile.markerScale,
-        duration: profile.duration * 0.7,
-        ease: 'Sine.easeInOut',
-        yoyo: true,
-        repeat: -1,
-        delay
-      });
-    }
-  }
-
-  private getIdleProfile(idleStyle: IdleStyle): {
-    duration: number;
-    spriteLift: number;
-    spriteTilt: number;
-    shadowScaleX: number;
-    shadowScaleY: number;
-    shadowAlpha: number;
-    markerScale: number;
-  } {
-    switch (idleStyle) {
-      case 'knight':
-        return {
-          duration: 1500,
-          spriteLift: 0,
-          spriteTilt: -0.8,
-          shadowScaleX: 0.97,
-          shadowScaleY: 0.95,
-          shadowAlpha: 0.34,
-          markerScale: 1
-        };
-      case 'archer':
-        return {
-          duration: 1350,
-          spriteLift: 0,
-          spriteTilt: -1.1,
-          shadowScaleX: 0.96,
-          shadowScaleY: 0.94,
-          shadowAlpha: 0.32,
-          markerScale: 1
-        };
-      case 'mage':
-        return {
-          duration: 1650,
-          spriteLift: 0,
-          spriteTilt: 0.9,
-          shadowScaleX: 0.95,
-          shadowScaleY: 0.93,
-          shadowAlpha: 0.3,
-          markerScale: 1
-        };
-      case 'warden':
-        return {
-          duration: 1180,
-          spriteLift: 0,
-          spriteTilt: -0.6,
-          shadowScaleX: 0.98,
-          shadowScaleY: 0.96,
-          shadowAlpha: 0.35,
-          markerScale: 1
-        };
-      case 'ranger':
-        return {
-          duration: 1280,
-          spriteLift: 0,
-          spriteTilt: -1,
-          shadowScaleX: 0.96,
-          shadowScaleY: 0.94,
-          shadowAlpha: 0.31,
-          markerScale: 1
-        };
-      case 'priest':
-        return {
-          duration: 1760,
-          spriteLift: 0,
-          spriteTilt: 0.7,
-          shadowScaleX: 0.95,
-          shadowScaleY: 0.93,
-          shadowAlpha: 0.29,
-          markerScale: 1
-        };
-      default:
-        return {
-          duration: 1500,
-          spriteLift: 0,
-          spriteTilt: -0.8,
-          shadowScaleX: 0.97,
-          shadowScaleY: 0.95,
-          shadowAlpha: 0.33,
-          markerScale: 1
-        };
-    }
+    applyBattleIdleAnimation(this, actor, view, () => this.syncActiveUnitGlow(view));
   }
 
   private drawBoard(): void {
@@ -3562,6 +3786,8 @@ export class BattleScene extends Phaser.Scene {
         .setOrigin(0.5, 0.5)
         .setDisplaySize(TILE_WIDTH, TILE_WIDTH)
         .setDepth(this.getTileDepth(tile)));
+      image.setData('tileX', tile.x);
+      image.setData('tileY', tile.y);
       this.terrainTileImages.push(image);
     }
   }
@@ -3587,7 +3813,14 @@ export class BattleScene extends Phaser.Scene {
 
     const inspectionHighlightTile = this.getInspectionHighlightTile();
     if (inspectionHighlightTile) {
-      this.drawDiamond(inspectionHighlightTile, 0xd9c06d, 0.2, 2, 0xf6e6b4, 0.7);
+      this.drawDiamond(
+        inspectionHighlightTile,
+        BATTLE_INSPECTION_HIGHLIGHT_STYLE.fill,
+        BATTLE_INSPECTION_HIGHLIGHT_STYLE.fillAlpha,
+        BATTLE_INSPECTION_HIGHLIGHT_STYLE.lineWidth,
+        BATTLE_INSPECTION_HIGHLIGHT_STYLE.stroke,
+        BATTLE_INSPECTION_HIGHLIGHT_STYLE.strokeAlpha
+      );
     }
 
     if (!activeUnit) {
@@ -3672,46 +3905,13 @@ export class BattleScene extends Phaser.Scene {
   private drawActiveMarker(tile: TileData): void {
     const center = this.isoToScreen(tile);
     const tilePoints = this.getTileTopPoints(tile);
-    const outer = this.scaleTilePolygon(tilePoints, center, 0.98);
-    const mid = this.scaleTilePolygon(tilePoints, center, 0.82);
-    const inner = this.scaleTilePolygon(tilePoints, center, 0.62);
-
-    const glow = this.registerWorldObject(this.add.graphics().setBlendMode(Phaser.BlendModes.ADD));
-    glow.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.glowOuter, 0.12);
-    glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 1.16), true);
-    glow.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.glowInner, 0.16);
-    glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 1.02), true);
-    glow.setDepth(this.getHighlightDepth(tile));
-    this.highlightOverlays.push(glow);
-
-    const overlay = this.registerWorldObject(this.add.graphics());
-    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillDark, 0.18);
-    overlay.fillPoints(outer, true);
-    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillMid, 0.2);
-    overlay.fillPoints(mid, true);
-    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.fillLight, 0.16);
-    overlay.fillPoints(inner, true);
-    overlay.lineStyle(3, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeOuter, 0.95);
-    overlay.strokePoints(outer, true, true);
-    overlay.lineStyle(2, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeMid, 0.85);
-    overlay.strokePoints(mid, true, true);
-    overlay.lineStyle(1, ACTIVE_TURN_HIGHLIGHT_COLORS.strokeInner, 0.8);
-    overlay.strokePoints(inner, true, true);
-    overlay.lineStyle(3, ACTIVE_TURN_HIGHLIGHT_COLORS.fillLight, 0.9);
-    for (const point of tilePoints) {
-      const dx = point.x - center.x;
-      const dy = point.y - center.y;
-      overlay.lineBetween(
-        center.x + dx * 0.24,
-        center.y + dy * 0.24,
-        center.x + dx * 0.44,
-        center.y + dy * 0.44
-      );
-    }
-    overlay.fillStyle(ACTIVE_TURN_HIGHLIGHT_COLORS.center, 0.85);
-    overlay.fillCircle(center.x, center.y, 3.2);
-    overlay.setDepth(this.getHighlightDepth(tile) + 0.1);
-    this.highlightOverlays.push(overlay);
+    const [glow, overlay] = drawActiveTileMarker({
+      createGraphics: () => this.registerWorldObject(this.add.graphics()),
+      tilePoints,
+      center,
+      depth: this.getHighlightDepth(tile)
+    });
+    this.highlightOverlays.push(glow, overlay);
   }
 
   private scaleTilePolygon(
@@ -3749,7 +3949,7 @@ export class BattleScene extends Phaser.Scene {
         continue;
       }
 
-      const isActive = unit.alive && unit.id === this.activeUnitId && this.shouldShowActiveUnitFocus();
+      const isActive = unit.alive && unit.id === this.activeUnitId && this.shouldShowActiveUnitAura();
       view.activeGlow
         .setTint(this.getActiveUnitGlowTint(unit))
         .setVisible(isActive)
@@ -3767,7 +3967,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private shouldShowActiveUnitFocus(): boolean {
-    return this.phase !== 'complete' && this.phase !== 'animating';
+    return shouldShowSharedBattleActiveUnitFocus(this.phase, 'animating', 'complete');
+  }
+
+  private shouldShowActiveUnitAura(): boolean {
+    return shouldShowSharedBattleActiveUnitAura(this.phase, 'complete');
   }
 
   private updateActiveUnitGlowFade(time: number): void {
@@ -3779,7 +3983,7 @@ export class BattleScene extends Phaser.Scene {
 
     const view = this.views.get(activeUnit.id);
 
-    if (!view || !this.shouldShowActiveUnitFocus() || !view.activeGlow.visible) {
+    if (!view || !this.shouldShowActiveUnitAura() || !view.activeGlow.visible) {
       return;
     }
 
@@ -3817,31 +4021,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private applyUnitViewFacing(unit: BattleUnit, view: UnitView, facing: SpriteFacing): void {
-    view.facing = facing;
-    const spriteOffsetX = this.getSpriteOffsetXForFacing(unit.spriteOffsetX, facing);
-    const spriteOffsetY = unit.spriteOffsetY ?? 0;
-    const spriteFlipX = this.shouldFlipSpriteForFacing(facing);
-
-    view.activeGlow.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    for (const outline of view.activeOutlineSprites) {
-      outline.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    }
-    view.sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    this.syncActiveUnitGlow(view);
+    applyBattleActorFacing(unit, view, facing);
   }
 
   private applyNpcViewFacing(npc: ExplorationNpcRuntime, view: UnitView, facing: SpriteFacing): void {
-    view.facing = facing;
-    const spriteOffsetX = this.getSpriteOffsetXForFacing(npc.spriteOffsetX, facing);
-    const spriteOffsetY = npc.spriteOffsetY ?? 0;
-    const spriteFlipX = this.shouldFlipSpriteForFacing(facing);
-
-    view.activeGlow.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    for (const outline of view.activeOutlineSprites) {
-      outline.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    }
-    view.sprite.setPosition(spriteOffsetX, spriteOffsetY).setFlipX(spriteFlipX);
-    this.syncActiveUnitGlow(view);
+    applyBattleActorFacing(npc, view, facing);
   }
 
   private updateUnitFacingForMovement(
@@ -3874,49 +4058,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getInitialFacingForUnit(unit: BattleUnit): SpriteFacing {
-    const unitTile = getTile(this.map, unit.x, unit.y);
-
-    if (!unitTile) {
-      return DEFAULT_UNIT_FACING;
-    }
-
-    const unitPoint = this.getUnitGroundPoint(unitTile);
-    let bestEnemy:
-      | {
-          tacticalDistance: number;
-          screenDistance: number;
-          facing: SpriteFacing;
-        }
-      | null = null;
-
-    for (const candidate of this.units) {
-      if (!candidate.alive || candidate.team === unit.team || candidate.id === unit.id) {
-        continue;
-      }
-
-      const candidateTile = getTile(this.map, candidate.x, candidate.y);
-
-      if (!candidateTile) {
-        continue;
-      }
-
-      const candidatePoint = this.getUnitGroundPoint(candidateTile);
-      const tacticalDistance = manhattanDistance(unit, candidate);
-      const dx = candidatePoint.x - unitPoint.x;
-      const dy = candidatePoint.y - unitPoint.y;
-      const screenDistance = dx * dx + dy * dy;
-      const facing = this.getMovementFacing(unitPoint, candidatePoint, DEFAULT_UNIT_FACING);
-
-      if (
-        !bestEnemy ||
-        tacticalDistance < bestEnemy.tacticalDistance ||
-        (tacticalDistance === bestEnemy.tacticalDistance && screenDistance < bestEnemy.screenDistance)
-      ) {
-        bestEnemy = { tacticalDistance, screenDistance, facing };
-      }
-    }
-
-    return bestEnemy?.facing ?? DEFAULT_UNIT_FACING;
+    return getSharedInitialBattleFacing(unit, this.units, this.map, (tile) => this.getUnitGroundPoint(tile), DEFAULT_UNIT_FACING);
   }
 
   private getMovementFacing(
@@ -3924,13 +4066,7 @@ export class BattleScene extends Phaser.Scene {
     toPoint: Phaser.Math.Vector2,
     fallbackFacing: SpriteFacing
   ): SpriteFacing {
-    const deltaX = toPoint.x - fromPoint.x;
-
-    if (Math.abs(deltaX) < 1) {
-      return fallbackFacing;
-    }
-
-    return deltaX > 0 ? 'right' : 'left';
+    return getSharedBattleMovementFacing(fromPoint, toPoint, fallbackFacing);
   }
 
   private getUnitViewFacing(unitId: string): SpriteFacing {
@@ -3938,12 +4074,11 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getSpriteOffsetXForFacing(offsetX: number | undefined, facing: SpriteFacing): number {
-    const resolvedOffsetX = offsetX ?? 0;
-    return facing === 'left' ? -resolvedOffsetX : resolvedOffsetX;
+    return getSharedSpriteOffsetXForFacing(offsetX, facing);
   }
 
   private shouldFlipSpriteForFacing(facing: SpriteFacing): boolean {
-    return facing === 'left';
+    return getSharedShouldFlipSpriteForFacing(facing);
   }
 
   private positionUnit(unit: BattleUnit): void {
@@ -4467,7 +4602,21 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    this.boardRotationStep = Phaser.Math.Wrap(this.boardRotationStep + stepDelta, 0, 4);
+    const nextRotationStep = Phaser.Math.Wrap(this.boardRotationStep + stepDelta, 0, 4);
+    const unitFacingOverrides = new Map(
+      this.units.map((unit) => [
+        unit.id,
+        rotateSharedFacingForBoardRotation(this.getUnitViewFacing(unit.id), this.boardRotationStep, nextRotationStep)
+      ])
+    );
+    const npcFacingOverrides = new Map(
+      this.explorationNpcs.map((npc) => {
+        const currentFacing = this.views.get(npc.id)?.facing ?? DEFAULT_UNIT_FACING;
+        return [npc.id, rotateSharedFacingForBoardRotation(currentFacing, this.boardRotationStep, nextRotationStep)];
+      })
+    );
+
+    this.boardRotationStep = nextRotationStep;
     this.boardPivot = this.getBaseBoardPivot();
     this.hoverTile = null;
     this.getWorldCamera().setRotation(0);
@@ -4484,10 +4633,24 @@ export class BattleScene extends Phaser.Scene {
     }
 
     for (const unit of this.units) {
+      const view = this.views.get(unit.id);
+      const facing = unitFacingOverrides.get(unit.id);
+
+      if (view && facing) {
+        this.applyUnitViewFacing(unit, view, facing);
+      }
+
       this.positionUnit(unit);
     }
 
     for (const npc of this.explorationNpcs) {
+      const view = this.views.get(npc.id);
+      const facing = npcFacingOverrides.get(npc.id);
+
+      if (view && facing) {
+        this.applyNpcViewFacing(npc, view, facing);
+      }
+
       this.positionExplorationNpc(npc);
     }
 
@@ -4812,9 +4975,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getBlockedPropPoints(): Point[] {
-    return this.level.props
-      .filter((prop) => PROP_RENDER_CONFIG[prop.assetId].blocksMovement)
-      .map((prop) => ({ x: prop.x, y: prop.y }));
+    return getSharedBlockedPropPoints(this.level.props);
   }
 
   private isPlayerTurnPhase(phase = this.phase): boolean {
@@ -4842,17 +5003,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getTargetableUnitsForItem(unit: BattleUnit, itemId: ItemId): BattleUnit[] {
-    return this.units.filter((target) => {
-      if (!target.alive) {
-        return false;
-      }
-
-      if (manhattanDistance(unit, target) > 1) {
-        return false;
-      }
-
-      return true;
-    });
+    return getSharedTargetableUnitsForItem(unit, this.units, itemId);
   }
 
   private buildActionMenuPanels(): ActionMenuPanelDescriptor[] {
@@ -5241,11 +5392,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getBasicAttackAbility(unit: BattleUnit): UnitAbility {
-    return (
-      unit.abilities.find((ability) => ability.id === 'attack') ??
-      unit.abilities.find((ability) => ability.kind === 'attack') ??
-      unit.abilities[0]
-    );
+    return getSharedBasicAttackAbility(unit);
   }
 
   private getSelectedAbility(): UnitAbility | null {
@@ -5259,26 +5406,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private getTargetableUnitsForAbility(unit: BattleUnit, ability: UnitAbility): BattleUnit[] {
-    return this.units.filter((target) => {
-      if (!target.alive) {
-        return false;
-      }
-
-      if (ability.target === 'enemy' && target.team === unit.team) {
-        return false;
-      }
-
-      if (ability.target === 'ally' && target.team !== unit.team) {
-        return false;
-      }
-
-      if (ability.kind === 'steal' && !target.dropItemId) {
-        return false;
-      }
-
-      const distance = manhattanDistance(unit, target);
-      return distance >= ability.rangeMin && distance <= ability.rangeMax;
-    });
+    return getSharedTargetableUnitsForAbility(unit, this.units, ability);
   }
 
   private async handleMenuPointer(x: number, y: number): Promise<boolean> {
@@ -5785,7 +5913,11 @@ export class BattleScene extends Phaser.Scene {
     this.setInspectionTarget({ kind: 'mission' }, false);
     this.moveNodes = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
     const actorFocusPoint = this.getUnitCameraFocusPoint(actor);
-    await this.panCameraToPoint(actorFocusPoint.x, actorFocusPoint.y, 280);
+    if (this.preserveNextTurnCamera) {
+      this.preserveNextTurnCamera = false;
+    } else {
+      await this.panCameraToPoint(actorFocusPoint.x, actorFocusPoint.y, 280);
+    }
     this.playTurnStartAnimation(actor);
     audioDirector.playTurnStart(actor.team);
     this.queueTurnStartCatchPhrase(actor);
@@ -5834,90 +5966,32 @@ export class BattleScene extends Phaser.Scene {
     this.refreshUi();
 
     const reachable = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
-    const enemies = this.units.filter((unit) => unit.alive && unit.team !== actor.team);
+    const plan = chooseEnemyBattleTurnPlan(actor, this.units, this.map, this.getBlockedPropPoints());
 
-    let bestPlan:
-      | {
-          moveTile: TileData;
-          target: BattleUnit;
-          score: number;
-        }
-      | null = null;
-
-    for (const node of reachable.values()) {
-      const tile = getTile(this.map, node.x, node.y);
-
-      if (!tile) {
-        continue;
-      }
-
-      for (const target of enemies) {
-        const distance = manhattanDistance(node, target);
-
-        if (distance < actor.rangeMin || distance > actor.rangeMax) {
-          continue;
-        }
-
-        const score =
-          (target.maxHp - target.hp) * 2 +
-          Math.max(0, tile.height - (getTile(this.map, target.x, target.y)?.height ?? 0)) * 8 +
-          (target.hp <= actor.attack ? 40 : 0) -
-          distance * 3;
-
-        if (!bestPlan || score > bestPlan.score) {
-          bestPlan = { moveTile: tile, target, score };
-        }
-      }
-    }
-
-    if (bestPlan) {
-      const path = buildPath(reachable, bestPlan.moveTile);
+    if (plan?.kind === 'attack') {
+      const path = buildPath(reachable, plan.moveTile);
 
       if (path.length > 1) {
         await this.animateMovement(actor, path.slice(1));
       }
 
-      actor.x = bestPlan.moveTile.x;
-      actor.y = bestPlan.moveTile.y;
+      actor.x = plan.moveTile.x;
+      actor.y = plan.moveTile.y;
       this.positionUnit(actor);
       await this.collectChestAt(actor);
-      await this.performAttack(actor, bestPlan.target);
+      await this.performAttack(actor, plan.target);
       return;
     }
 
-    let bestApproach:
-      | {
-          tile: TileData;
-          score: number;
-        }
-      | null = null;
-
-    for (const node of reachable.values()) {
-      const tile = getTile(this.map, node.x, node.y);
-
-      if (!tile) {
-        continue;
-      }
-
-      const nearestDistance = Math.min(
-        ...enemies.map((enemy) => manhattanDistance(node, enemy))
-      );
-      const score = nearestDistance * 20 - tile.height * 4;
-
-      if (!bestApproach || score < bestApproach.score) {
-        bestApproach = { tile, score };
-      }
-    }
-
-    if (bestApproach) {
-      const path = buildPath(reachable, bestApproach.tile);
+    if (plan?.kind === 'approach') {
+      const path = buildPath(reachable, plan.moveTile);
 
       if (path.length > 1) {
         await this.animateMovement(actor, path.slice(1));
       }
 
-      actor.x = bestApproach.tile.x;
-      actor.y = bestApproach.tile.y;
+      actor.x = plan.moveTile.x;
+      actor.y = plan.moveTile.y;
       this.positionUnit(actor);
       await this.collectChestAt(actor);
     }
@@ -6041,127 +6115,23 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private chooseAutoBattleItem(actor: BattleUnit): ItemId | null {
-    const entries = getInventoryEntries(this.getUnitInventory(actor));
-
-    for (const entry of entries) {
-      const item = getItemDefinition(entry.itemId);
-
-      if (item.effect.kind === 'heal' && actor.hp <= Math.floor(actor.maxHp * 0.55) && actor.hp < actor.maxHp) {
-        return entry.itemId;
-      }
-    }
-
-    return null;
+    return chooseSharedAutoBattleItem(actor, this.getUnitInventory(actor));
   }
 
   private chooseAutoBattleActionPlan(
     actor: BattleUnit
   ): { moveTile: TileData; ability: UnitAbility; target: BattleUnit; score: number } | null {
-    const reachable = this.turnMoveUsed
-      ? new Map<string, ReachNode>([[pointKey(actor), { x: actor.x, y: actor.y, cost: 0, previousKey: null }]])
-      : getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
-    const allies = this.units.filter((unit) => unit.alive && unit.team === actor.team && unit.id !== actor.id);
-    const enemies = this.units.filter((unit) => unit.alive && unit.team !== actor.team);
-    let bestPlan: { moveTile: TileData; ability: UnitAbility; target: BattleUnit; score: number } | null = null;
-
-    for (const node of reachable.values()) {
-      const tile = getTile(this.map, node.x, node.y);
-
-      if (!tile) {
-        continue;
-      }
-
-      const simulatedActor = { ...actor, x: tile.x, y: tile.y };
-
-      for (const ability of actor.abilities) {
-        const targets = ability.target === 'ally' ? allies : enemies;
-
-        for (const target of targets) {
-          if (ability.kind === 'steal' && !target.dropItemId) {
-            continue;
-          }
-
-          const distance = manhattanDistance(simulatedActor, target);
-
-          if (distance < ability.rangeMin || distance > ability.rangeMax) {
-            continue;
-          }
-
-          let score = 0;
-
-          switch (ability.kind) {
-            case 'attack': {
-              score =
-                (target.maxHp - target.hp) * 2 +
-                Math.max(0, tile.height - (getTile(this.map, target.x, target.y)?.height ?? 0)) * 8 +
-                (target.hp <= actor.attack + (ability.powerModifier ?? 0) ? 40 : 0) -
-                distance * 3;
-
-              if (ability.splashRadius && ability.splashDamageMultiplier) {
-                const splashRadius = ability.splashRadius;
-                const clusteredTargets = enemies.filter(
-                  (candidate) =>
-                    candidate.id !== target.id &&
-                    manhattanDistance(candidate, target) <= splashRadius
-                );
-
-                score += clusteredTargets.length * Math.round(18 * ability.splashDamageMultiplier);
-              }
-
-              if (ability.counterable === false) {
-                score += 6;
-              }
-
-              break;
-            }
-            case 'heal': {
-              const missingHp = target.maxHp - target.hp;
-
-              if (missingHp <= 0) {
-                continue;
-              }
-
-              score = missingHp * 2 + (target.hp <= Math.floor(target.maxHp * 0.4) ? 30 : 0) - distance * 2;
-              break;
-            }
-            case 'steal':
-              score = 55 - distance * 2 + ((target.dropQuantity ?? 1) - 1) * 6;
-              break;
-            default:
-              break;
-          }
-
-          if (!bestPlan || score > bestPlan.score) {
-            bestPlan = { moveTile: tile, ability, target, score };
-          }
-        }
-      }
-    }
-
-    return bestPlan;
+    return chooseSharedAutoBattleActionPlan(
+      actor,
+      this.units,
+      this.map,
+      this.getBlockedPropPoints(),
+      this.turnMoveUsed
+    );
   }
 
   private chooseAutoBattleMoveTile(actor: BattleUnit): TileData | null {
-    const reachable = getReachableNodes(this.map, actor, this.units, this.getBlockedPropPoints());
-    const enemies = this.units.filter((unit) => unit.alive && unit.team !== actor.team);
-    let bestApproach: { tile: TileData; score: number } | null = null;
-
-    for (const node of reachable.values()) {
-      const tile = getTile(this.map, node.x, node.y);
-
-      if (!tile) {
-        continue;
-      }
-
-      const nearestDistance = Math.min(...enemies.map((enemy) => manhattanDistance(node, enemy)));
-      const score = nearestDistance * 20 - tile.height * 4;
-
-      if (!bestApproach || score < bestApproach.score) {
-        bestApproach = { tile, score };
-      }
-    }
-
-    return bestApproach?.tile ?? null;
+    return chooseSharedAutoBattleMoveTile(actor, this.units, this.map, this.getBlockedPropPoints());
   }
 
   private async animateMovement(unit: BattleUnit, path: Point[]): Promise<void> {
@@ -6470,8 +6440,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private isAbilityInRange(attacker: BattleUnit, target: BattleUnit, ability: UnitAbility): boolean {
-    const distance = manhattanDistance(attacker, target);
-    return distance >= ability.rangeMin && distance <= ability.rangeMax;
+    return isSharedAbilityInRange(attacker, target, ability);
   }
 
   private async performAbility(
@@ -7551,6 +7520,9 @@ export class BattleScene extends Phaser.Scene {
     this.moveNodes.clear();
     this.clearTurnStartCatchPhrase();
     this.resultOverlayResult = result;
+    if (result === 'Victory' && this.worldEncounterId) {
+      markWorldEncounterCleared(this.worldEncounterId);
+    }
     if (result === 'Victory') {
       audioDirector.playVictory();
     } else {
@@ -7583,9 +7555,13 @@ export class BattleScene extends Phaser.Scene {
       .text(
         0,
         0,
-        result === 'Victory'
-          ? `${this.level.name} holds under your banner.\nChoose another battlefield or run the operation again from deployment.`
-          : `The altar falls to ${this.getFactionDisplayNameForTeam('enemy')}.\nRetry the assault immediately or withdraw to map select.`,
+        this.isWorldEncounterBattle()
+          ? result === 'Victory'
+            ? `The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.`
+            : `The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.`
+          : result === 'Victory'
+            ? `${this.level.name} holds under your banner.\nChoose another battlefield or run the operation again from deployment.`
+            : `The altar falls to ${this.getFactionDisplayNameForTeam('enemy')}.\nRetry the assault immediately or withdraw to map select.`,
         UI_TEXT_BODY
       )
       .setOrigin(0, 0)
@@ -7632,7 +7608,7 @@ export class BattleScene extends Phaser.Scene {
       auto: `AUTO ${this.autoBattleEnabled ? 'ON' : 'OFF'}`,
       audio: `AUDIO ${audioDirector.isMuted() ? 'OFF' : 'ON'}`,
       restart: this.isExplorationMode() ? 'RESTART VISIT' : 'RESTART',
-      setup: 'SETUP',
+      setup: this.isWorldEncounterBattle() ? 'WORLD' : 'SETUP',
       title: 'TITLE'
     };
     const headerMenuActions = this.getHeaderMenuActions();
@@ -7645,9 +7621,7 @@ export class BattleScene extends Phaser.Scene {
     if (this.isExplorationMode()) {
       this.turnOrderPanel.setQueue([], this.activeUnitId, this.visibleTurnOrderCount, true);
     } else {
-      const queue = activeUnit
-        ? [activeUnit, ...projectTurnOrder(this.units, this.visibleTurnOrderCount - 1)]
-        : projectTurnOrder(this.units, this.visibleTurnOrderCount);
+      const queue = buildBattleTurnQueue(this.units, activeUnit, this.visibleTurnOrderCount);
       this.turnOrderPanel.setQueue(queue, this.activeUnitId, this.visibleTurnOrderCount, true);
     }
     this.turnOrderPanel.setVisible(hudVisible && this.showTimelinePanel);
@@ -7732,22 +7706,7 @@ export class BattleScene extends Phaser.Scene {
     this.drawDetailPlaque(focusUnit);
 
     if (!this.isBattleIntroActive() && this.showDetailPanel && this.showPortraitPanel && this.detailPanelAlpha > 0.01) {
-      BattleUiChrome.drawPanelShell(
-        this.uiGraphics,
-        this.uiPanels.portrait,
-        this.detailPanelAlpha * 0.86,
-        UI_PLAQUE_HEADER_HEIGHT,
-        14,
-        UI_COLOR_ACCENT_NEUTRAL
-      );
-      this.uiGraphics.fillStyle(UI_COLOR_PANEL_BORDER, 0.08 * this.detailPanelAlpha);
-      this.uiGraphics.fillRoundedRect(
-        this.uiPanels.portrait.x + 10,
-        this.uiPanels.portrait.y + 10,
-        this.uiPanels.portrait.width - 20,
-        10,
-        4
-      );
+      drawSharedPortraitFrame(this.uiGraphics, this.uiPanels.portrait, this.detailPanelAlpha);
     }
   }
 
@@ -7763,50 +7722,22 @@ export class BattleScene extends Phaser.Scene {
       this.headerRect.width,
       this.headerRect.height
     );
-    BattleUiChrome.applyPanelBackgroundImage(this.mapPlaqueArt, this.mapPlaqueArtMask, panel, {
-      alpha: this.mapPlaqueAlpha,
-      radius: 24,
-      inset: 2,
-      visible: true
-    });
-    BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
-      accentColor: UI_COLOR_ACCENT_WARM,
-      alpha: this.mapPlaqueAlpha,
-      headerHeight: UI_NARROW_PLAQUE_HEADER_HEIGHT,
-      radius: 24,
-      surfaceAlpha: 0.3,
-      innerSurfaceAlpha: 0.3,
-      headerAlpha: 0.74,
-      sideRuleAlpha: 0.14,
-      dividerAlpha: 0.22
+    drawSharedMapPlaque({
+      graphics: this.uiGraphics,
+      art: this.mapPlaqueArt,
+      artMask: this.mapPlaqueArtMask,
+      panel,
+      alpha: this.mapPlaqueAlpha
     });
 
     if (this.headerMenuOpen) {
-      this.uiGraphics.fillStyle(UI_COLOR_OVERLAY, 0.56);
-      this.uiGraphics.fillRect(0, 0, this.scale.width, this.scale.height);
-
-      BattleUiChrome.drawPlaqueShell(this.uiGraphics, this.headerMenuPanelBounds, {
-        accentColor: UI_COLOR_ACCENT_WARM,
-        alpha: 1,
-        headerHeight: UI_NARROW_PLAQUE_HEADER_HEIGHT,
-        radius: 18,
-        headerAlpha: 0.56,
-        sideRuleAlpha: 0.12,
-        dividerAlpha: 0.14
+      drawSharedHeaderMenuOverlay({
+        graphics: this.uiGraphics,
+        viewportWidth: this.scale.width,
+        viewportHeight: this.scale.height,
+        panel: this.headerMenuPanelBounds,
+        optionBounds: this.headerMenuOptionBounds
       });
-
-      for (const bounds of this.headerMenuOptionBounds) {
-        if (bounds.width <= 0) {
-          continue;
-        }
-
-        BattleUiChrome.drawInsetBox(this.uiGraphics, bounds, {
-          fillColor: UI_COLOR_PANEL_SURFACE_ALT,
-          fillAlpha: 0.88,
-          strokeAlpha: 0.18,
-          radius: 10
-        });
-      }
     }
   }
 
@@ -7817,65 +7748,15 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    const alpha = this.mapIntroAlpha;
-
-    this.introOverlayShade.setFillStyle(UI_COLOR_OVERLAY, 0.44 * alpha);
-
-    BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapIntroArtBounds, {
-      fillColor: UI_COLOR_PANEL_SURFACE_ALT,
-      fillAlpha: 0,
-      strokeAlpha: 0.3 * alpha,
-      radius: 24
+    drawSharedMapTitleIntro({
+      graphics: this.uiGraphics,
+      overlayShade: this.introOverlayShade,
+      artBounds: this.mapIntroArtBounds,
+      textBounds: this.mapIntroTextBounds,
+      eyebrowBounds: this.mapIntroEyebrowBounds,
+      objectiveBounds: this.mapObjectiveBoxBounds,
+      alpha: this.mapIntroAlpha
     });
-    this.uiGraphics.fillStyle(UI_COLOR_OVERLAY, 0.02 * alpha);
-    this.uiGraphics.fillRoundedRect(
-      this.mapIntroArtBounds.x,
-      this.mapIntroArtBounds.bottom - Math.round(this.mapIntroArtBounds.height * 0.34),
-      this.mapIntroArtBounds.width,
-      Math.round(this.mapIntroArtBounds.height * 0.34),
-      0
-    );
-
-    this.uiGraphics.fillStyle(UI_COLOR_PANEL_SHADOW, 0.3 * alpha);
-    this.uiGraphics.fillRoundedRect(
-      this.mapIntroTextBounds.x + 8,
-      this.mapIntroTextBounds.y + 14,
-      this.mapIntroTextBounds.width,
-      this.mapIntroTextBounds.height,
-      24
-    );
-    BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapIntroTextBounds, {
-      fillColor: UI_COLOR_PANEL_SURFACE,
-      fillAlpha: 0.94 * alpha,
-      strokeAlpha: 0.26 * alpha,
-      radius: 22
-    });
-
-    this.uiGraphics.fillStyle(UI_COLOR_ACCENT_WARM, 0.3 * alpha);
-    this.uiGraphics.fillRoundedRect(
-      this.mapIntroTextBounds.x + 16,
-      this.mapIntroTextBounds.y + 16,
-      5,
-      this.mapIntroTextBounds.height - 32,
-      2
-    );
-
-    BattleUiChrome.drawPill(this.uiGraphics, this.mapIntroEyebrowBounds, {
-      fillColor: UI_COLOR_ACCENT_WARM,
-      strokeColor: UI_COLOR_PANEL_BORDER,
-      fillAlpha: 0.9 * alpha,
-      strokeAlpha: 0.34 * alpha,
-      radius: 14
-    });
-
-    if (this.mapObjectiveBoxBounds.width > 0 && this.mapObjectiveBoxBounds.height > 0) {
-      BattleUiChrome.drawInsetBox(this.uiGraphics, this.mapObjectiveBoxBounds, {
-        fillColor: UI_COLOR_PANEL_SURFACE_ALT,
-        fillAlpha: 0.92 * alpha,
-        strokeAlpha: 0.24 * alpha,
-        radius: UI_INSET_RADIUS
-      });
-    }
   }
 
   private drawDetailPlaque(focusUnit: BattleUnit | null): void {
@@ -7904,54 +7785,18 @@ export class BattleScene extends Phaser.Scene {
         ? UI_COLOR_ACCENT_WARM
         : UI_COLOR_ACCENT_NEUTRAL;
 
-    BattleUiChrome.drawPlaqueShell(this.uiGraphics, panel, {
+    drawSharedDetailPlaque({
+      graphics: this.uiGraphics,
+      panel,
       accentColor,
       alpha,
-      headerHeight: UI_NARROW_PLAQUE_HEADER_HEIGHT,
-      radius: 24,
-      headerAlpha: 0.62,
-      sideRuleAlpha: 0.18,
-      dividerAlpha: 0.32
+      bodyBoxBounds: this.detailBodyBoxBounds,
+      statChipBounds: this.detailStatChipBounds,
+      statTexts: this.detailStatTexts,
+      healthBarBounds: this.detailHealthBarBounds,
+      healthRatio: focusUnit ? focusUnit.hp / focusUnit.maxHp : null,
+      healthColor: focusUnit?.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER
     });
-
-    if (this.detailBodyBoxBounds.width > 0 && this.detailBodyBoxBounds.height > 0) {
-      BattleUiChrome.drawInsetBox(this.uiGraphics, this.detailBodyBoxBounds, {
-        fillAlpha: 0.92 * alpha,
-        strokeAlpha: 0.28 * alpha,
-        radius: UI_INSET_RADIUS
-      });
-    }
-
-    for (const [index, text] of this.detailStatTexts.entries()) {
-      const chipBounds = this.detailStatChipBounds[index];
-      if (!text.text || chipBounds.width <= 0 || chipBounds.height <= 0) {
-        continue;
-      }
-
-      BattleUiChrome.drawInsetBox(this.uiGraphics, chipBounds, {
-        fillAlpha: 0.86 * alpha,
-        strokeAlpha: 0.2 * alpha,
-        radius: 10
-      });
-    }
-
-    if (focusUnit && this.detailHealthBarBounds.width > 0) {
-      const barFill = focusUnit.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER;
-      BattleUiChrome.drawInsetBox(this.uiGraphics, this.detailHealthBarBounds, {
-        fillColor: UI_COLOR_PANEL_SHADOW,
-        fillAlpha: 0.92 * alpha,
-        strokeAlpha: 0.2 * alpha,
-        radius: 6
-      });
-      this.uiGraphics.fillStyle(barFill, 0.95 * alpha);
-      this.uiGraphics.fillRoundedRect(
-        this.detailHealthBarBounds.x + 2,
-        this.detailHealthBarBounds.y + 2,
-        Math.max(6, (this.detailHealthBarBounds.width - 4) * (focusUnit.hp / focusUnit.maxHp)),
-        this.detailHealthBarBounds.height - 4,
-        4
-      );
-    }
   }
 
   private setDetailStatValues(values: string[]): void {
@@ -8062,11 +7907,11 @@ export class BattleScene extends Phaser.Scene {
 
       if (inspectionTile) {
         const prop = this.getPropAt(inspectionTile.x, inspectionTile.y);
-        const terrainName = this.formatTerrainName(inspectionTile.terrain);
+        const terrainName = formatBattleTerrainName(inspectionTile.terrain);
         return {
           badgeText: prop ? 'FIELD PROP' : 'TERRAIN TILE',
           metaText: `${terrainName}  •  ${inspectionTile.x}, ${inspectionTile.y}`,
-          titleText: prop ? this.getPropTitle(prop.assetId) : `${terrainName} Ground`,
+          titleText: prop ? getBattlePropTitle(prop.assetId) : `${terrainName} Ground`,
           bodyText: [
             `Height ${inspectionTile.height}  •  ${terrainName}`,
             prop ? this.describeProp(prop.assetId) : this.describeTerrain(inspectionTile.terrain)
@@ -8121,14 +7966,14 @@ export class BattleScene extends Phaser.Scene {
     if (inspectionTile) {
       const chest = this.getChestAt(inspectionTile.x, inspectionTile.y);
       const prop = this.getPropAt(inspectionTile.x, inspectionTile.y);
-      const terrainName = this.formatTerrainName(inspectionTile.terrain);
+      const terrainName = formatBattleTerrainName(inspectionTile.terrain);
       return {
         badgeText: chest ? 'CHEST CACHE' : prop ? 'FIELD PROP' : 'TERRAIN TILE',
         metaText: `${terrainName}  •  ${inspectionTile.x}, ${inspectionTile.y}`,
         titleText: chest
           ? 'Supply Chest'
           : prop
-            ? this.getPropTitle(prop.assetId)
+            ? getBattlePropTitle(prop.assetId)
             : `${terrainName} Ground`,
         bodyText: [
           `Height ${inspectionTile.height}  •  ${terrainName}`,
@@ -8270,31 +8115,17 @@ export class BattleScene extends Phaser.Scene {
 
     this.clearTurnStartCatchPhraseText();
 
-    const barkPoint = this.getUnitSpritePoint(unit, 1.06);
-    const barkText = this.registerWorldObject(
-      this.add.text(barkPoint.x, barkPoint.y, unit.turnStartCatchPhrase, UI_TEXT_WORLD_BARK)
-    );
-
-    barkText
-      .setOrigin(0.5)
-      .setDepth(984)
-      .setAlpha(0);
-
-    this.turnStartCatchPhraseText = barkText;
-
-    this.tweens.add({
-      targets: barkText,
-      y: barkPoint.y - 18,
-      alpha: 1,
-      duration: 120,
-      ease: 'Quad.easeOut',
-      yoyo: true,
-      hold: 460,
-      onComplete: () => {
+    const barkPoint = this.getUnitSpritePoint(unit, TURN_START_CATCH_PHRASE_HEIGHT_FACTOR);
+    this.turnStartCatchPhraseText = showSharedTurnStartCatchPhrase({
+      scene: this,
+      point: barkPoint,
+      text: unit.turnStartCatchPhrase,
+      anchorDepth: view.container.depth,
+      createText: (x, y, text) => this.registerWorldObject(this.add.text(x, y, text, UI_TEXT_WORLD_BARK)),
+      onComplete: (barkText) => {
         if (this.turnStartCatchPhraseText === barkText) {
           this.turnStartCatchPhraseText = null;
         }
-        barkText.destroy();
       }
     });
   }
@@ -8642,82 +8473,15 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private showDetailPortrait(textureKey: string, kind: DetailPortraitKind, flipX = false): void {
-    this.portrait.setTexture(textureKey);
-
-    const frame = this.portrait.frame;
-    if (!frame) {
-      this.portrait.setVisible(false);
-      return;
-    }
-
-    const panelWidth = this.uiPanels.portrait.width;
-    const panelHeight = this.uiPanels.portrait.height;
-    const maxWidth = Math.max(24, panelWidth - 20);
-    const maxHeight = Math.max(24, panelHeight - 20);
-    const frameWidth = Math.max(1, frame.width);
-    const frameHeight = Math.max(1, frame.height);
-
-    if (kind === 'unit-portrait') {
-      const coverWidth = Math.max(24, panelWidth);
-      const coverHeight = Math.max(24, panelHeight);
-      const targetAspect = coverWidth / coverHeight;
-      const frameAspect = frameWidth / frameHeight;
-      let cropWidth = frameWidth;
-      let cropHeight = frameHeight;
-      let cropX = 0;
-      let cropY = 0;
-
-      if (frameAspect > targetAspect) {
-        cropWidth = frameHeight * targetAspect;
-        cropX = (frameWidth - cropWidth) * 0.5;
-      } else {
-        cropHeight = frameWidth / targetAspect;
-        cropY = (frameHeight - cropHeight) * 0.5;
-      }
-
-      this.portrait
-        .setOrigin(0.5, 0.5)
-        .setFlipX(false)
-        .setCrop(cropX, cropY, cropWidth, cropHeight)
-        .setDisplaySize(coverWidth, coverHeight)
-        .setAlpha(1)
-        .setVisible(this.showPortraitPanel);
-      return;
-    }
-
-    let widthScale = maxWidth / frameWidth;
-    let heightScale = maxHeight / frameHeight;
-
-    switch (kind) {
-      case 'unit':
-        this.portrait.setCrop();
-        heightScale = Math.max(72, panelHeight - 12) / frameHeight;
-        widthScale = heightScale;
-        break;
-      case 'prop':
-        this.portrait.setCrop();
-        widthScale *= 0.88;
-        heightScale *= 0.88;
-        break;
-      case 'chest':
-        this.portrait.setCrop();
-        widthScale *= 0.84;
-        heightScale *= 0.84;
-        break;
-      case 'terrain':
-        this.portrait.setCrop();
-        widthScale *= 0.88;
-        heightScale *= 0.66;
-        break;
-    }
-
-    const scale = Math.max(0.01, Math.min(widthScale, heightScale));
-    this.portrait
-      .setOrigin(0.5, 0.5)
-      .setFlipX(flipX)
-      .setScale(scale)
-      .setAlpha(1)
-      .setVisible(this.showPortraitPanel);
+    renderDetailPortrait({
+      image: this.portrait,
+      mask: this.portraitMask,
+      panel: this.uiPanels.portrait,
+      textureKey,
+      kind,
+      flipX,
+      visible: this.showPortraitPanel
+    });
   }
 
   private getActiveUnit(): BattleUnit | null {

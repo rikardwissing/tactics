@@ -4,6 +4,7 @@ import type { NpcActionDefinition } from '../exploration/types';
 
 export type WorldAreaKind = 'outdoor' | 'interior';
 export type WorldTransitionTargetKind = 'interior' | 'spawn' | 'return';
+export type WorldNpcDisposition = 'friendly' | 'hostile';
 
 export type WorldTiledMapSource = Record<string, unknown>;
 
@@ -26,7 +27,23 @@ export interface WorldNpcDefinition extends Point {
   name?: string;
   className?: string;
   summary: string;
+  disposition: WorldNpcDisposition;
+  aggressive: boolean;
+  aggressionRadius: number;
+  chaseLeashRadius: number;
+  encounterId?: string;
+  encounterLevelId?: string;
+  encounterLabel?: string;
+  clearOnVictory?: boolean;
+  patrolPath: readonly Point[];
   actions: readonly NpcActionDefinition[];
+}
+
+export interface WorldEncounterDefinition extends Point {
+  id: string;
+  levelId: string;
+  label?: string;
+  clearOnVictory: boolean;
 }
 
 export interface WorldMapDefinition {
@@ -39,6 +56,7 @@ export interface WorldMapDefinition {
   terrain: readonly (readonly TerrainType[])[];
   props: readonly MapPropPlacement[];
   npcs: readonly WorldNpcDefinition[];
+  encounters: readonly WorldEncounterDefinition[];
   transitions: readonly WorldTransitionDefinition[];
   spawnPoints: readonly WorldSpawnDefinition[];
 }
@@ -72,6 +90,12 @@ export interface WorldDefinition {
 
 export interface WorldPersistentState {
   chunkVariants: Record<string, string | undefined>;
+  clearedEncounterIds: Record<string, true | undefined>;
+}
+
+export interface OutdoorNpcSessionState {
+  absolutePosition: Point;
+  patrolIndex: number;
 }
 
 export interface ResolvedWorldSpawn extends Point {
@@ -86,6 +110,8 @@ export interface WorldSessionState {
   outdoorPosition: Point;
   interiorPosition: Point | null;
   returnOutdoorPosition: Point | null;
+  suppressedEncounterId: string | null;
+  outdoorNpcStates: Record<string, OutdoorNpcSessionState | undefined>;
 }
 
 export interface WorldNpcRuntime
@@ -108,5 +134,14 @@ export interface WorldNpcRuntime
     | 'idleStyle'
   > {
   summary: string;
+  disposition: WorldNpcDisposition;
+  aggressive: boolean;
+  aggressionRadius: number;
+  chaseLeashRadius: number;
+  encounterId?: string;
+  encounterLevelId?: string;
+  encounterLabel?: string;
+  clearOnVictory?: boolean;
+  patrolPath: readonly Point[];
   actions: readonly NpcActionDefinition[];
 }
