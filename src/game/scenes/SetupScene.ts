@@ -3,6 +3,7 @@ import { SETUP_PLACEHOLDER_UNIT_IMAGE_KEY, getUnitPortraitImageKey } from '../as
 import { audioDirector } from '../audio/audioDirector';
 import type { BattleSetup } from '../battleSetup';
 import type { FactionId } from '../core/types';
+import { ensureSceneRegistered } from '../lazyScenes';
 import {
   getAllLevels,
   getLevel,
@@ -219,6 +220,14 @@ export class SetupScene extends Phaser.Scene {
     this.clearLevelSelection();
   }
 
+  private async beginWorldBattle(): Promise<void> {
+    audioDirector.playUiConfirm();
+    await ensureSceneRegistered(this.game, 'world');
+    this.scene.start('world', {
+      setup: this.buildBattleSetup()
+    });
+  }
+
   create(): void {
     audioDirector.bindScene(this);
     audioDirector.setMusic('setup');
@@ -262,10 +271,7 @@ export class SetupScene extends Phaser.Scene {
         return;
       }
 
-      audioDirector.playUiConfirm();
-      this.scene.start('world', {
-        setup: this.buildBattleSetup()
-      });
+      void this.beginWorldBattle();
     });
 
     this.menuShade = this.add.rectangle(0, 0, 0, 0, 0x080407, 0.84).setOrigin(0);

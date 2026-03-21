@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { audioDirector } from '../audio/audioDirector';
+import { ensureSceneRegistered, type LazySceneKey } from '../lazyScenes';
 import { DEFAULT_WORLD_SPAWN_ID, resetWorldSession } from '../world';
 import type { WorldSceneStartData } from '../sceneSession';
 
@@ -178,7 +179,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private beginScene(
-    sceneKey: 'setup' | 'unit-editor' | 'world' | 'world-map-editor',
+    sceneKey: LazySceneKey,
     sceneData?: WorldSceneStartData
   ): void {
     if (this.transitionStarted) {
@@ -190,9 +191,21 @@ export class TitleScene extends Phaser.Scene {
     this.input.enabled = false;
 
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start(sceneKey, sceneData);
+      void this.startDeferredScene(sceneKey, sceneData);
     });
     this.cameras.main.fadeOut(700, 12, 6, 10);
+  }
+
+  private async startDeferredScene(sceneKey: LazySceneKey, sceneData?: WorldSceneStartData): Promise<void> {
+    try {
+      await ensureSceneRegistered(this.game, sceneKey);
+      this.scene.start(sceneKey, sceneData);
+    } catch (error) {
+      console.error(`Failed to start scene "${sceneKey}".`, error);
+      this.transitionStarted = false;
+      this.input.enabled = true;
+      this.cameras.main.fadeIn(220, 4, 2, 6);
+    }
   }
 
   private handleResize(): void {

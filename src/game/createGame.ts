@@ -1,10 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
-import { SetupScene } from './scenes/SetupScene';
 import { TitleScene } from './scenes/TitleScene';
-import { UnitEditorScene } from './scenes/UnitEditorScene';
-import { WorldMapEditorScene } from './scenes/WorldMapEditorScene';
-import { WorldScene } from './scenes/WorldScene';
 
 export function createGame(
   parent: string,
@@ -26,6 +22,6 @@ export function createGame(
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH
     },
-    scene: [BootScene, TitleScene, SetupScene, WorldScene, UnitEditorScene, WorldMapEditorScene]
+    scene: [BootScene, TitleScene]
   });
 }

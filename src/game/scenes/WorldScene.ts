@@ -23,37 +23,19 @@ import {
   MAP_TITLE_INTRO_HOLD,
   MAP_TITLE_OUTRO_DURATION,
   MAP_TITLE_TOTAL_DURATION,
-  createCombatUnitInspectionHudViewModel,
   createHeaderMenuLabels,
-  createNpcInspectionHudViewModel,
   formatMapIntroEyebrow,
   formatMapIntroMeta,
   formatMapIntroSummary,
   formatMapPlaqueEyebrow,
-  describeProp as describeSharedProp,
-  describeTerrain as describeSharedTerrain,
-  formatBattleTerrainName,
   formatPlaqueHeaderTitle,
-  getBattlePropTitle,
-  createWorldSceneHudViewModel,
-  resolveCombatUnitBodyMode,
   resolveHeaderMenuActions,
-  resolveDetailPortraitDescriptor,
   syncHeaderMenuTexts,
-  createTerrainInspectionHudViewModel,
-  createStatusHudViewModel,
   syncBattleHudViewModelTexts
 } from '../battle/hudShared';
 import {
-  createBattleAbilityDetailBody,
-  createBattleCommandMenuEntries,
-  createBattleCommandMenuPanelsFromState,
-  createBattleItemDetailBody,
-  createBattleMoveDetailBody,
-  createNpcActionMenuPanels,
-  resolveBattleCommandMenuAction
+  createNpcActionMenuPanels
 } from '../battle/actionMenuPanels';
-import type { ActionMenuEntryDescriptor } from './components/BattleActionMenuStack';
 import {
   SHARED_BATTLE_ACTION_MENU_ROW_HEIGHT,
   SHARED_BATTLE_VISIBLE_TURN_ORDER_COUNT,
@@ -119,7 +101,7 @@ import { buildPath, getTile, getTraversalNodes, manhattanDistance, pointKey } fr
 import type { BattleUnit, FactionId, Point, ReachNode, SpriteFacing, TileData, UnitAbility } from '../core/types';
 import { createBattleUnitFromBlueprint, createLevelMap, createLevelUnits, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
-import type { LevelDefinition, MapPropPlacement } from '../levels/types';
+import type { LevelDefinition } from '../levels/types';
 import {
   createGameplayBattleSessionState,
   createGameplayBattleState,
@@ -127,15 +109,42 @@ import {
   type GameplayBattleState,
   type GameplayRuntimeState
 } from '../runtime/gameplayRuntime';
+import { syncInteriorSessionPlayerPosition, syncOutdoorSessionPlayerPosition } from '../runtime/worldSessionCommands';
 import {
-  createEncounterSuppressedSession,
-  createInteriorTransitionSession,
-  createReturnTransitionSession,
-  createSpawnTransitionSession,
-  syncInteriorSessionPlayerPosition,
-  syncOutdoorSessionPlayerPosition
-} from '../runtime/worldSessionCommands';
-import { getBattleEncounterId, isSetupBattleState, isWorldEncounterBattleState } from '../runtime/battleSelectors';
+  createWorldEncounterStartPlan,
+  createWorldTransitionPlan,
+  selectWorldArrivalCommand
+} from '../runtime/worldTraversalCommands';
+import { isSetupBattleState } from '../runtime/battleSelectors';
+import {
+  createRestartWorldBattlePlan,
+  createWorldBattleExitPlan,
+  resolveCompletedWorldBattlePlan,
+  resolveWorldBattleResultActionPlan,
+  type WorldBattleCommandPlan,
+  type WorldBattleResultAction
+} from '../runtime/worldBattleCommands';
+import {
+  selectBattleCommandMenuState,
+  selectWorldBattleResultPresentation,
+  selectWorldDetailPanelState,
+  selectWorldHudPortraitDescriptor,
+  selectWorldHudViewModel
+} from '../runtime/worldUiSelectors';
+import {
+  selectCurrentWorldHudInspection,
+  selectExplorationInspectionNpc,
+  selectInteractionNpc,
+  selectNpcInteractionState
+} from '../runtime/worldInteractionSelectors';
+import {
+  resolveInteriorAreaState,
+  resolveOutdoorAreaState,
+  type LocalWorldEncounter,
+  type LocalWorldProp,
+  type LocalWorldTransition,
+  type ResolvedOutdoorAreaState
+} from '../runtime/worldAreaState';
 import type {
   RuntimeBattleArenaBounds,
   RuntimeBattleIntroEntryState,
@@ -186,12 +195,8 @@ import {
 } from './components/UiMetrics';
 import {
   createWorldLeader,
-  createWorldNpcs,
   DEFAULT_WORLD_SPAWN_ID,
   getChunkCoordinatesForWorldPosition,
-  getWorldNpcRuntimeId,
-  getWorldChunkAt,
-  getWorldInterior,
   isWorldEncounterCleared,
   getWorldSpawn,
   getWorldStateVersion,
@@ -224,17 +229,19 @@ import {
   type ResidentWorldChunkRenderSet,
   updateResidentWorldChunkRenderSet
 } from '../world/WorldChunkRenderer';
+import {
+  destroyWorldAreaObjects,
+  rebuildWorldArea,
+  streamOutdoorWorldArea
+} from '../world/worldPresentation';
 import { getResidentChunkKey } from '../world/WorldResidencyController';
 import { type WorldDynamicLightSource, WorldLightingController } from '../world/lighting';
 import { WorldSpatialIndex } from '../world/spatial';
 import { WorldStreamingController } from '../world/streaming';
 import type {
   GameplayBattleContext,
-  WorldChunkRuntime,
-  WorldEncounterDefinition,
   WorldNpcRuntime,
-  WorldSessionState,
-  WorldTransitionDefinition
+  WorldSessionState
 } from '../world/types';
 
 type Phase =
@@ -275,31 +282,6 @@ interface PropView {
   embers?: Phaser.GameObjects.Particles.ParticleEmitter;
 }
 
-interface LocalWorldProp extends MapPropPlacement {
-  absolutePosition?: Point;
-}
-
-interface LocalWorldTransition extends WorldTransitionDefinition {
-  absolutePosition?: Point;
-}
-
-interface LocalWorldEncounter extends WorldEncounterDefinition {
-  absolutePosition?: Point;
-}
-
-interface ResolvedOutdoorAreaState {
-  centerChunk: Point;
-  loadedChunks: WorldChunkRuntime[];
-  playerChunk: WorldChunkRuntime | null;
-  windowOrigin: Point;
-  localPlayerPoint: Point;
-  map: TileData[];
-  props: LocalWorldProp[];
-  encounters: LocalWorldEncounter[];
-  transitions: LocalWorldTransition[];
-  npcs: WorldNpcRuntime[];
-}
-
 interface CombatEffectPlayback {
   definition: CombatEffectDefinition;
   source: BattleUnit;
@@ -313,8 +295,6 @@ interface CombatEffectPlayback {
 
 type DynamicLightSource = WorldDynamicLightSource<PropView>;
 type WorldBattleState = GameplayBattleState;
-
-type WorldBattleResultAction = 'retry' | 'return';
 
 interface ResultOverlayButtonView {
   action: WorldBattleResultAction;
@@ -530,6 +510,8 @@ export class WorldScene extends Phaser.Scene {
   private terrainTileImages: Phaser.GameObjects.Image[] = [];
   private wallGraphics: Phaser.GameObjects.Graphics[] = [];
   private arenaPreviewWallGraphics: Phaser.GameObjects.Graphics[] = [];
+  private trackedWorldObjects = new Set<Phaser.GameObjects.GameObject>();
+  private trackedUiObjects = new Set<Phaser.GameObjects.GameObject>();
   private outdoorChunkRenderSets = new Map<string, ResidentWorldChunkRenderSet>();
   private propViews = new Map<string, PropView>();
   private actorViews = new Map<string, ActorView>();
@@ -1207,159 +1189,46 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private rebuildArea(centerCamera: boolean, outdoorCenterChunkOverride?: Point, outdoorFocusPoint?: Point): void {
-    const facingOverrides = this.captureActorFacingOverrides();
-    this.destroyAreaObjects();
+    rebuildWorldArea({
+      sessionAreaKind: this.sessionState.areaKind,
+      centerCamera,
+      outdoorCenterChunkOverride,
+      outdoorFocusPoint,
+      isWorldBattleActive: this.isWorldBattleActive(),
+      captureActorFacingOverrides: () => this.captureActorFacingOverrides(),
+      destroyAreaObjects: () => this.destroyAreaObjects(),
+      buildOutdoorArea: (centerChunkOverride) => this.buildOutdoorArea(centerChunkOverride),
+      buildInteriorArea: () => this.buildInteriorArea(),
+      reconcileEncounterSuppression: () => this.reconcileEncounterSuppression(),
+      resetOrigin: () => this.resetWorldOrigin(),
+      clearBoardGraphics: () => this.boardGraphics.clear(),
+      rebuildOutdoorChunkRenderSets: (forceRecreate) => this.rebuildOutdoorChunkRenderSets(forceRecreate),
+      syncOutdoorPropViews: (forceRecreate) => this.syncOutdoorPropViews(forceRecreate),
+      createActors: (facingOverrides) => this.createActors(facingOverrides),
+      drawBoard: () => this.drawBoard(),
+      createTerrainTiles: () => this.createTerrainTiles(),
+      createProps: () => this.createProps(),
+      setupCameras: () => this.setupCameras(),
+      configureCamera: (nextCenterCamera) => this.configureCamera(nextCenterCamera),
+      applyBattlePresentationShell: () => this.applyBattlePresentationShell(),
+      centerCameraOnOutdoorPoint: (point) => this.centerCameraOnOutdoorPoint(point),
+      invalidateBattlePresentation: () => this.invalidateBattlePresentation(),
+      invalidatePresentation: () => this.invalidatePresentation()
+    });
+  }
 
-    if (this.sessionState.areaKind === 'outdoor') {
-      this.buildOutdoorArea(outdoorCenterChunkOverride);
-    } else {
-      this.buildInteriorArea();
-    }
-
-    this.reconcileEncounterSuppression();
+  private resetWorldOrigin(): void {
     this.origin = new Phaser.Math.Vector2(this.gridHeight * (TILE_WIDTH / 2) + 160, 176);
-
-    if (this.sessionState.areaKind === 'outdoor') {
-      this.boardGraphics.clear();
-      this.rebuildOutdoorChunkRenderSets(true);
-      this.syncOutdoorPropViews(true);
-      this.createActors(facingOverrides);
-    } else {
-      this.drawBoard();
-      this.createTerrainTiles();
-      this.createProps();
-      this.createActors(facingOverrides);
-    }
-
-    this.setupCameras();
-    this.configureCamera(centerCamera);
-    this.applyBattlePresentationShell();
-
-    if (this.sessionState.areaKind === 'outdoor' && outdoorFocusPoint) {
-      this.centerCameraOnOutdoorPoint(outdoorFocusPoint);
-    }
-
-    if (this.isWorldBattleActive()) {
-      this.invalidateBattlePresentation();
-    } else {
-      this.invalidatePresentation();
-    }
   }
 
   private resolveOutdoorAreaState(centerChunkOverride?: Point): ResolvedOutdoorAreaState {
-    const outdoorPosition = { ...this.sessionState.outdoorPosition };
-    const centerChunk = centerChunkOverride ?? getChunkCoordinatesForWorldPosition(outdoorPosition);
-    const loadedChunks = this.outdoorStreamingController.getWindowChunks(centerChunk);
-    const playerChunk = getWorldChunkAt(centerChunk.x, centerChunk.y);
-    const windowOrigin = {
-      x: (centerChunk.x - OUTDOOR_WINDOW_CHUNK_RADIUS) * WORLD_CHUNK_SIZE,
-      y: (centerChunk.y - OUTDOOR_WINDOW_CHUNK_RADIUS) * WORLD_CHUNK_SIZE
-    };
-    const localPlayerPoint = {
-      x: outdoorPosition.x - windowOrigin.x,
-      y: outdoorPosition.y - windowOrigin.y
-    };
-    const map: TileData[] = [];
-    const props: LocalWorldProp[] = [];
-    const encounters: LocalWorldEncounter[] = [];
-    const transitions: LocalWorldTransition[] = [];
-    const npcDefinitions = [];
-
-    for (const chunk of loadedChunks) {
-      const offsetX = (chunk.chunkX - (centerChunk.x - OUTDOOR_WINDOW_CHUNK_RADIUS)) * WORLD_CHUNK_SIZE;
-      const offsetY = (chunk.chunkY - (centerChunk.y - OUTDOOR_WINDOW_CHUNK_RADIUS)) * WORLD_CHUNK_SIZE;
-
-      for (let y = 0; y < chunk.height; y += 1) {
-        for (let x = 0; x < chunk.width; x += 1) {
-          map.push({
-            x: offsetX + x,
-            y: offsetY + y,
-            height: chunk.heights[y]?.[x] ?? 0,
-            terrain: chunk.terrain[y]?.[x] ?? 'grass'
-          });
-        }
-      }
-
-      props.push(
-        ...chunk.props.map((prop) => ({
-          ...prop,
-          x: offsetX + prop.x,
-          y: offsetY + prop.y,
-          absolutePosition: {
-            x: chunk.chunkX * WORLD_CHUNK_SIZE + prop.x,
-            y: chunk.chunkY * WORLD_CHUNK_SIZE + prop.y
-          }
-        }))
-      );
-      transitions.push(
-        ...chunk.transitions.map((transition) => ({
-          ...transition,
-          x: offsetX + transition.x,
-          y: offsetY + transition.y,
-          absolutePosition: {
-            x: chunk.chunkX * WORLD_CHUNK_SIZE + transition.x,
-            y: chunk.chunkY * WORLD_CHUNK_SIZE + transition.y
-          }
-        }))
-      );
-      encounters.push(
-        ...chunk.encounters.map((encounter) => ({
-          ...encounter,
-          x: offsetX + encounter.x,
-          y: offsetY + encounter.y,
-          absolutePosition: {
-            x: chunk.chunkX * WORLD_CHUNK_SIZE + encounter.x,
-            y: chunk.chunkY * WORLD_CHUNK_SIZE + encounter.y
-          }
-        }))
-      );
-      npcDefinitions.push(
-        ...chunk.npcs.flatMap((npc) => {
-          const runtimeId = getWorldNpcRuntimeId('outdoor', npc.id);
-          const persistedState = this.sessionState.outdoorNpcStates[runtimeId];
-          const absolutePosition = persistedState?.absolutePosition ?? {
-            x: chunk.chunkX * WORLD_CHUNK_SIZE + npc.x,
-            y: chunk.chunkY * WORLD_CHUNK_SIZE + npc.y
-          };
-          const localPosition = {
-            x: absolutePosition.x - windowOrigin.x,
-            y: absolutePosition.y - windowOrigin.y
-          };
-
-          if (
-            localPosition.x < 0 ||
-            localPosition.x >= WORLD_CHUNK_SIZE * OUTDOOR_WINDOW_CHUNK_DIAMETER ||
-            localPosition.y < 0 ||
-            localPosition.y >= WORLD_CHUNK_SIZE * OUTDOOR_WINDOW_CHUNK_DIAMETER
-          ) {
-            return [];
-          }
-
-          return [{
-            ...npc,
-            x: localPosition.x,
-            y: localPosition.y,
-            patrolPath: npc.patrolPath.map((point) => ({
-              x: offsetX + point.x,
-              y: offsetY + point.y
-            }))
-          }];
-        })
-      );
-    }
-
-    return {
+    const centerChunk = centerChunkOverride ?? getChunkCoordinatesForWorldPosition(this.sessionState.outdoorPosition);
+    return resolveOutdoorAreaState({
+      sessionState: this.sessionState,
       centerChunk,
-      loadedChunks,
-      playerChunk,
-      windowOrigin,
-      localPlayerPoint,
-      map,
-      props,
-      encounters,
-      transitions,
-      npcs: createWorldNpcs('outdoor', npcDefinitions)
-    };
+      outdoorWindowChunkRadius: OUTDOOR_WINDOW_CHUNK_RADIUS,
+      getWindowChunks: (chunk) => this.outdoorStreamingController.getWindowChunks(chunk)
+    });
   }
 
   private applyResolvedOutdoorAreaState(resolved: ResolvedOutdoorAreaState): void {
@@ -1386,65 +1255,49 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private streamOutdoorArea(centerChunk: Point, focusPoint: Point): void {
-    const previousScroll = new Phaser.Math.Vector2(this.worldCamera.scrollX, this.worldCamera.scrollY);
-    const previousAnchor = this.getOutdoorCameraAnchorScenePoint(focusPoint);
-    const resolved = this.resolveOutdoorAreaState(centerChunk);
-    this.applyResolvedOutdoorAreaState(resolved);
-    this.player.x = resolved.localPlayerPoint.x;
-    this.player.y = resolved.localPlayerPoint.y;
-    this.reconcileOutdoorNpcs(resolved.npcs);
-    this.rebuildOutdoorChunkRenderSets(false);
-    this.syncOutdoorPropViews(false);
-    this.syncOutdoorActorViews();
-    this.configureCamera(false);
-    const nextAnchor = this.getOutdoorCameraAnchorScenePoint(focusPoint);
-
-    if (previousAnchor && nextAnchor) {
-      this.setCameraScroll(
-        previousScroll.x + (nextAnchor.x - previousAnchor.x),
-        previousScroll.y + (nextAnchor.y - previousAnchor.y)
-      );
-    } else {
-      this.centerCameraOnOutdoorPoint(focusPoint);
-    }
-
-    this.applyBattlePresentationShell();
-    this.invalidateLighting();
-    if (this.isWorldBattleActive()) {
-      this.invalidateBattlePresentation();
-    } else {
-      this.invalidatePresentation();
-    }
+    streamOutdoorWorldArea({
+      centerChunk,
+      focusPoint,
+      isWorldBattleActive: this.isWorldBattleActive(),
+      currentScroll: {
+        x: this.worldCamera.scrollX,
+        y: this.worldCamera.scrollY
+      },
+      getOutdoorCameraAnchorScenePoint: (point) => this.getOutdoorCameraAnchorScenePoint(point),
+      resolveOutdoorAreaState: (nextCenterChunk) => this.resolveOutdoorAreaState(nextCenterChunk),
+      applyResolvedOutdoorAreaState: (resolved) => this.applyResolvedOutdoorAreaState(resolved),
+      updatePlayerPosition: (point) => {
+        this.player.x = point.x;
+        this.player.y = point.y;
+      },
+      reconcileOutdoorNpcs: (npcs) => this.reconcileOutdoorNpcs(npcs),
+      rebuildOutdoorChunkRenderSets: (forceRecreate) => this.rebuildOutdoorChunkRenderSets(forceRecreate),
+      syncOutdoorPropViews: (forceRecreate) => this.syncOutdoorPropViews(forceRecreate),
+      syncOutdoorActorViews: () => this.syncOutdoorActorViews(),
+      configureCamera: (centerOnPlayer) => this.configureCamera(centerOnPlayer),
+      setCameraScroll: (x, y) => this.setCameraScroll(x, y),
+      centerCameraOnOutdoorPoint: (point) => this.centerCameraOnOutdoorPoint(point),
+      applyBattlePresentationShell: () => this.applyBattlePresentationShell(),
+      invalidateLighting: () => this.invalidateLighting(),
+      invalidateBattlePresentation: () => this.invalidateBattlePresentation(),
+      invalidatePresentation: () => this.invalidatePresentation()
+    });
   }
 
   private buildInteriorArea(): void {
-    const interior = getWorldInterior(this.sessionState.areaId);
-    const localPlayerPoint = this.sessionState.interiorPosition ?? interior.spawnPoints[0] ?? { x: 1, y: 1 };
-
+    const resolved = resolveInteriorAreaState(this.sessionState);
     this.outdoorCenterChunk = null;
     this.outdoorWindowOrigin = null;
-    this.gridWidth = interior.width;
-    this.gridHeight = interior.height;
-    this.map = [];
-    this.props = interior.props.map((prop) => ({ ...prop }));
+    this.gridWidth = resolved.gridWidth;
+    this.gridHeight = resolved.gridHeight;
+    this.map = resolved.map;
+    this.props = resolved.props;
     this.encounters = [];
-    this.transitions = interior.transitions.map((transition) => ({ ...transition }));
-
-    for (let y = 0; y < interior.height; y += 1) {
-      for (let x = 0; x < interior.width; x += 1) {
-        this.map.push({
-          x,
-          y,
-          height: interior.heights[y]?.[x] ?? 0,
-          terrain: interior.terrain[y]?.[x] ?? 'stone'
-        });
-      }
-    }
-
-    this.player = createWorldLeader(localPlayerPoint);
-    this.npcs = createWorldNpcs(interior.id, interior.npcs);
-    this.areaName = interior.name;
-    this.areaBackdropAssetId = interior.backdropAssetId ?? 'title-backdrop';
+    this.transitions = resolved.transitions;
+    this.player = createWorldLeader(resolved.localPlayerPoint);
+    this.npcs = resolved.npcs;
+    this.areaName = resolved.areaName;
+    this.areaBackdropAssetId = resolved.areaBackdropAssetId;
     this.outdoorSpatialIndex.update(this.map, null);
   }
 
@@ -1767,48 +1620,25 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private destroyAreaObjects(): void {
-    this.destroyOutdoorChunkRenderSets();
-    this.boardGraphics.clear();
-
-    for (const image of this.terrainTileImages) {
-      image.destroy();
-    }
-    this.terrainTileImages = [];
-
-    for (const wall of this.wallGraphics) {
-      wall.destroy();
-    }
-    this.wallGraphics = [];
-
-    for (const wall of this.arenaPreviewWallGraphics) {
-      wall.destroy();
-    }
-    this.arenaPreviewWallGraphics = [];
-
-    for (const view of this.propViews.values()) {
-      view.base.destroy();
-      view.image.destroy();
-      view.shadowOverlay?.destroy();
-      view.groundGlow?.destroy();
-      view.haloGlow?.destroy();
-      view.embers?.destroy();
-    }
-    this.propViews.clear();
-
-    for (const view of this.actorViews.values()) {
-      view.container.destroy(true);
-    }
-    this.actorViews.clear();
-
-    this.highlightController.clear();
-
-    this.lightGroundOverlayPool.beginFrame();
-    this.lightGroundOverlays = [];
-
-    this.lightShadowOverlayPool.beginFrame();
-    this.lightShadowOverlays = [];
-
-    this.destroyOrphanedWorldObjects();
+    destroyWorldAreaObjects({
+      destroyOutdoorChunkRenderSets: () => this.destroyOutdoorChunkRenderSets(),
+      clearBoardGraphics: () => this.boardGraphics.clear(),
+      terrainTileImages: this.terrainTileImages,
+      wallGraphics: this.wallGraphics,
+      arenaPreviewWallGraphics: this.arenaPreviewWallGraphics,
+      propViews: this.propViews,
+      actorViews: this.actorViews,
+      clearHighlights: () => this.highlightController.clear(),
+      resetLightGroundOverlays: () => {
+        this.lightGroundOverlayPool.beginFrame();
+        this.lightGroundOverlays = [];
+      },
+      resetLightShadowOverlays: () => {
+        this.lightShadowOverlayPool.beginFrame();
+        this.lightShadowOverlays = [];
+      },
+      destroyOrphanedWorldObjects: () => this.destroyOrphanedWorldObjects()
+    });
   }
 
   private destroyOrphanedWorldObjects(): void {
@@ -1827,14 +1657,13 @@ export class WorldScene extends Phaser.Scene {
     persistentObjects.push(...this.highlightController.getManagedObjects());
 
     const persistentWorldObjects = new Set<Phaser.GameObjects.GameObject>(persistentObjects);
-    const uiSet = new Set(this.getUiObjects());
 
-    for (const child of [...this.children.list]) {
-      if (uiSet.has(child) || persistentWorldObjects.has(child)) {
+    for (const object of [...this.trackedWorldObjects]) {
+      if (persistentWorldObjects.has(object)) {
         continue;
       }
 
-      child.destroy();
+      object.destroy();
     }
   }
 
@@ -2813,53 +2642,31 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getCurrentHudInspection(): WorldHudInspection {
-    if (this.isWorldBattleActive()) {
-      const inspectionUnit = this.getInspectionBattleUnit();
-      if (inspectionUnit) {
-        return { kind: 'battle-unit', unit: inspectionUnit };
-      }
-
-      const inspectionTile = this.getInspectionBattleTile();
-      if (inspectionTile) {
-        return {
-          kind: 'tile',
-          tile: inspectionTile,
-          prop: this.getPropAt(inspectionTile.x, inspectionTile.y)
-        };
-      }
-
-      return { kind: 'mission' };
-    }
-
-    const focusedNpc = this.getExplorationInspectionNpc();
-    if (focusedNpc) {
-      return { kind: 'npc', npc: focusedNpc };
-    }
-
-    return { kind: 'mission' };
+    return selectCurrentWorldHudInspection({
+      isWorldBattleActive: this.isWorldBattleActive(),
+      inspectionBattleUnit: this.getInspectionBattleUnit(),
+      inspectionBattleTile: this.getInspectionBattleTile(),
+      getPropAt: (x, y) => this.getPropAt(x, y),
+      explorationInspectionNpc: this.getExplorationInspectionNpc()
+    });
   }
 
   private getExplorationInspectionNpc(): WorldNpcRuntime | null {
-    const focusedNpc = this.focusedNpcId ? this.npcs.find((npc) => npc.id === this.focusedNpcId) ?? null : null;
-    if (focusedNpc && (this.phase === 'menu' || this.phase === 'detail')) {
-      return focusedNpc;
-    }
-
-    return null;
+    return selectExplorationInspectionNpc({
+      npcs: this.npcs,
+      focusedNpcId: this.focusedNpcId,
+      phase: this.phase
+    });
   }
 
   private buildWorldHudViewModel(inspection: WorldHudInspection): BattleHudViewModel | null {
-    const battleHudViewModel = createWorldSceneHudViewModel({
+    return selectWorldHudViewModel({
+      phase: this.phase,
       inspection,
       isBattlePlayerPhase: this.isBattlePlayerPhase(),
       activeUnit: this.getActiveBattleUnit(),
       selectedAbility: this.getSelectedBattleAbility(),
       selectedItemId: this.worldBattle?.selectedItemId ?? null,
-      combatBodyMode: resolveCombatUnitBodyMode({
-        isMove: this.phase === 'battle-player-move',
-        isItems: this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action',
-        isAbilities: this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action'
-      }),
       turnMoveUsed: this.worldBattle?.turnMoveUsed ?? false,
       areaName: this.areaName,
       battleTimeOfDayLabel: TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label,
@@ -2869,12 +2676,18 @@ export class WorldScene extends Phaser.Scene {
       propCount: this.props.length,
       getBattleUnitInventory: (unit) => this.getBattleUnitInventory(unit)
     });
-
-    return battleHudViewModel;
   }
 
   private updateWorldDetailPanelForSelection(inspection: WorldHudInspection): void {
-    if (inspection.kind === 'mission') {
+    const detailPanelState = selectWorldDetailPanelState({
+      inspection,
+      currentSelectionKey: this.detailPanelSelectionKey,
+      currentAlpha: this.detailPanelAlpha,
+      defaultFacing: DEFAULT_FACING,
+      getActorFacing: (id) => this.actorViews.get(id)?.facing ?? null
+    });
+
+    if (!detailPanelState.showDetailPanel) {
       this.detailPanelTween?.remove();
       this.detailPanelTween = undefined;
       this.showDetailPanel = false;
@@ -2892,21 +2705,18 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    this.showDetailPanel = true;
-    const nextSelectionKey = this.getWorldDetailSelectionKey(inspection);
-    const selectionChanged = this.detailPanelSelectionKey !== nextSelectionKey;
-    const shouldAnimate = selectionChanged || this.detailPanelAlpha <= 0.01;
-    this.detailPanelSelectionKey = nextSelectionKey;
+    this.showDetailPanel = detailPanelState.showDetailPanel;
+    this.detailPanelSelectionKey = detailPanelState.selectionKey;
 
     if (inspection.kind === 'battle-unit') {
-      if (selectionChanged) {
+      if (detailPanelState.selectionChanged) {
         this.playTurnStartCatchPhraseVoice(inspection.unit);
       }
     } else {
       this.stopTurnStartCatchPhraseSound();
     }
 
-    if (!shouldAnimate) {
+    if (!detailPanelState.shouldAnimate) {
       this.detailPanelAlpha = 1;
       this.detailPanelOffsetX = 0;
       return;
@@ -2929,20 +2739,6 @@ export class WorldScene extends Phaser.Scene {
         this.detailPanelTween = undefined;
       }
     });
-  }
-
-  private getWorldDetailSelectionKey(inspection: WorldHudInspection): string | null {
-    switch (inspection.kind) {
-      case 'battle-unit':
-        return `battle-unit:${inspection.unit.id}`;
-      case 'npc':
-        return `npc:${inspection.npc.id}`;
-      case 'tile':
-        return `tile:${inspection.tile.x},${inspection.tile.y}`;
-      case 'mission':
-      default:
-        return null;
-    }
   }
 
   private getResolvedBattleInspectionTarget(): BattleInspectionTarget {
@@ -3116,8 +2912,15 @@ export class WorldScene extends Phaser.Scene {
   private getTargetBattleDetailPanelHeight(panelWidth: number, height: number): number {
     const probePanel = new Phaser.Geom.Rectangle(0, 0, panelWidth, 320);
     const inspection = this.getCurrentHudInspection();
-    const portraitVisible = this.resolveWorldHudPortraitDescriptor(inspection) !== null;
-    const hasHealthBar = inspection.kind === 'battle-unit';
+    const detailPanelState = selectWorldDetailPanelState({
+      inspection,
+      currentSelectionKey: this.detailPanelSelectionKey,
+      currentAlpha: this.detailPanelAlpha,
+      defaultFacing: DEFAULT_FACING,
+      getActorFacing: (id) => this.actorViews.get(id)?.facing ?? null
+    });
+    const portraitVisible = detailPanelState.portraitDescriptor !== null;
+    const hasHealthBar = detailPanelState.hasHealthBar;
     const requiredHeight = this.measureBattleDetailPanelLayout(probePanel, portraitVisible, hasHealthBar).bodyBoxBounds.bottom + UI_PANEL_CONTENT_INSET;
     return resolveSharedBattleDetailPanelHeight(requiredHeight, height, this.headerRect.bottom);
   }
@@ -3142,9 +2945,15 @@ export class WorldScene extends Phaser.Scene {
     inspection: WorldHudInspection,
     hudViewModel: BattleHudViewModel | null
   ): void {
-    const portraitVisible =
-      this.resolveWorldHudPortraitDescriptor(inspection) !== null && this.showPortraitPanel;
-    const hasHealthBar = inspection.kind === 'battle-unit';
+    const detailPanelState = selectWorldDetailPanelState({
+      inspection,
+      currentSelectionKey: this.detailPanelSelectionKey,
+      currentAlpha: this.detailPanelAlpha,
+      defaultFacing: DEFAULT_FACING,
+      getActorFacing: (id) => this.actorViews.get(id)?.facing ?? null
+    });
+    const portraitVisible = detailPanelState.portraitDescriptor !== null && this.showPortraitPanel;
+    const hasHealthBar = detailPanelState.hasHealthBar;
     layoutSharedDetailPanelSection({
       panel: new Phaser.Geom.Rectangle(
         this.uiPanels.topRight.x + this.detailPanelOffsetX,
@@ -3185,32 +2994,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private resolveWorldHudPortraitDescriptor(inspection: WorldHudInspection) {
-    switch (inspection.kind) {
-      case 'battle-unit':
-        return resolveDetailPortraitDescriptor({
-          unit: {
-            spriteKey: inspection.unit.spriteKey,
-            facing: this.actorViews.get(inspection.unit.id)?.facing ?? DEFAULT_FACING
-          }
-        });
-      case 'npc':
-        return resolveDetailPortraitDescriptor({
-          npc: {
-            spriteKey: inspection.npc.spriteKey,
-            facing: this.actorViews.get(inspection.npc.id)?.facing ?? DEFAULT_FACING
-          }
-        });
-      case 'tile':
-        return resolveDetailPortraitDescriptor({
-          tile: inspection.tile,
-          hasChest: false,
-          chestOpened: false,
-          propAssetId: inspection.prop?.assetId ?? null
-        });
-      case 'mission':
-      default:
-        return null;
-    }
+    return selectWorldHudPortraitDescriptor({
+      inspection,
+      defaultFacing: DEFAULT_FACING,
+      getActorFacing: (id) => this.actorViews.get(id)?.facing ?? null
+    });
   }
 
   private syncHudPortrait(inspection: WorldHudInspection): void {
@@ -3347,72 +3135,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private buildBattleActionMenuPanels(): ActionMenuPanelDescriptor[] {
-    const activeUnit = this.getActiveBattleUnit();
-
-    if (
-      !activeUnit ||
-      activeUnit.team !== 'player' ||
-      !activeUnit.alive ||
-      !this.isBattlePlayerPhase()
-    ) {
-      return [];
-    }
-
-    const selectedAbility = this.getSelectedBattleAbility();
-    const selectedItemId = this.worldBattle?.selectedItemId;
-    const submenuEntries = this.getBattleSubmenuEntries();
-    const inventoryEntries = getInventoryEntries(this.getBattleUnitInventory(activeUnit));
-
-    return createBattleCommandMenuPanelsFromState({
-      phase: this.phase,
-      rootPanelId: 'battle-command-list',
-      rootTitle: activeUnit.name,
-      canUndoMove: this.canUndoBattleMove(),
-      turnMoveUsed: Boolean(this.worldBattle?.turnMoveUsed),
-      turnActionUsed: Boolean(this.worldBattle?.turnActionUsed),
-      hasAbilities: activeUnit.abilities.length > 0,
-      hasItems: inventoryEntries.length > 0,
-      selectedAbilityId: this.worldBattle?.selectedAbilityId ?? null,
-      selectedItemId: selectedItemId ?? null,
-      movePanelId: 'battle-move-detail',
-      moveDetailBody: createBattleMoveDetailBody(
-        activeUnit.move,
-        'open ground',
-        Boolean(this.worldBattle?.turnMoveUsed),
-        'Movement is already spent this turn.',
-        'Select a reachable tile on the field.'
-      ),
-      abilityListPanelId: 'battle-ability-list',
-      abilityEntries: submenuEntries.map((entry) => ({
-        id: entry.abilityId ?? '',
-        label: entry.label,
-        enabled: entry.enabled
-      })),
-      abilityDetailPanelId: 'battle-ability-detail',
-      abilityDetail: selectedAbility
-        ? {
-            title: selectedAbility.name,
-            body: createBattleAbilityDetailBody(selectedAbility)
-          }
-        : null,
-      itemListPanelId: 'battle-item-list',
-      itemEntries: submenuEntries.map((entry) => ({
-        id: entry.itemId ?? '',
-        label: entry.label,
-        enabled: entry.enabled
-      })),
-      itemDetailPanelId: 'battle-item-detail',
-      itemDetail: selectedItemId
-        ? {
-            title: getItemDefinition(selectedItemId).name,
-            body: createBattleItemDetailBody(
-              getItemDefinition(selectedItemId).description,
-              this.getBattleUnitInventory(activeUnit)[selectedItemId] ?? 0,
-              'Select an adjacent target on the map.'
-            )
-          }
-        : null
-    });
+    return this.getBattleCommandMenuState().panels;
   }
 
   private buildActionMenuPanels(): ActionMenuPanelDescriptor[] {
@@ -3538,21 +3261,18 @@ export class WorldScene extends Phaser.Scene {
     return quantity > 1 ? `${quantity}x ${item.name}` : item.name;
   }
 
-  private getBattleMenuEntries(): ActionMenuEntryDescriptor[] {
-    const activeUnit = this.getActiveBattleUnit();
-
-    if (!activeUnit || activeUnit.team !== 'player') {
-      return [];
-    }
-
-    const inventoryEntries = getInventoryEntries(this.getBattleUnitInventory(activeUnit));
-
-    return createBattleCommandMenuEntries({
-      canUndoMove: this.canUndoBattleMove(),
+  private getBattleCommandMenuState() {
+    return selectBattleCommandMenuState({
+      phase: this.phase,
+      activeUnit: this.getActiveBattleUnit(),
       turnMoveUsed: Boolean(this.worldBattle?.turnMoveUsed),
       turnActionUsed: Boolean(this.worldBattle?.turnActionUsed),
-      hasAbilities: activeUnit.abilities.length > 0,
-      hasItems: inventoryEntries.length > 0
+      canUndoMove: this.canUndoBattleMove(),
+      selectedAbility: this.getSelectedBattleAbility(),
+      selectedItemId: this.worldBattle?.selectedItemId ?? null,
+      getBattleUnitInventory: (unit) => this.getBattleUnitInventory(unit),
+      getTargetableUnitsForAbility: (unit, ability) => this.getTargetableUnitsForBattleAbility(unit, ability),
+      getTargetableUnitsForItem: (unit, itemId) => this.getTargetableUnitsForBattleItem(unit, itemId)
     });
   }
 
@@ -3583,37 +3303,6 @@ export class WorldScene extends Phaser.Scene {
     return battle ? this.battleRuntimeController.getTargetableUnitsForItem(battle, unit, itemId) : [];
   }
 
-  private getBattleSubmenuEntries(): Array<{
-    label: string;
-    enabled: boolean;
-    abilityId?: string;
-    itemId?: ItemId;
-  }> {
-    const activeUnit = this.getActiveBattleUnit();
-
-    if (!activeUnit || activeUnit.team !== 'player') {
-      return [];
-    }
-
-    if (this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action') {
-      return activeUnit.abilities.map((ability) => ({
-        label: ability.name,
-        enabled: this.getTargetableUnitsForBattleAbility(activeUnit, ability).length > 0,
-        abilityId: ability.id
-      }));
-    }
-
-    if (this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action') {
-      return getInventoryEntries(this.getBattleUnitInventory(activeUnit)).map((entry) => ({
-        label: `${getItemDefinition(entry.itemId).name} x${entry.count}`,
-        enabled: this.getTargetableUnitsForBattleItem(activeUnit, entry.itemId).length > 0,
-        itemId: entry.itemId
-      }));
-    }
-
-    return [];
-  }
-
   private async handleBattleMenuPointer(x: number, y: number): Promise<boolean> {
     const hit = this.actionMenuStack.hitTest(x, y);
 
@@ -3626,13 +3315,14 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const activeUnit = this.getActiveBattleUnit();
+    const menuState = this.getBattleCommandMenuState();
 
     if (!activeUnit || activeUnit.team !== 'player') {
       return hit.blocksWorldInput;
     }
 
     if (hit.panelId === 'battle-command-list') {
-      const entry = this.getBattleMenuEntries().find((candidate) => candidate.id === hit.entryId);
+      const entry = menuState.rootEntries.find((candidate) => candidate.id === hit.entryId);
 
       if (entry?.enabled) {
         await this.activateBattleMenuEntry(entry.id as BattleMenuAction);
@@ -3641,7 +3331,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (hit.panelId === 'battle-ability-list') {
-      const entry = this.getBattleSubmenuEntries().find((candidate) => candidate.abilityId === hit.entryId);
+      const entry = menuState.submenuEntries.find((candidate) => candidate.abilityId === hit.entryId);
       if (entry?.enabled) {
         await this.activateBattleSubmenuEntry(entry);
       }
@@ -3649,7 +3339,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (hit.panelId === 'battle-item-list') {
-      const entry = this.getBattleSubmenuEntries().find((candidate) => candidate.itemId === hit.entryId);
+      const entry = menuState.submenuEntries.find((candidate) => candidate.itemId === hit.entryId);
       if (entry?.enabled) {
         await this.activateBattleSubmenuEntry(entry);
       }
@@ -3867,11 +3557,11 @@ export class WorldScene extends Phaser.Scene {
         return;
       case 'setup':
         if (this.isWorldBattleActive()) {
-          if (this.isSetupBattle()) {
-            await this.returnSetupBattle();
-            return;
-          }
-          await this.returnWorldBattleToRoad();
+          await this.executeWorldBattleCommandPlan(
+            createWorldBattleExitPlan(this.worldBattle, {
+              cancelledMessage: 'The skirmish disperses and the road opens again.'
+            })
+          );
           return;
         }
         return;
@@ -4065,24 +3755,26 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async handleArrivalTile(previousPlayerPosition: Point | null): Promise<void> {
-    const transition = this.getTransitionAt(this.player.x, this.player.y);
+    const arrivalCommand = selectWorldArrivalCommand({
+      transition: this.getTransitionAt(this.player.x, this.player.y),
+      encounter: this.getTriggerableEncounterAt(this.player.x, this.player.y),
+      hostileNpc: this.getAdjacentTriggerableHostileNpc(),
+      previousPlayerPosition,
+      currentPlayerPosition: { x: this.player.x, y: this.player.y }
+    });
 
-    if (transition) {
-      await this.performTransition(transition);
+    if (arrivalCommand.type === 'transition') {
+      await this.performTransition(arrivalCommand.transition);
       return;
     }
 
-    const encounter = this.getTriggerableEncounterAt(this.player.x, this.player.y);
-
-    if (encounter) {
-      await this.startEncounter(encounter, previousPlayerPosition);
+    if (arrivalCommand.type === 'encounter') {
+      await this.startEncounter(arrivalCommand.encounter, arrivalCommand.previousPlayerPosition);
       return;
     }
 
-    const hostileNpc = this.getAdjacentTriggerableHostileNpc();
-
-    if (hostileNpc) {
-      await this.startHostileNpcEncounter(hostileNpc, previousPlayerPosition ?? { x: this.player.x, y: this.player.y });
+    if (arrivalCommand.type === 'hostile-encounter') {
+      await this.startHostileNpcEncounter(arrivalCommand.npc, arrivalCommand.previousPlayerPosition);
       return;
     }
 
@@ -4097,25 +3789,22 @@ export class WorldScene extends Phaser.Scene {
     this.setGameplayMode('transition');
     audioDirector.playUiConfirm();
 
-    if (this.sessionState.areaKind === 'outdoor' && transition.targetKind === 'interior' && transition.targetId) {
-      const absolutePosition = this.localToAbsoluteOutdoorPoint({ x: this.player.x, y: this.player.y });
-      this.persistSessionState(createInteriorTransitionSession(this.sessionState, transition, absolutePosition));
-      await this.fadeAndRebuild();
-      this.pushMessage(`${this.areaName} opens before you.`);
-      return;
-    }
+    const absolutePosition =
+      this.sessionState.areaKind === 'outdoor'
+        ? this.localToAbsoluteOutdoorPoint({ x: this.player.x, y: this.player.y })
+        : null;
+    const transitionPlan = createWorldTransitionPlan(this.sessionState, transition, {
+      absolutePosition,
+      returnOutdoorPosition: this.sessionState.returnOutdoorPosition,
+      areaName: this.areaName
+    });
 
-    if (transition.targetKind === 'return' && this.sessionState.returnOutdoorPosition) {
-      const outdoorPosition = { ...this.sessionState.returnOutdoorPosition };
-      this.persistSessionState(createReturnTransitionSession(this.sessionState, outdoorPosition));
+    if (transitionPlan.nextSession) {
+      this.persistSessionState(transitionPlan.nextSession);
       await this.fadeAndRebuild();
-      this.pushMessage(`You return to ${this.areaName}.`);
-      return;
-    }
-
-    if (transition.targetKind === 'spawn' && transition.targetSpawnId) {
-      this.persistSessionState(createSpawnTransitionSession(this.sessionState, transition.targetSpawnId));
-      await this.fadeAndRebuild();
+      if (transitionPlan.message) {
+        this.pushMessage(transitionPlan.message);
+      }
       return;
     }
 
@@ -4156,15 +3845,9 @@ export class WorldScene extends Phaser.Scene {
     audioDirector.playUiConfirm();
     this.syncSessionWithPlayerPosition();
     const runtimeBattle = this.buildRuntimeBattleStartData(encounter, previousPlayerPosition, initiatorNpc);
-    this.persistSessionState(createEncounterSuppressedSession(this.sessionState, encounter.id));
-    await this.beginWorldBattle(
-      {
-        origin: 'world-encounter',
-        encounterId: encounter.id,
-        setup: null
-      },
-      runtimeBattle
-    );
+    const encounterPlan = createWorldEncounterStartPlan(this.sessionState, encounter);
+    this.persistSessionState(encounterPlan.nextSession);
+    await this.beginWorldBattle(encounterPlan.context, runtimeBattle);
   }
 
   private async startHostileNpcEncounter(npc: WorldNpcRuntime, previousPlayerPosition: Point | null): Promise<void> {
@@ -5106,12 +4789,10 @@ export class WorldScene extends Phaser.Scene {
         }
 
         audioDirector.playUiConfirm();
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.startMoveSelection(this.worldBattle));
         this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
         this.phase = 'battle-player-move';
         this.pushMessage(`Choose a tile for ${activeUnit.name}.`);
-        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'undo-move':
@@ -5124,11 +4805,9 @@ export class WorldScene extends Phaser.Scene {
         }
 
         audioDirector.playUiConfirm();
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.startAbilitySelection(this.worldBattle));
         this.phase = 'battle-player-abilities';
         this.pushMessage(`Choose an ability for ${activeUnit.name}.`);
-        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'items':
@@ -5137,11 +4816,9 @@ export class WorldScene extends Phaser.Scene {
         }
 
         audioDirector.playUiConfirm();
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.startItemSelection(this.worldBattle));
         this.phase = 'battle-player-items';
         this.pushMessage(`Choose an item for ${activeUnit.name}.`);
-        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'wait':
@@ -5169,11 +4846,9 @@ export class WorldScene extends Phaser.Scene {
     if (entry.itemId) {
       const item = getItemDefinition(entry.itemId);
       audioDirector.playUiConfirm();
-      this.worldBattle.selectedItemId = entry.itemId;
-      this.worldBattle.selectedAbilityId = null;
+      this.applyWorldBattleTurnState(this.battleRuntimeController.selectItem(this.worldBattle, entry.itemId));
       this.phase = 'battle-player-item-action';
       this.pushMessage(`Choose a target for ${item.name}.`);
-      this.syncActiveBattleSessionState();
       this.invalidateBattlePresentation();
       return;
     }
@@ -5186,11 +4861,9 @@ export class WorldScene extends Phaser.Scene {
       }
 
       audioDirector.playUiConfirm();
-      this.worldBattle.selectedAbilityId = ability.id;
-      this.worldBattle.selectedItemId = null;
+      this.applyWorldBattleTurnState(this.battleRuntimeController.selectAbility(this.worldBattle, ability.id));
       this.phase = 'battle-player-action';
       this.pushMessage(`Choose a target for ${ability.name}.`);
-      this.syncActiveBattleSessionState();
       this.invalidateBattlePresentation();
     }
   }
@@ -5204,8 +4877,7 @@ export class WorldScene extends Phaser.Scene {
       case 'battle-player-items':
         audioDirector.playUiCancel();
         this.phase = 'battle-player-menu';
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.clearSelection(this.worldBattle));
         break;
       case 'battle-player-item-action':
         audioDirector.playUiCancel();
@@ -5214,26 +4886,23 @@ export class WorldScene extends Phaser.Scene {
       case 'battle-player-abilities':
         audioDirector.playUiCancel();
         this.phase = 'battle-player-menu';
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.clearSelection(this.worldBattle));
         break;
       case 'battle-player-action':
         audioDirector.playUiCancel();
         this.phase = 'battle-player-abilities';
-        this.worldBattle.selectedAbilityId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.clearSelection(this.worldBattle));
         break;
       case 'battle-player-move':
         audioDirector.playUiCancel();
         this.phase = 'battle-player-menu';
-        this.worldBattle.selectedAbilityId = null;
-        this.worldBattle.selectedItemId = null;
+        this.applyWorldBattleTurnState(this.battleRuntimeController.clearSelection(this.worldBattle));
         this.moveNodes.clear();
         break;
       default:
         return;
     }
 
-    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5260,9 +4929,7 @@ export class WorldScene extends Phaser.Scene {
       await this.moveBattleUnit(activeUnit, movePath);
     }
 
-    this.worldBattle.pendingMoveUndo = moveUndo;
-    this.worldBattle.turnMoveUsed = true;
-    this.syncActiveBattleSessionState();
+    this.applyWorldBattleTurnState(this.battleRuntimeController.commitMove(this.worldBattle, moveUndo));
     await this.finishWorldBattlePlayerCommand(activeUnit, `${activeUnit.name} is in position. Choose the next command.`);
   }
 
@@ -5296,12 +4963,10 @@ export class WorldScene extends Phaser.Scene {
 
     await this.centerCameraOnActor(activeUnit, 220);
 
-    this.worldBattle.pendingMoveUndo = null;
-    this.worldBattle.turnMoveUsed = false;
+    this.applyWorldBattleTurnState(this.battleRuntimeController.undoMove(this.worldBattle));
     this.busy = false;
     this.phase = 'battle-player-menu';
     this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
-    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5322,9 +4987,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = true;
     this.phase = attacker.team === 'player' ? 'battle-animating' : 'battle-enemy';
     if (attacker.team === 'player') {
-      this.worldBattle.turnActionUsed = true;
-      this.worldBattle.selectedAbilityId = ability.id;
-      this.syncActiveBattleSessionState();
+      this.applyWorldBattleTurnState(this.battleRuntimeController.commitAction(this.worldBattle, { abilityId: ability.id }));
     }
     this.pushMessage(`${attacker.name} uses ${ability.name} on ${target.name}.`);
     this.invalidateBattlePresentation();
@@ -5583,8 +5246,7 @@ export class WorldScene extends Phaser.Scene {
     this.faceBattleUnitTowardActionTarget(activeUnit, target);
     this.busy = true;
     this.phase = 'battle-animating';
-    this.worldBattle.turnActionUsed = true;
-    this.syncActiveBattleSessionState();
+    this.applyWorldBattleTurnState(this.battleRuntimeController.commitAction(this.worldBattle, { itemId }));
     this.invalidateBattlePresentation();
 
     switch (item.effect.kind) {
@@ -5637,8 +5299,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.busy = false;
-    this.worldBattle.selectedAbilityId = null;
-    this.worldBattle.selectedItemId = null;
+    this.applyWorldBattleTurnState(this.battleRuntimeController.finishPlayerCommand(this.worldBattle));
 
     if (!this.worldBattle.turnMoveUsed) {
       this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
@@ -5646,7 +5307,6 @@ export class WorldScene extends Phaser.Scene {
 
     this.phase = 'battle-player-menu';
     this.pushMessage(pendingMoveMessage);
-    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5820,14 +5480,13 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    this.worldBattle.autoBattleEnabled = !this.worldBattle.autoBattleEnabled;
+    this.applyWorldBattleTurnState(this.battleRuntimeController.toggleAutoBattle(this.worldBattle));
     if (!this.worldBattle.autoBattleEnabled) {
       this.autoBattleRunToken += 1;
     }
 
     audioDirector.playUiConfirm();
     this.pushMessage(`Auto-Battle ${this.worldBattle.autoBattleEnabled ? 'enabled' : 'disabled'}.`);
-    this.syncActiveBattleSessionState();
     this.invalidateHud();
     this.tryStartAutoBattle(this.getActiveBattleUnit());
   }
@@ -5891,9 +5550,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async endWorldBattle(result: 'victory' | 'defeat'): Promise<void> {
-    const encounterId = getBattleEncounterId(this.worldBattle);
+    const battlePlan = resolveCompletedWorldBattlePlan(this.worldBattle, result);
 
-    if (!this.worldBattle) {
+    if (!battlePlan) {
       return;
     }
 
@@ -5904,28 +5563,18 @@ export class WorldScene extends Phaser.Scene {
     this.battleInspectionTarget = { kind: 'mission' };
     this.clearTurnStartCatchPhrase();
 
-    if (result === 'victory' && encounterId) {
-      markWorldEncounterCleared(encounterId);
+    if (battlePlan.clearEncounterId) {
+      markWorldEncounterCleared(battlePlan.clearEncounterId);
+    }
+
+    if (battlePlan.audioCue === 'victory') {
       audioDirector.playVictory();
     } else {
       audioDirector.playDefeat();
     }
 
-    this.showWorldBattleResultOverlay(result === 'victory' ? 'Victory' : 'Defeat');
+    this.showWorldBattleResultOverlay(battlePlan.overlayResult);
     this.invalidateBattlePresentation();
-  }
-
-  private async finalizeWorldBattleReturn(result: 'Victory' | 'Defeat'): Promise<void> {
-    if (this.isSetupBattle()) {
-      await this.returnSetupBattle();
-      return;
-    }
-
-    await this.restoreExplorationFromWorldBattle(
-      result === 'Victory'
-        ? 'The skirmish breaks and the road opens again.'
-        : 'The clash dissolves and both sides pull back to the road.'
-    );
   }
 
   private showWorldBattleResultOverlay(result: 'Victory' | 'Defeat'): void {
@@ -6017,6 +5666,8 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
+    const resultPresentation = selectWorldBattleResultPresentation(this.worldBattle, this.resultOverlayResult);
+
     drawSharedBattleResultOverlayFrame({
       overlayShade: this.resultOverlayShade,
       panel: this.resultOverlayPanel,
@@ -6030,8 +5681,8 @@ export class WorldScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
       panelBoundsTarget: this.resultOverlayPanelBounds,
-      isWorldEncounterBattle: isWorldEncounterBattleState(this.worldBattle),
-      isSetupBattle: isSetupBattleState(this.worldBattle)
+      isWorldEncounterBattle: resultPresentation.isWorldEncounterBattle,
+      isSetupBattle: resultPresentation.isSetupBattle
     });
   }
 
@@ -6052,18 +5703,49 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    if (action === 'retry') {
-      const retryData = this.worldBattle.runtimeBattle;
-      const battleContext = this.worldBattle.context;
-      this.destroyWorldBattleResultOverlay();
-      this.worldBattle = null;
-      this.syncActiveBattleSessionState();
-      this.restoreWorldBattleSourcePreview(retryData);
-      await this.beginWorldBattle(battleContext, retryData);
+    const plan = resolveWorldBattleResultActionPlan(this.worldBattle, this.resultOverlayResult, action);
+    await this.executeWorldBattleCommandPlan(plan);
+  }
+
+  private async executeWorldBattleCommandPlan(
+    plan: WorldBattleCommandPlan | null
+  ): Promise<void> {
+    if (!plan) {
       return;
     }
 
-    await this.finalizeWorldBattleReturn(this.resultOverlayResult);
+    switch (plan.type) {
+      case 'restart-battle':
+        this.destroyWorldBattleResultOverlay();
+        this.clearTurnStartCatchPhrase();
+        this.activeAutoBattleRunToken = null;
+        this.worldBattle = null;
+        this.syncActiveBattleSessionState();
+        this.restoreWorldBattleSourcePreview(plan.runtimeBattle);
+        await this.beginWorldBattle(plan.context, plan.runtimeBattle);
+        return;
+      case 'return-to-setup':
+        this.setPauseMenuOpen(false);
+        this.destroyWorldBattleResultOverlay();
+        this.clearTurnStartCatchPhrase();
+        this.restarting = true;
+        this.busy = true;
+        this.phase = 'animating';
+        this.input.enabled = false;
+        this.input.keyboard?.removeAllListeners();
+        this.worldBattle = null;
+        this.syncActiveBattleSessionState();
+        this.setGameplayMode('setup-return');
+        this.scene.start('setup', {
+          setup: plan.setup
+        });
+        return;
+      case 'return-to-world':
+        await this.restoreExplorationFromWorldBattle(plan.message);
+        return;
+      default:
+        return;
+    }
   }
 
   private restoreWorldBattleSourcePreview(runtimeBattle: RuntimeBattleStartData): void {
@@ -6121,47 +5803,25 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const npc = this.getInteractionNpc();
+    const interactionState = selectNpcInteractionState({
+      interactionNpc: this.getInteractionNpc(),
+      phase: this.phase,
+      selectedNpcActionId: this.selectedNpcActionId
+    });
 
-    if (!npc) {
-      this.focusedNpcId = null;
-      this.selectedNpcActionId = null;
-      this.phase = 'idle';
-      return;
-    }
-
-    this.focusedNpcId = npc.id;
-
-    if (this.phase === 'detail') {
-      const selectedAction = npc.actions.find((action) => action.id === this.selectedNpcActionId);
-
-      if (selectedAction) {
-        return;
-      }
-    }
-
-    this.selectedNpcActionId = null;
-    this.phase = 'menu';
+    this.focusedNpcId = interactionState.focusedNpcId;
+    this.selectedNpcActionId = interactionState.selectedNpcActionId;
+    this.phase = interactionState.nextPhase;
   }
 
   private getInteractionNpc(): WorldNpcRuntime | null {
-    if (this.isWorldBattleActive()) {
-      return null;
-    }
-
-    const adjacentNpcs = this.npcs.filter((npc) => this.isFriendlyNpc(npc) && manhattanDistance(this.player, npc) === 1);
-
-    if (adjacentNpcs.length === 0) {
-      return null;
-    }
-
-    const focusedNpc = this.focusedNpcId ? this.npcs.find((npc) => npc.id === this.focusedNpcId) : null;
-
-    if (focusedNpc && adjacentNpcs.some((npc) => npc.id === focusedNpc.id)) {
-      return focusedNpc;
-    }
-
-    return adjacentNpcs[0] ?? null;
+    return selectInteractionNpc({
+      npcs: this.npcs,
+      player: this.player,
+      focusedNpcId: this.focusedNpcId,
+      isWorldBattleActive: this.isWorldBattleActive(),
+      isFriendlyNpc: (npc) => this.isFriendlyNpc(npc)
+    });
   }
 
   private getNpcAt(x: number, y: number): WorldNpcRuntime | null {
@@ -7029,8 +6689,7 @@ export class WorldScene extends Phaser.Scene {
     this.uiCamera.setScroll(0, 0);
 
     const uiObjects = this.getUiObjects();
-    const uiSet = new Set(uiObjects);
-    const worldObjects = this.children.list.filter((child) => !uiSet.has(child));
+    const worldObjects = this.getWorldObjects();
 
     this.worldCamera.ignore(uiObjects);
     this.uiCamera.ignore(worldObjects);
@@ -7038,40 +6697,14 @@ export class WorldScene extends Phaser.Scene {
 
   private getUiObjects(): Phaser.GameObjects.GameObject[] {
     return [
-      this.areaTitleText,
-      this.introOverlayShade,
-      this.mapPlaqueArt,
-      this.mapPlaqueArtMask,
-      this.mapIntroArt,
-      this.mapIntroArtMask,
-      this.uiGraphics,
-      this.mapPlaqueTitleText,
-      this.mapPlaqueMetaText,
-      this.mapObjectiveText,
-      this.mapIntroEyebrowText,
-      this.mapIntroTitleText,
-      this.mapIntroMetaText,
-      this.mapIntroFlavorText,
-      this.headerMenuTitleText,
-      ...this.headerMenuOptionTexts,
-      this.activeBadge,
-      this.detailMetaText,
-      this.detailTitleText,
-      ...this.detailStatTexts,
-      this.detailBodyText,
-      this.portraitMask,
-      this.portrait,
-      ...(this.resultOverlayShade ? [this.resultOverlayShade] : []),
-      ...(this.resultOverlayPanel ? [this.resultOverlayPanel] : []),
-      ...(this.resultOverlayArt ? [this.resultOverlayArt] : []),
-      ...(this.resultOverlayArtMask ? [this.resultOverlayArtMask] : []),
-      ...(this.resultOverlayEyebrow ? [this.resultOverlayEyebrow] : []),
-      ...(this.resultOverlayTitle ? [this.resultOverlayTitle] : []),
-      ...(this.resultOverlayBody ? [this.resultOverlayBody] : []),
-      ...this.resultOverlayButtons.map((button) => button.labelText),
-      ...this.playerAvatarPanel.getDisplayObjects(),
-      ...this.actionMenuStack.getDisplayObjects()
+      ...this.trackedUiObjects,
+      ...this.playerAvatarPanel.getDisplayObjects().filter((object) => !this.trackedUiObjects.has(object)),
+      ...this.actionMenuStack.getDisplayObjects().filter((object) => !this.trackedUiObjects.has(object))
     ];
+  }
+
+  private getWorldObjects(): Phaser.GameObjects.GameObject[] {
+    return [...this.trackedWorldObjects];
   }
 
   private getWorldCamera(): Phaser.Cameras.Scene2D.Camera {
@@ -7182,11 +6815,19 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private registerWorldObject<T extends Phaser.GameObjects.GameObject>(object: T): T {
+    this.trackedWorldObjects.add(object);
+    object.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.trackedWorldObjects.delete(object);
+    });
     this.uiCamera?.ignore(object);
     return object;
   }
 
   private registerUiObject<T extends Phaser.GameObjects.GameObject>(object: T): T {
+    this.trackedUiObjects.add(object);
+    object.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.trackedUiObjects.delete(object);
+    });
     this.getWorldCamera().ignore(object);
     return object;
   }
@@ -7630,55 +7271,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async restartWorldEncounterBattle(): Promise<void> {
-    if (!this.worldBattle) {
-      return;
-    }
-
-    const retryData = this.worldBattle.runtimeBattle;
-    const battleContext = this.worldBattle.context;
     this.setPauseMenuOpen(false);
-    this.destroyWorldBattleResultOverlay();
-    this.clearTurnStartCatchPhrase();
-    this.activeAutoBattleRunToken = null;
-    this.worldBattle = null;
-    this.syncActiveBattleSessionState();
-    this.restoreWorldBattleSourcePreview(retryData);
-    await this.beginWorldBattle(battleContext, retryData);
-  }
-
-  private async returnWorldBattleToRoad(): Promise<void> {
-    if (!this.worldBattle) {
-      return;
-    }
-
-    await this.restoreExplorationFromWorldBattle('The skirmish disperses and the road opens again.');
-  }
-
-  private async returnSetupBattle(): Promise<void> {
-    if (!this.worldBattle) {
-      return;
-    }
-
-    const setup = this.worldBattle.context.setup;
-
-    if (!setup) {
-      return;
-    }
-
-    this.setPauseMenuOpen(false);
-    this.destroyWorldBattleResultOverlay();
-    this.clearTurnStartCatchPhrase();
-    this.restarting = true;
-    this.busy = true;
-    this.phase = 'animating';
-    this.input.enabled = false;
-    this.input.keyboard?.removeAllListeners();
-    this.worldBattle = null;
-    this.syncActiveBattleSessionState();
-    this.setGameplayMode('setup-return');
-    this.scene.start('setup', {
-      setup
-    });
+    await this.executeWorldBattleCommandPlan(createRestartWorldBattlePlan(this.worldBattle));
   }
 
   private async restoreExplorationFromWorldBattle(message: string): Promise<void> {

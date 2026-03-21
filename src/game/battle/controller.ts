@@ -11,6 +11,7 @@ import {
   getTargetableUnitsForItem
 } from './shared';
 import type {
+  BattleMoveUndoState,
   BattleRuntimeOutcome,
   BattleRuntimeState,
   BattleRuntimeTurnState,
@@ -52,6 +53,133 @@ export class BattleRuntimeController {
       turnActionUsed: false,
       pendingMoveUndo: null,
       autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  startMoveSelection(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: null,
+      selectedItemId: null,
+      turnMoveUsed: state.turnMoveUsed,
+      turnActionUsed: state.turnActionUsed,
+      pendingMoveUndo: state.pendingMoveUndo,
+      autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  startAbilitySelection(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return this.startMoveSelection(state);
+  }
+
+  startItemSelection(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return this.startMoveSelection(state);
+  }
+
+  selectAbility(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>,
+    abilityId: string
+  ): BattleRuntimeTurnState {
+    return {
+      ...this.startMoveSelection(state),
+      selectedAbilityId: abilityId
+    };
+  }
+
+  selectItem(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>,
+    itemId: ItemId
+  ): BattleRuntimeTurnState {
+    return {
+      ...this.startMoveSelection(state),
+      selectedItemId: itemId
+    };
+  }
+
+  clearSelection(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return this.startMoveSelection(state);
+  }
+
+  commitMove(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnActionUsed' | 'autoBattleEnabled'>,
+    moveUndo: BattleMoveUndoState
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: null,
+      selectedItemId: null,
+      turnMoveUsed: true,
+      turnActionUsed: state.turnActionUsed,
+      pendingMoveUndo: moveUndo,
+      autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  undoMove(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnActionUsed' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: null,
+      selectedItemId: null,
+      turnMoveUsed: false,
+      turnActionUsed: state.turnActionUsed,
+      pendingMoveUndo: null,
+      autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  commitAction(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>,
+    options?: { abilityId?: string; itemId?: ItemId | null }
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: options?.abilityId ?? null,
+      selectedItemId: options?.itemId ?? null,
+      turnMoveUsed: state.turnMoveUsed,
+      turnActionUsed: true,
+      pendingMoveUndo: state.pendingMoveUndo,
+      autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  finishPlayerCommand(
+    state: Pick<BattleRuntimeState, 'activeUnitId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'>
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: null,
+      selectedItemId: null,
+      turnMoveUsed: state.turnMoveUsed,
+      turnActionUsed: state.turnActionUsed,
+      pendingMoveUndo: state.pendingMoveUndo,
+      autoBattleEnabled: state.autoBattleEnabled
+    };
+  }
+
+  toggleAutoBattle(
+    state: Pick<
+      BattleRuntimeState,
+      'activeUnitId' | 'selectedAbilityId' | 'selectedItemId' | 'turnMoveUsed' | 'turnActionUsed' | 'pendingMoveUndo' | 'autoBattleEnabled'
+    >
+  ): BattleRuntimeTurnState {
+    return {
+      activeUnitId: state.activeUnitId,
+      selectedAbilityId: state.selectedAbilityId,
+      selectedItemId: state.selectedItemId,
+      turnMoveUsed: state.turnMoveUsed,
+      turnActionUsed: state.turnActionUsed,
+      pendingMoveUndo: state.pendingMoveUndo,
+      autoBattleEnabled: !state.autoBattleEnabled
     };
   }
 
