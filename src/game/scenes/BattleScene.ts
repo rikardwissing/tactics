@@ -114,6 +114,13 @@ import type {
   SceneMode
 } from '../sceneSession';
 import {
+  createBattleAbilityDetailBody,
+  createBattleCommandMenuPanels,
+  createBattleItemDetailBody,
+  createBattleMoveDetailBody,
+  resolveBattleCommandMenuAction
+} from '../battle/actionMenuPanels';
+import {
   ACTIVE_TILE_HIGHLIGHT_COLORS as ACTIVE_TURN_HIGHLIGHT_COLORS,
   BASE_MIN_BOARD_ZOOM,
   BOARD_ZOOM_SENSITIVITY,
@@ -5018,135 +5025,62 @@ export class BattleScene extends Phaser.Scene {
       return [];
     }
 
-    const rootPanel: ActionMenuPanelDescriptor = {
-      id: 'command-list',
-      kind: 'list',
-      title: this.getMenuTitle(),
-      blocksWorldInput: true,
-      entries: this.getMenuEntries().map((entry) => ({
+    const selectedAbility = this.getSelectedAbility();
+    const selectedItemId = this.selectedItemId;
+    const submenuEntries = this.getSubmenuEntries();
+
+    return createBattleCommandMenuPanels({
+      phase: this.phase,
+      rootPanelId: 'command-list',
+      rootTitle: this.getMenuTitle(),
+      rootEntries: this.getMenuEntries().map((entry) => ({
         id: entry.action,
         label: entry.label,
-        enabled: entry.enabled,
-        active: this.getCurrentMenuAction() === entry.action
-      }))
-    };
-
-    switch (this.phase) {
-      case 'player-menu':
-        return [rootPanel];
-      case 'player-move':
-        return [rootPanel, this.buildMoveDetailPanel(activeUnit)];
-      case 'player-abilities':
-        return [rootPanel, this.buildAbilityListPanel()];
-      case 'player-action': {
-        const abilityDetail = this.buildAbilityDetailPanel();
-        return abilityDetail ? [rootPanel, this.buildAbilityListPanel(), abilityDetail] : [rootPanel, this.buildAbilityListPanel()];
-      }
-      case 'player-items':
-        return [rootPanel, this.buildItemListPanel()];
-      case 'player-item-action': {
-        const itemDetail = this.buildItemDetailPanel(activeUnit);
-        return itemDetail ? [rootPanel, this.buildItemListPanel(), itemDetail] : [rootPanel, this.buildItemListPanel()];
-      }
-      default:
-        return [];
-    }
-  }
-
-  private buildMoveDetailPanel(activeUnit: BattleUnit): ActionMenuPanelDescriptor {
-    return {
-      id: 'move-detail',
-      kind: 'detail',
-      title: 'Move',
-      blocksWorldInput: true,
-      body: [
-        `Stride up to ${activeUnit.move} tiles across open ground.`,
-        this.turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the map.'
-      ].join('\n')
-    };
-  }
-
-  private buildAbilityListPanel(): ActionMenuPanelDescriptor {
-    return {
-      id: 'ability-list',
-      kind: 'list',
-      title: 'Abilities',
-      blocksWorldInput: true,
-      entries: this.getSubmenuEntries().map((entry) => ({
+        enabled: entry.enabled
+      })),
+      currentRootActionId: resolveBattleCommandMenuAction(this.phase, this.canUndoMove()),
+      selectedAbilityId: this.selectedAbilityId,
+      selectedItemId,
+      movePanelId: 'move-detail',
+      moveDetailBody: createBattleMoveDetailBody(
+        activeUnit.move,
+        'open ground',
+        this.turnMoveUsed,
+        'Movement is already spent this turn.',
+        'Select a reachable tile on the map.'
+      ),
+      abilityListPanelId: 'ability-list',
+      abilityEntries: submenuEntries.map((entry) => ({
         id: entry.abilityId ?? '',
         label: entry.label,
-        enabled: entry.enabled,
-        active: entry.abilityId === this.selectedAbilityId
-      }))
-    };
-  }
-
-  private buildAbilityDetailPanel(): ActionMenuPanelDescriptor | null {
-    const ability = this.getSelectedAbility();
-    if (!ability) {
-      return null;
-    }
-
-    const detailTags = [
-      `Range ${ability.rangeMin}-${ability.rangeMax}`,
-      ability.target === 'ally' ? 'Allies' : 'Enemies'
-    ];
-
-    if (ability.splashRadius && ability.splashDamageMultiplier) {
-      detailTags.push(`Blast ${ability.splashRadius}`);
-    }
-
-    if (ability.counterable === false) {
-      detailTags.push('No Counter');
-    }
-
-    return {
-      id: 'ability-detail',
-      kind: 'detail',
-      title: ability.name,
-      blocksWorldInput: true,
-      body: [
-        ability.description,
-        detailTags.join('  •  ')
-      ].join('\n')
-    };
-  }
-
-  private buildItemListPanel(): ActionMenuPanelDescriptor {
-    return {
-      id: 'item-list',
-      kind: 'list',
-      title: 'Items',
-      blocksWorldInput: true,
-      entries: this.getSubmenuEntries().map((entry) => ({
+        enabled: entry.enabled
+      })),
+      abilityDetailPanelId: 'ability-detail',
+      abilityDetail: selectedAbility
+        ? {
+            title: selectedAbility.name,
+            body: createBattleAbilityDetailBody(selectedAbility)
+          }
+        : null,
+      itemListPanelId: 'item-list',
+      itemEntries: submenuEntries.map((entry) => ({
         id: entry.itemId ?? '',
         label: entry.label,
-        enabled: entry.enabled,
-        active: entry.itemId === this.selectedItemId
-      }))
-    };
-  }
-
-  private buildItemDetailPanel(activeUnit: BattleUnit): ActionMenuPanelDescriptor | null {
-    if (!this.selectedItemId) {
-      return null;
-    }
-
-    const item = getItemDefinition(this.selectedItemId);
-    const count = this.getUnitInventory(activeUnit)[this.selectedItemId] ?? 0;
-
-    return {
-      id: 'item-detail',
-      kind: 'detail',
-      title: item.name,
-      blocksWorldInput: true,
-      body: [
-        item.description,
-        `Range 1  •  Stock ${count}`,
-        'Targets any adjacent unit.',
-        'Select an adjacent target on the map.'
-      ].join('\n')
-    };
+        enabled: entry.enabled
+      })),
+      itemDetailPanelId: 'item-detail',
+      itemDetail:
+        selectedItemId && this.phase === 'player-item-action'
+          ? {
+              title: getItemDefinition(selectedItemId).name,
+              body: createBattleItemDetailBody(
+                getItemDefinition(selectedItemId).description,
+                this.getUnitInventory(activeUnit)[selectedItemId] ?? 0,
+                'Select an adjacent target on the map.'
+              )
+            }
+          : null
+    });
   }
 
   private handleHudControlPointer(x: number, y: number): boolean {
@@ -7712,21 +7646,6 @@ export class BattleScene extends Phaser.Scene {
     setTextValues(this.detailStatTexts, values);
   }
 
-  private getCurrentMenuAction(): MenuAction | null {
-    switch (this.phase) {
-      case 'player-abilities':
-      case 'player-action':
-        return 'abilities';
-      case 'player-items':
-      case 'player-item-action':
-        return 'items';
-      case 'player-move':
-        return 'move';
-      default:
-        return null;
-    }
-  }
-
   private getMenuTitle(): string {
     const active = this.getActiveUnit();
     return active ? active.name : 'Command';
@@ -7937,7 +7856,7 @@ export class BattleScene extends Phaser.Scene {
           id: entry.action,
           label: entry.label,
           enabled: entry.enabled,
-          active: this.getCurrentMenuAction() === entry.action
+          active: resolveBattleCommandMenuAction(this.phase, this.canUndoMove()) === entry.action
         }));
       default:
         return [];
