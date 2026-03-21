@@ -3111,7 +3111,7 @@ export class WorldScene extends Phaser.Scene {
   private getTargetBattleDetailPanelHeight(panelWidth: number, height: number): number {
     const probePanel = new Phaser.Geom.Rectangle(0, 0, panelWidth, 320);
     const inspection = this.getCurrentHudInspection();
-    const portraitVisible = this.getHudPortraitDescriptor(inspection) !== null;
+    const portraitVisible = this.resolveWorldHudPortraitDescriptor(inspection) !== null;
     const hasHealthBar = inspection.kind === 'battle-unit';
     const requiredHeight = this.measureBattleDetailPanelLayout(probePanel, portraitVisible, hasHealthBar).bodyBoxBounds.bottom + UI_PANEL_CONTENT_INSET;
     return resolveSharedBattleDetailPanelHeight(requiredHeight, height, this.headerRect.bottom);
@@ -3137,7 +3137,8 @@ export class WorldScene extends Phaser.Scene {
     inspection: WorldHudInspection,
     hudViewModel: BattleHudViewModel | null
   ): void {
-    const portraitVisible = this.getHudPortraitDescriptor(inspection) !== null && this.showPortraitPanel;
+    const portraitVisible =
+      this.resolveWorldHudPortraitDescriptor(inspection) !== null && this.showPortraitPanel;
     const hasHealthBar = inspection.kind === 'battle-unit';
     layoutSharedDetailPanelSection({
       panel: new Phaser.Geom.Rectangle(
@@ -3178,9 +3179,7 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  private getHudPortraitDescriptor(
-    inspection: WorldHudInspection
-  ) {
+  private resolveWorldHudPortraitDescriptor(inspection: WorldHudInspection) {
     switch (inspection.kind) {
       case 'battle-unit':
         return resolveDetailPortraitDescriptor({
@@ -3210,7 +3209,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private syncHudPortrait(inspection: WorldHudInspection): void {
-    const descriptor = this.getHudPortraitDescriptor(inspection);
+    const descriptor = this.resolveWorldHudPortraitDescriptor(inspection);
     syncDetailPortrait({
       image: this.portrait,
       mask: this.portraitMask,
