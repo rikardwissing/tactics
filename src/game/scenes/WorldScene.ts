@@ -70,6 +70,7 @@ import type { BattleMoveUndoState, BattleRuntimeState, BattleRuntimeTurnState } 
 import { calculateDamage } from '../core/combat';
 import { type CombatEffectDefinition, type CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
 import { clearEngineSceneMetrics, publishEngineSceneMetrics } from '../core/engineMetrics';
+import { GraphicsPool } from '../core/graphicsPool';
 import {
   getBasePlanePoint as getSharedBasePlanePoint,
   getTileDepth as getSharedTileDepth,
@@ -487,6 +488,8 @@ export class WorldScene extends Phaser.Scene {
   private unitInventories = new Map<string, Partial<Record<ItemId, number>>>();
   private lightGroundOverlays: Phaser.GameObjects.Graphics[] = [];
   private lightShadowOverlays: Phaser.GameObjects.Graphics[] = [];
+  private lightGroundOverlayPool!: GraphicsPool;
+  private lightShadowOverlayPool!: GraphicsPool;
   private highlightController!: BattleHighlightController;
   private freezeWorldDynamicLighting = false;
   private readonly battleRuntimeController = new BattleRuntimeController();
@@ -662,6 +665,8 @@ export class WorldScene extends Phaser.Scene {
     this.portrait.setMask(this.portraitMask.createGeometryMask());
 
     this.boardGraphics = this.registerWorldObject(this.add.graphics().setDepth(40));
+    this.lightGroundOverlayPool = new GraphicsPool(this, (object) => this.registerWorldObject(object));
+    this.lightShadowOverlayPool = new GraphicsPool(this, (object) => this.registerWorldObject(object));
     this.highlightController = new BattleHighlightController(this, (object) => this.registerWorldObject(object));
     this.actionMenuStack = new BattleActionMenuStack(this, {
       onCreateObject: (object) => {
@@ -756,6 +761,8 @@ export class WorldScene extends Phaser.Scene {
     this.stopFactionMottoSound();
     this.destroyWorldBattleResultOverlay();
     this.actionMenuStack.destroy();
+    this.lightGroundOverlayPool?.destroy();
+    this.lightShadowOverlayPool?.destroy();
     this.highlightController?.destroy();
     this.uiCamera?.destroy();
     this.uiCamera = undefined;
@@ -784,6 +791,17 @@ export class WorldScene extends Phaser.Scene {
   private invalidateBattleShell(): void {
     this.battleShellDirty = true;
     this.battleShellInvalidations += 1;
+  }
+
+  private invalidatePresentation(): void {
+    this.invalidateHud();
+    this.invalidateHighlights();
+  }
+
+  private invalidateBattlePresentation(): void {
+    this.invalidateHud();
+    this.invalidateHighlights();
+    this.invalidateTurnOrder();
   }
 
   private flushSceneInvalidations(time: number): void {
@@ -853,7 +871,7 @@ export class WorldScene extends Phaser.Scene {
       if (this.isBattleIntroActive()) {
         if (this.hoverTile) {
           this.hoverTile = null;
-          this.drawHighlights();
+          this.invalidateHighlights();
         }
         return;
       }
@@ -873,14 +891,14 @@ export class WorldScene extends Phaser.Scene {
       if (this.isPointerOverUi(pointer.x, pointer.y)) {
         if (this.hoverTile) {
           this.hoverTile = null;
-          this.drawHighlights();
+          this.invalidateHighlights();
         }
         return;
       }
 
       const worldPoint = pointer.positionToCamera(this.worldCamera) as Phaser.Math.Vector2;
       this.hoverTile = this.pickTile(worldPoint.x, worldPoint.y);
-      this.drawHighlights();
+      this.invalidateHighlights();
     });
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -945,8 +963,7 @@ export class WorldScene extends Phaser.Scene {
       this.focusedNpcId = npc.id;
       this.selectedNpcActionId = null;
       this.phase = 'menu';
-      this.refreshUi();
-      this.drawHighlights();
+      this.invalidatePresentation();
     });
     this.input.keyboard?.on('keydown-R', (event: KeyboardEvent) => {
       if (this.isBattleIntroActive() || event.repeat) {
@@ -972,13 +989,13 @@ export class WorldScene extends Phaser.Scene {
         }
 
         this.setPauseMenuOpen(!this.headerMenuOpen);
-        this.refreshUi();
+        this.invalidateHud();
         return;
       }
 
       if (this.headerMenuOpen) {
         this.setPauseMenuOpen(false);
-        this.refreshUi();
+        this.invalidateHud();
         return;
       }
 
@@ -986,8 +1003,7 @@ export class WorldScene extends Phaser.Scene {
         audioDirector.playUiCancel();
         this.selectedNpcActionId = null;
         this.phase = this.getInteractionNpc() ? 'menu' : 'idle';
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidatePresentation();
         return;
       }
 
@@ -996,8 +1012,7 @@ export class WorldScene extends Phaser.Scene {
         this.focusedNpcId = null;
         this.selectedNpcActionId = null;
         this.phase = 'idle';
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidatePresentation();
         return;
       }
 
@@ -1019,7 +1034,7 @@ export class WorldScene extends Phaser.Scene {
       const muted = audioDirector.toggleMute();
       this.syncSceneAudioMute();
       this.pushMessage(`Audio ${muted ? 'muted' : 'enabled'}.`);
-      this.refreshUi();
+      this.invalidateHud();
     });
   }
 
@@ -1668,14 +1683,10 @@ export class WorldScene extends Phaser.Scene {
 
     this.highlightController.clear();
 
-    for (const overlay of this.lightGroundOverlays) {
-      overlay.destroy();
-    }
+    this.lightGroundOverlayPool.beginFrame();
     this.lightGroundOverlays = [];
 
-    for (const overlay of this.lightShadowOverlays) {
-      overlay.destroy();
-    }
+    this.lightShadowOverlayPool.beginFrame();
     this.lightShadowOverlays = [];
 
     this.destroyOrphanedWorldObjects();
@@ -1692,6 +1703,8 @@ export class WorldScene extends Phaser.Scene {
     if (this.battleParticles) {
       persistentObjects.push(this.battleParticles);
     }
+    persistentObjects.push(...this.lightGroundOverlayPool.getManagedObjects());
+    persistentObjects.push(...this.lightShadowOverlayPool.getManagedObjects());
     persistentObjects.push(...this.highlightController.getManagedObjects());
 
     const persistentWorldObjects = new Set<Phaser.GameObjects.GameObject>(persistentObjects);
@@ -1880,14 +1893,10 @@ export class WorldScene extends Phaser.Scene {
     const timeConfig = TIME_OF_DAY_CONFIG[this.battleTimeOfDay];
     const lightSources = this.getWorldDynamicLightSources(time);
 
-    for (const overlay of this.lightGroundOverlays) {
-      overlay.destroy();
-    }
+    this.lightGroundOverlayPool.beginFrame();
     this.lightGroundOverlays = [];
 
-    for (const shadow of this.lightShadowOverlays) {
-      shadow.destroy();
-    }
+    this.lightShadowOverlayPool.beginFrame();
     this.lightShadowOverlays = [];
 
     for (const view of this.propViews.values()) {
@@ -2138,7 +2147,7 @@ export class WorldScene extends Phaser.Scene {
       const center = this.isoToScreen(tile);
       const outer = this.scaleTilePolygon(this.getTileTopPoints(tile), center, 0.94);
       const inner = this.scaleTilePolygon(this.getTileTopPoints(tile), center, 0.7);
-      const overlay = this.registerWorldObject(this.add.graphics().setBlendMode(Phaser.BlendModes.ADD));
+      const overlay = this.lightGroundOverlayPool.acquire(Phaser.BlendModes.ADD);
       overlay.fillStyle(color, alpha);
       overlay.fillPoints(outer, true);
       overlay.fillStyle(color, alpha * 0.68);
@@ -2213,7 +2222,7 @@ export class WorldScene extends Phaser.Scene {
       const farB = new Phaser.Math.Vector2(pointB.x + extend.x, pointB.y + extend.y);
       const alpha = Phaser.Math.Clamp(baseAlpha * (1 - distance / lightRadius), 0.02, baseAlpha);
 
-      const shadow = this.registerWorldObject(this.add.graphics());
+      const shadow = this.lightShadowOverlayPool.acquire();
       shadow.fillStyle(0x04070d, alpha);
       shadow.fillPoints([pointA, pointB, farB, farA], true);
       shadow.setData('tileX', blocker.tile.x);
@@ -4234,7 +4243,7 @@ export class WorldScene extends Phaser.Scene {
 
     if (this.headerMenuButtonBounds.contains(x, y)) {
       this.setPauseMenuOpen(!this.headerMenuOpen);
-      this.refreshUi();
+      this.invalidateHud();
       return true;
     }
 
@@ -4244,7 +4253,7 @@ export class WorldScene extends Phaser.Scene {
 
     if (!this.headerMenuPanelBounds.contains(x, y)) {
       this.setPauseMenuOpen(false);
-      this.refreshUi();
+      this.invalidateHud();
       return true;
     }
 
@@ -4294,8 +4303,7 @@ export class WorldScene extends Phaser.Scene {
     audioDirector.playUiConfirm();
     this.selectedNpcActionId = action.id;
     this.phase = 'detail';
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidatePresentation();
     return true;
   }
 
@@ -4314,7 +4322,7 @@ export class WorldScene extends Phaser.Scene {
         const muted = audioDirector.toggleMute();
         this.syncSceneAudioMute();
         this.pushMessage(`Audio ${muted ? 'muted' : 'enabled'}.`);
-        this.refreshUi();
+        this.invalidateHud();
         return;
       }
       case 'restart':
@@ -4373,8 +4381,7 @@ export class WorldScene extends Phaser.Scene {
       if (manhattanDistance(this.player, npc) === 1) {
         this.selectedNpcActionId = null;
         this.phase = 'menu';
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidatePresentation();
         return;
       }
 
@@ -4460,7 +4467,7 @@ export class WorldScene extends Phaser.Scene {
     this.phase = 'moving';
     this.focusedNpcId = focusedNpcId;
     this.selectedNpcActionId = null;
-    this.refreshUi();
+    this.invalidateHud();
 
     let arrivalFrom: Point | null = null;
 
@@ -4503,8 +4510,7 @@ export class WorldScene extends Phaser.Scene {
       if (!this.rebuildOutdoorAreaForCamera()) {
         this.phase = 'idle';
         this.positionActor(this.player);
-        this.drawHighlights();
-        this.refreshUi();
+        this.invalidatePresentation();
       }
     }
 
@@ -4560,8 +4566,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.refreshNpcInteraction();
     this.positionActor(this.player);
-    this.drawHighlights();
-    this.refreshUi();
+    this.invalidatePresentation();
   }
 
   private async performTransition(transition: LocalWorldTransition): Promise<void> {
@@ -4633,8 +4638,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.phase = 'idle';
     this.busy = false;
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidatePresentation();
   }
 
   private async fadeAndRebuild(): Promise<void> {
@@ -4724,8 +4728,7 @@ export class WorldScene extends Phaser.Scene {
     this.selectedNpcActionId = null;
     this.hoverTile = null;
     this.battleInspectionTarget = { kind: 'mission' };
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
 
     audioDirector.setMusic('battle');
     audioDirector.setBattleAmbience(this.battleTimeOfDay);
@@ -5186,8 +5189,7 @@ export class WorldScene extends Phaser.Scene {
     this.configureCamera(false);
     this.setCameraScroll(currentScroll.x, currentScroll.y);
     this.applyBattlePresentationShell();
-    this.drawHighlights();
-    this.refreshUi();
+    this.invalidateBattlePresentation();
   }
 
   private applyWorldBattleIntroPositions(
@@ -5376,8 +5378,7 @@ export class WorldScene extends Phaser.Scene {
           ? `${actor.name} is ready. Auto-battle takes the reins.`
           : `${actor.name} is ready. Choose a command.`
       );
-      this.refreshUi();
-      this.drawHighlights();
+      this.invalidateBattlePresentation();
 
       if (this.worldBattle.autoBattleEnabled) {
         this.time.delayedCall(320, () => {
@@ -5391,8 +5392,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.busy = true;
     this.phase = 'battle-enemy';
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
     await this.wait(620);
     await this.runEnemyBattleTurn(actor);
   }
@@ -5619,8 +5619,7 @@ export class WorldScene extends Phaser.Scene {
         this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
         this.phase = 'battle-player-move';
         this.pushMessage(`Choose a tile for ${activeUnit.name}.`);
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidateBattlePresentation();
         return;
       case 'undo-move':
         audioDirector.playUiCancel();
@@ -5636,8 +5635,7 @@ export class WorldScene extends Phaser.Scene {
         this.worldBattle.selectedItemId = null;
         this.phase = 'battle-player-abilities';
         this.pushMessage(`Choose an ability for ${activeUnit.name}.`);
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidateBattlePresentation();
         return;
       case 'items':
         if (this.worldBattle.turnActionUsed) {
@@ -5649,8 +5647,7 @@ export class WorldScene extends Phaser.Scene {
         this.worldBattle.selectedItemId = null;
         this.phase = 'battle-player-items';
         this.pushMessage(`Choose an item for ${activeUnit.name}.`);
-        this.refreshUi();
-        this.drawHighlights();
+        this.invalidateBattlePresentation();
         return;
       case 'wait':
         audioDirector.playUiConfirm();
@@ -5681,8 +5678,7 @@ export class WorldScene extends Phaser.Scene {
       this.worldBattle.selectedAbilityId = null;
       this.phase = 'battle-player-item-action';
       this.pushMessage(`Choose a target for ${item.name}.`);
-      this.refreshUi();
-      this.drawHighlights();
+      this.invalidateBattlePresentation();
       return;
     }
 
@@ -5698,8 +5694,7 @@ export class WorldScene extends Phaser.Scene {
       this.worldBattle.selectedItemId = null;
       this.phase = 'battle-player-action';
       this.pushMessage(`Choose a target for ${ability.name}.`);
-      this.refreshUi();
-      this.drawHighlights();
+      this.invalidateBattlePresentation();
     }
   }
 
@@ -5741,8 +5736,7 @@ export class WorldScene extends Phaser.Scene {
         return;
     }
 
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
   }
 
   private async handleBattleMove(tile: TileData): Promise<void> {
@@ -5762,8 +5756,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.busy = true;
     this.phase = 'battle-animating';
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
 
     if (movePath.length > 1) {
       await this.moveBattleUnit(activeUnit, movePath);
@@ -5791,8 +5784,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.busy = true;
     this.phase = 'battle-animating';
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
 
     activeUnit.x = moveUndo.origin.x;
     activeUnit.y = moveUndo.origin.y;
@@ -5810,8 +5802,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = false;
     this.phase = 'battle-player-menu';
     this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
   }
 
   private async performWorldBattleAttack(attacker: BattleUnit, target: BattleUnit): Promise<void> {
@@ -5835,8 +5826,7 @@ export class WorldScene extends Phaser.Scene {
       this.worldBattle.selectedAbilityId = ability.id;
     }
     this.pushMessage(`${attacker.name} uses ${ability.name} on ${target.name}.`);
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
 
     switch (ability.kind) {
       case 'attack': {
@@ -6085,7 +6075,7 @@ export class WorldScene extends Phaser.Scene {
     if (!this.getTargetableUnitsForBattleItem(activeUnit, itemId).some((unit) => unit.id === target.id)) {
       audioDirector.playUiCancel();
       this.pushMessage(`${item.name} cannot reach that target.`);
-      this.refreshUi();
+      this.invalidateHud();
       return;
     }
 
@@ -6093,8 +6083,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = true;
     this.phase = 'battle-animating';
     this.worldBattle.turnActionUsed = true;
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
 
     switch (item.effect.kind) {
       case 'heal':
@@ -6155,8 +6144,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.phase = 'battle-player-menu';
     this.pushMessage(pendingMoveMessage);
-    this.refreshUi();
-    this.drawHighlights();
+    this.invalidateBattlePresentation();
   }
 
   private async animateActorDefeat(actorId: string): Promise<void> {
@@ -6336,7 +6324,7 @@ export class WorldScene extends Phaser.Scene {
 
     audioDirector.playUiConfirm();
     this.pushMessage(`Auto-Battle ${this.worldBattle.autoBattleEnabled ? 'enabled' : 'disabled'}.`);
-    this.refreshUi();
+    this.invalidateHud();
     this.tryStartAutoBattle(this.getActiveBattleUnit());
   }
 
@@ -6420,8 +6408,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.showWorldBattleResultOverlay(result === 'victory' ? 'Victory' : 'Defeat');
-    this.drawHighlights();
-    this.refreshUi();
+    this.invalidateBattlePresentation();
   }
 
   private async finalizeWorldBattleReturn(result: 'Victory' | 'Defeat'): Promise<void> {
@@ -7517,8 +7504,7 @@ export class WorldScene extends Phaser.Scene {
       this.refreshNpcInteraction();
     }
 
-    this.drawHighlights();
-    this.refreshUi();
+    this.invalidatePresentation();
 
     if (
       !this.busy &&
@@ -7571,9 +7557,9 @@ export class WorldScene extends Phaser.Scene {
     this.panPointerOrigin.set(pointer.x, pointer.y);
     this.panCameraOrigin.set(this.worldCamera.scrollX, this.worldCamera.scrollY);
     this.hoverTile = null;
-    this.drawHighlights();
+    this.invalidateHighlights();
     if (!this.isWorldBattleActive()) {
-      this.refreshUi();
+      this.invalidateHud();
     }
   }
 
@@ -7779,7 +7765,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.applyBattlePresentationShell();
     this.pushMessage(`Scene shifts to ${TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label.toLowerCase()}.`);
-    this.refreshUi();
+    this.invalidateHud();
   }
 
   private registerWorldObject<T extends Phaser.GameObjects.GameObject>(object: T): T {
@@ -8283,8 +8269,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = false;
     this.pushMessage(message);
     this.refreshNpcInteraction();
-    this.drawHighlights();
-    this.refreshUi();
+    this.invalidatePresentation();
   }
 
   private returnToTitle(): void {

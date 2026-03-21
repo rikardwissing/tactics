@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GraphicsPool } from '../core/graphicsPool';
 import type { TileData } from '../core/types';
 import { drawActiveTileMarker } from '../world/rendering';
 
@@ -10,41 +11,23 @@ interface DrawActiveTileArgs {
 }
 
 export class BattleHighlightController {
-  private readonly graphicsPool: Phaser.GameObjects.Graphics[] = [];
-  private activeCount = 0;
+  private readonly graphicsPool: GraphicsPool;
   private drawCount = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly registerWorldObject: <T extends Phaser.GameObjects.GameObject>(object: T) => T
-  ) {}
+  ) {
+    this.graphicsPool = new GraphicsPool(scene, registerWorldObject);
+  }
 
   beginFrame(): void {
-    this.activeCount = 0;
     this.drawCount += 1;
-
-    for (const graphics of this.graphicsPool) {
-      graphics
-        .clear()
-        .setVisible(false)
-        .setAlpha(1)
-        .setBlendMode(Phaser.BlendModes.NORMAL)
-        .setScale(1, 1);
-    }
+    this.graphicsPool.beginFrame();
   }
 
   acquireGraphics(blendMode: Phaser.BlendModes | number = Phaser.BlendModes.NORMAL): Phaser.GameObjects.Graphics {
-    const graphics =
-      this.graphicsPool[this.activeCount] ??
-      this.registerWorldObject(this.scene.add.graphics());
-
-    if (this.activeCount >= this.graphicsPool.length) {
-      this.graphicsPool.push(graphics);
-    }
-
-    this.activeCount += 1;
-    graphics.clear().setVisible(true).setAlpha(1).setBlendMode(blendMode).setScale(1, 1);
-    return graphics;
+    return this.graphicsPool.acquire(blendMode);
   }
 
   drawDiamond(
@@ -78,16 +61,11 @@ export class BattleHighlightController {
   }
 
   destroy(): void {
-    for (const graphics of this.graphicsPool) {
-      graphics.destroy();
-    }
-
-    this.graphicsPool.length = 0;
-    this.activeCount = 0;
+    this.graphicsPool.destroy();
   }
 
   getPoolSize(): number {
-    return this.graphicsPool.length;
+    return this.graphicsPool.getPoolSize();
   }
 
   getDrawCount(): number {
@@ -95,6 +73,6 @@ export class BattleHighlightController {
   }
 
   getManagedObjects(): readonly Phaser.GameObjects.Graphics[] {
-    return this.graphicsPool;
+    return this.graphicsPool.getManagedObjects();
   }
 }
