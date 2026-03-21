@@ -3,7 +3,6 @@ import {
   DEFAULT_UNIT_IMAGE_KEY,
   FACTION_MOTTO_AUDIO_KEYS,
   UNIT_TURN_START_AUDIO_KEYS,
-  getUnitPortraitImageKey
 } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
 import {
@@ -12,53 +11,67 @@ import {
   applyBattleIdleAnimation,
   createBattleActorView,
   DEFAULT_BATTLE_FACING,
-  shouldFlipSpriteForFacing,
   syncBattleActorGlow
 } from '../battle/actorViews';
 import {
   type BattleIntroPhase,
   type BattleHudViewModel,
   type BattleInspectionTarget,
-  type DetailPortraitKind,
   type HeaderMenuAction,
   MAP_TITLE_INTRO_DURATION,
   MAP_TITLE_INTRO_HOLD,
   MAP_TITLE_OUTRO_DURATION,
   MAP_TITLE_TOTAL_DURATION,
-  createCombatUnitBodyText,
+  createCombatUnitInspectionHudViewModel,
   createHeaderMenuLabels,
+  createNpcInspectionHudViewModel,
+  formatMapIntroEyebrow,
+  formatMapIntroMeta,
+  formatMapIntroSummary,
+  formatMapPlaqueEyebrow,
   describeProp as describeSharedProp,
   describeTerrain as describeSharedTerrain,
   formatBattleTerrainName,
   formatPlaqueHeaderTitle,
   getBattlePropTitle,
-  resolveDetailAccentColor,
-  setTextValues
+  resolveCombatUnitBodyMode,
+  resolveHeaderMenuActions,
+  resolveDetailPortraitDescriptor,
+  syncHeaderMenuTexts,
+  createTerrainInspectionHudViewModel,
+  createStatusHudViewModel,
+  syncBattleHudViewModelTexts
 } from '../battle/hudShared';
 import {
   createBattleAbilityDetailBody,
-  createBattleCommandMenuPanels,
+  createBattleCommandMenuEntries,
+  createBattleCommandMenuPanelsFromState,
   createBattleItemDetailBody,
   createBattleMoveDetailBody,
+  createNpcActionMenuPanels,
   resolveBattleCommandMenuAction
 } from '../battle/actionMenuPanels';
-import { createCombatUnitHudViewModel } from '../battle/hudShared';
+import type { ActionMenuEntryDescriptor } from './components/BattleActionMenuStack';
 import {
   SHARED_BATTLE_ACTION_MENU_ROW_HEIGHT,
   SHARED_BATTLE_VISIBLE_TURN_ORDER_COUNT,
   getSharedBattleMapPlaqueHeight,
   resolveSharedBattleChromeLayout,
+  resolveSharedBattleDetailPanelHeight,
   resolveSharedBattleTopPanelLayout
 } from '../battle/hudLayout';
 import {
-  clearDetailPortrait,
-  drawSharedBattleResultOverlay,
-  drawSharedDetailPlaque,
+  drawSharedDetailPlaqueFrame,
+  drawSharedBattleResultOverlayFrame,
   drawSharedBattleHudPanels,
   measureDetailPanelLayout,
-  renderDetailPortrait,
+  syncDetailPortrait,
   type DetailPanelLayoutMetrics
 } from '../battle/hudRenderer';
+import {
+  layoutSharedDetailPanelSection,
+  layoutSharedMapTitleSection
+} from '../battle/hudSceneLayout';
 import { BattleHighlightController } from '../battle/highlightController';
 import {
   showSharedTurnStartCatchPhrase,
@@ -67,7 +80,6 @@ import {
 import {
   flushSceneInvalidations as flushSharedSceneInvalidations,
   invalidateBattlePresentation as invalidateSharedBattlePresentation,
-  invalidateBattleShell as invalidateSharedBattleShell,
   invalidateHighlights as invalidateSharedHighlights,
   invalidateHud as invalidateSharedHud,
   invalidatePresentation as invalidateSharedPresentation,
@@ -521,7 +533,6 @@ export class WorldScene extends Phaser.Scene {
   private hudDirty = false;
   private highlightsDirty = false;
   private turnOrderDirty = false;
-  private battleShellDirty = false;
   private highlightInvalidations = 0;
   private hudInvalidations = 0;
   private lightingInvalidations = 0;
@@ -578,7 +589,6 @@ export class WorldScene extends Phaser.Scene {
     this.lightingDirty = true;
     this.highlightsDirty = false;
     this.turnOrderDirty = false;
-    this.battleShellDirty = false;
     this.highlightInvalidations = 0;
     this.hudInvalidations = 0;
     this.lightingInvalidations = 0;
@@ -808,10 +818,6 @@ export class WorldScene extends Phaser.Scene {
   private invalidateLighting(): void {
     this.lightingDirty = true;
     this.lightingInvalidations += 1;
-  }
-
-  private invalidateBattleShell(): void {
-    invalidateSharedBattleShell(this as unknown as SceneInvalidationState, this as unknown as SceneInvalidationCounters);
   }
 
   private invalidatePresentation(): void {
@@ -2553,18 +2559,19 @@ export class WorldScene extends Phaser.Scene {
     this.updateWorldDetailPanelForSelection(inspection);
     this.layoutBattleHud(this.scale.width, this.scale.height);
     this.setHudVisible(true);
-    this.headerMenuTitleText.setText('PAUSED');
     const headerMenuLabels = createHeaderMenuLabels({
       autoBattleEnabled: this.worldBattle?.autoBattleEnabled ?? false,
       audioMuted: audioDirector.isMuted(),
       restartLabel: this.isWorldBattleActive() ? 'RESTART' : 'RESTART VISIT',
       setupLabel: 'WORLD'
     });
-    const headerMenuActions = this.getHeaderMenuActions();
-    for (const [index, text] of this.headerMenuOptionTexts.entries()) {
-      const action = headerMenuActions[index];
-      text.setText(action ? headerMenuLabels[action] : '');
-    }
+    const headerMenuActions = resolveHeaderMenuActions(this.isBattlePlayerPhase() || this.isWorldBattleActive());
+    syncHeaderMenuTexts(
+      { headerMenuTitleText: this.headerMenuTitleText, headerMenuOptionTexts: this.headerMenuOptionTexts },
+      'PAUSED',
+      headerMenuLabels,
+      headerMenuActions
+    );
 
     if (this.isWorldBattleActive()) {
       const battle = this.worldBattle as WorldBattleState;
@@ -2634,13 +2641,16 @@ export class WorldScene extends Phaser.Scene {
   private syncWorldHudPlaque(): void {
     if (this.isWorldBattleActive() && this.worldBattle) {
       const objectiveText = this.worldBattle.runtimeBattle.level.shortObjective ?? this.worldBattle.runtimeBattle.level.objective;
-      this.mapPlaqueTitleText.setText(this.getWorldBattleMapPlaqueHeaderTitle());
-      this.mapPlaqueMetaText.setText(this.getWorldBattleMapPlaqueMeta());
+      const level = this.worldBattle.runtimeBattle.level;
+      this.mapPlaqueTitleText.setText(formatPlaqueHeaderTitle(level?.titlePrefix, level?.region, level?.name ?? this.areaName));
+      this.mapPlaqueMetaText.setText(level?.name ?? this.areaName);
       this.mapObjectiveText.setText(objectiveText);
-      this.mapIntroEyebrowText.setText(this.getWorldBattleMapIntroEyebrow());
+      this.mapIntroEyebrowText.setText(formatMapIntroEyebrow(level?.titlePrefix, level?.encounterType));
       this.mapIntroTitleText.setText(this.worldBattle.runtimeBattle.level.name);
-      this.mapIntroMetaText.setText(this.getWorldBattleMapIntroMeta());
-      this.mapIntroFlavorText.setText(this.getWorldBattleMapIntroSummary());
+      this.mapIntroMetaText.setText(formatMapIntroMeta(level?.region, level?.encounterType));
+      this.mapIntroFlavorText.setText(
+        formatMapIntroSummary(level?.shortObjective, level?.objective ?? '', level?.titleFlavor)
+      );
       return;
     }
 
@@ -2655,56 +2665,37 @@ export class WorldScene extends Phaser.Scene {
 
   private syncWorldHudDetail(inspection: WorldHudInspection, hudViewModel: BattleHudViewModel | null): void {
     if (inspection.kind === 'mission' || !hudViewModel) {
-      this.activeBadge.setText('');
-      this.detailMetaText.setText('');
-      this.detailTitleText.setText('');
-      this.detailBodyText.setText('');
-      this.setBattleDetailStatValues([]);
-      this.hideHudPortrait();
+      syncBattleHudViewModelTexts(
+        {
+          activeBadge: this.activeBadge,
+          detailMetaText: this.detailMetaText,
+          detailTitleText: this.detailTitleText,
+          detailBodyText: this.detailBodyText,
+          detailStatTexts: this.detailStatTexts
+        },
+        null
+      );
+      syncDetailPortrait({
+        image: this.portrait,
+        mask: this.portraitMask,
+        panel: this.uiPanels.portrait,
+        descriptor: null,
+        visible: false
+      });
       return;
     }
 
-    this.activeBadge.setText(hudViewModel.badgeText);
-    this.detailMetaText.setText(hudViewModel.metaText);
-    this.detailTitleText.setText(hudViewModel.titleText);
-    this.detailBodyText.setText(hudViewModel.bodyText);
-    this.setBattleDetailStatValues(hudViewModel.statValues);
+    syncBattleHudViewModelTexts(
+      {
+        activeBadge: this.activeBadge,
+        detailMetaText: this.detailMetaText,
+        detailTitleText: this.detailTitleText,
+        detailBodyText: this.detailBodyText,
+        detailStatTexts: this.detailStatTexts
+      },
+      hudViewModel
+    );
     this.syncHudPortrait(inspection);
-  }
-
-  private getWorldBattleMapPlaqueHeaderTitle(): string {
-    const level = this.worldBattle?.runtimeBattle.level;
-    return formatPlaqueHeaderTitle(level?.titlePrefix, level?.region, level?.name ?? this.areaName);
-  }
-
-  private getWorldBattleMapPlaqueMeta(): string {
-    return this.worldBattle?.runtimeBattle.level.name ?? this.areaName;
-  }
-
-  private getWorldBattleMapIntroEyebrow(): string {
-    const level = this.worldBattle?.runtimeBattle.level;
-    return (level?.titlePrefix ?? level?.encounterType ?? 'Battle Report').toUpperCase();
-  }
-
-  private getWorldBattleMapIntroMeta(): string {
-    const level = this.worldBattle?.runtimeBattle.level;
-    const parts = [level?.region, level?.encounterType].filter((value): value is string => Boolean(value));
-    return parts.join('  •  ');
-  }
-
-  private getWorldBattleMapIntroSummary(): string {
-    const level = this.worldBattle?.runtimeBattle.level;
-    if (!level) {
-      return '';
-    }
-
-    const shortObjective = level.shortObjective ?? level.objective;
-    const flavor = level.titleFlavor?.trim() ?? '';
-    if (!flavor) {
-      return shortObjective;
-    }
-
-    return flavor.length <= shortObjective.length ? flavor : shortObjective;
   }
 
   private getWorldExplorationPlaqueHeaderTitle(): string {
@@ -2770,13 +2761,66 @@ export class WorldScene extends Phaser.Scene {
     switch (inspection.kind) {
       case 'battle-unit':
         return this.buildWorldBattleHudViewModel(inspection.unit);
-      case 'npc':
-        return this.buildWorldNpcHudViewModel(inspection.npc);
-      case 'tile':
-        return this.buildWorldTileHudViewModel(inspection.tile, inspection.prop);
+      case 'npc': {
+        const summaryLines = [inspection.npc.summary];
+
+        if (inspection.npc.disposition === 'hostile') {
+          summaryLines.push(
+            inspection.npc.aggressive
+              ? `Aggro ${inspection.npc.aggressionRadius}  •  Leash ${inspection.npc.chaseLeashRadius}`
+              : 'Will only engage when pressed at close range.'
+          );
+        }
+
+        return createNpcInspectionHudViewModel({
+          npc: inspection.npc,
+          badgeText: inspection.npc.disposition === 'hostile' ? 'HOSTILE CONTACT' : 'ROAD CONTACT',
+          bodyText: summaryLines.join('\n'),
+          statValues: [
+            `TILE ${inspection.npc.x}, ${inspection.npc.y}`,
+            inspection.npc.disposition === 'hostile' ? 'HOSTILE' : 'FRIENDLY',
+            inspection.npc.patrolPath.length > 0 ? `PATROL ${inspection.npc.patrolPath.length}` : 'STATIONARY',
+            inspection.npc.disposition === 'hostile' ? `AGGRO ${inspection.npc.aggressionRadius}` : ''
+          ],
+          healthColor: inspection.npc.disposition === 'hostile' ? UI_COLOR_DANGER : UI_COLOR_SUCCESS
+        });
+      }
+      case 'tile': {
+        const terrainName = formatBattleTerrainName(inspection.tile.terrain);
+
+        return createTerrainInspectionHudViewModel({
+          tile: inspection.tile,
+          propAssetId: inspection.prop?.assetId,
+          badgeText: inspection.prop ? 'FIELD PROP' : 'TERRAIN TILE',
+          titleText: inspection.prop ? getBattlePropTitle(inspection.prop.assetId) : `${terrainName} Ground`,
+          bodyLines: [
+            `Height ${inspection.tile.height}  •  ${terrainName}`,
+            inspection.prop ? describeSharedProp(inspection.prop.assetId) : describeSharedTerrain(inspection.tile.terrain)
+          ],
+          statValues: [
+            `HEIGHT ${inspection.tile.height}`,
+            terrainName.toUpperCase(),
+            inspection.prop ? 'OCCUPIED' : 'OPEN TILE',
+            inspection.prop && PROP_RENDER_CONFIG[inspection.prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+          ],
+          healthColor: UI_COLOR_SUCCESS
+        });
+      }
       case 'mission':
       default:
-        return null;
+        return createStatusHudViewModel({
+          badgeText: 'WAYSTATION',
+          metaText: `${TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label}  •  ${this.getWorldExplorationPlaqueMeta()}`,
+          titleText: this.areaName,
+          bodyText: `${this.getWorldExplorationPlaqueObjective()}\nWalk the grounds and stand beside a contact to see what they offer.`,
+          statValues: [
+            `CONTACTS ${this.npcs.length}`,
+            `PROPS ${this.props.length}`,
+            `SCENE ${TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label.toUpperCase()}`,
+            ''
+          ],
+          healthColor: UI_COLOR_SUCCESS
+        });
     }
   }
 
@@ -2785,100 +2829,43 @@ export class WorldScene extends Phaser.Scene {
     const selectedAbility = this.getSelectedBattleAbility();
     const selectedItemId = this.worldBattle?.selectedItemId;
 
-    return createCombatUnitHudViewModel({
+    return createCombatUnitInspectionHudViewModel({
       unit: inspectionUnit,
       badgeText: inspectionUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT',
-      bodyText: createCombatUnitBodyText({
-        unit: inspectionUnit,
-        isCommandFocus:
-          Boolean(
-            activeUnit &&
-            activeUnit.id === inspectionUnit.id &&
-            activeUnit.team === 'player' &&
-            this.isBattlePlayerPhase()
-          ),
-        mode:
-          this.phase === 'battle-player-move'
-            ? 'move'
-            : this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action'
-              ? 'items'
-              : this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action'
-                ? 'abilities'
-                : 'idle',
-        moveSpentText: `Stride up to ${inspectionUnit.move} tiles across open ground.`,
-        movePromptText: this.worldBattle?.turnMoveUsed
-          ? 'Movement is already spent this turn.'
-          : 'Select a reachable tile on the field.',
-        itemDescriptionText: selectedItemId
-          ? getItemDefinition(selectedItemId).description
-          : undefined,
-        itemRangeText: selectedItemId
-          ? `Range 1  •  Stock ${this.getBattleUnitInventory(inspectionUnit)[selectedItemId] ?? 0}`
-          : undefined,
-        itemPromptText:
-          this.phase === 'battle-player-item-action' ? 'Select an adjacent target.' : 'Choose an item below.',
-        abilityDescriptionText: selectedAbility?.description,
-        abilityRangeText: selectedAbility
-          ? `Range ${selectedAbility.rangeMin}-${selectedAbility.rangeMax}  •  ${
-              selectedAbility.target === 'ally' ? 'Allies' : 'Enemies'
-            }`
-          : undefined,
-        abilityPromptText:
-          this.phase === 'battle-player-action' ? 'Select a valid target.' : 'Choose an ability below.'
+      isCommandFocus:
+        Boolean(
+          activeUnit &&
+          activeUnit.id === inspectionUnit.id &&
+          activeUnit.team === 'player' &&
+          this.isBattlePlayerPhase()
+        ),
+      mode: resolveCombatUnitBodyMode({
+        isMove: this.phase === 'battle-player-move',
+        isItems: this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action',
+        isAbilities: this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action'
       }),
+      moveSpentText: `Stride up to ${inspectionUnit.move} tiles across open ground.`,
+      movePromptText: this.worldBattle?.turnMoveUsed
+        ? 'Movement is already spent this turn.'
+        : 'Select a reachable tile on the field.',
+      itemDescriptionText: selectedItemId
+        ? getItemDefinition(selectedItemId).description
+        : undefined,
+      itemRangeText: selectedItemId
+        ? `Range 1  •  Stock ${this.getBattleUnitInventory(inspectionUnit)[selectedItemId] ?? 0}`
+        : undefined,
+      itemPromptText:
+        this.phase === 'battle-player-item-action' ? 'Select an adjacent target.' : 'Choose an item below.',
+      abilityDescriptionText: selectedAbility?.description,
+      abilityRangeText: selectedAbility
+        ? `Range ${selectedAbility.rangeMin}-${selectedAbility.rangeMax}  •  ${
+            selectedAbility.target === 'ally' ? 'Allies' : 'Enemies'
+          }`
+        : undefined,
+      abilityPromptText:
+        this.phase === 'battle-player-action' ? 'Select a valid target.' : 'Choose an ability below.',
       healthColor: inspectionUnit.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER
     });
-  }
-
-  private buildWorldNpcHudViewModel(npc: WorldNpcRuntime): BattleHudViewModel {
-    const dispositionLabel = npc.disposition === 'hostile' ? 'HOSTILE CONTACT' : 'ROAD CONTACT';
-    const classLabel = npc.className?.trim() || 'Wanderer';
-    const summaryLines = [npc.summary];
-
-    if (npc.disposition === 'hostile') {
-      summaryLines.push(
-        npc.aggressive
-          ? `Aggro ${npc.aggressionRadius}  •  Leash ${npc.chaseLeashRadius}`
-          : 'Will only engage when pressed at close range.'
-      );
-    }
-
-    return {
-      badgeText: dispositionLabel,
-      metaText: `${getFactionProfile(npc.factionId).displayName}  •  ${classLabel}`,
-      titleText: npc.name,
-      bodyText: summaryLines.join('\n'),
-      statValues: [
-        `TILE ${npc.x}, ${npc.y}`,
-        npc.disposition === 'hostile' ? 'HOSTILE' : 'FRIENDLY',
-        npc.patrolPath.length > 0 ? `PATROL ${npc.patrolPath.length}` : 'STATIONARY',
-        npc.disposition === 'hostile' ? `AGGRO ${npc.aggressionRadius}` : ''
-      ],
-      healthRatio: null,
-      healthColor: npc.disposition === 'hostile' ? UI_COLOR_DANGER : UI_COLOR_SUCCESS
-    };
-  }
-
-  private buildWorldTileHudViewModel(tile: TileData, prop: LocalWorldProp | null): BattleHudViewModel {
-    const terrainName = formatBattleTerrainName(tile.terrain);
-
-    return {
-      badgeText: prop ? 'FIELD PROP' : 'TERRAIN TILE',
-      metaText: `${terrainName}  •  ${tile.x}, ${tile.y}`,
-      titleText: prop ? getBattlePropTitle(prop.assetId) : `${terrainName} Ground`,
-      bodyText: [
-        `Height ${tile.height}  •  ${terrainName}`,
-        prop ? describeSharedProp(prop.assetId) : describeSharedTerrain(tile.terrain)
-      ].join('\n'),
-      statValues: [
-        `HEIGHT ${tile.height}`,
-        terrainName.toUpperCase(),
-        prop ? 'OCCUPIED' : 'OPEN TILE',
-        prop && PROP_RENDER_CONFIG[prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
-      ],
-      healthRatio: null,
-      healthColor: UI_COLOR_SUCCESS
-    };
   }
 
   private updateWorldDetailPanelForSelection(inspection: WorldHudInspection): void {
@@ -2890,7 +2877,13 @@ export class WorldScene extends Phaser.Scene {
       this.detailPanelOffsetX = 24;
       this.detailPanelSelectionKey = null;
       this.stopTurnStartCatchPhraseSound();
-      this.hideHudPortrait();
+      syncDetailPortrait({
+        image: this.portrait,
+        mask: this.portraitMask,
+        panel: this.uiPanels.portrait,
+        descriptor: null,
+        visible: false
+      });
       return;
     }
 
@@ -3018,10 +3011,6 @@ export class WorldScene extends Phaser.Scene {
     return this.props.find((prop) => prop.x === x && prop.y === y) ?? null;
   }
 
-  private setBattleDetailStatValues(values: string[]): void {
-    setTextValues(this.detailStatTexts, values);
-  }
-
   private layoutBattleHud(width: number, height: number): void {
     const topPanelLayout = resolveSharedBattleTopPanelLayout(width, height);
     const plaqueHeight = getSharedBattleMapPlaqueHeight(
@@ -3083,225 +3072,40 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private layoutMapTitleSection(width: number, height: number): void {
-    const introVisible = this.mapIntroAlpha > 0.01;
     const hudVisible = !this.isWorldBattleActive() || this.battleIntroPhase === 'hud';
-    const introMargin = width <= 540 ? 18 : 28;
-    const portraitIntro = height >= width;
-    const shortLandscapeIntro = width > height && height < 620;
-    const introTextInsetX = 18;
-    const introTextInsetY = 18;
-    const introTextGap = UI_PANEL_TIGHT_GAP;
-    const introGap = portraitIntro ? 12 : 18;
-    const introGroupWidth = Phaser.Math.Clamp(
-      width - introMargin * 2,
-      320,
-      portraitIntro ? 400 : shortLandscapeIntro ? 760 : 900
-    );
-    const introArtWidth = portraitIntro
-      ? introGroupWidth
-      : Phaser.Math.Clamp(Math.round(introGroupWidth * (shortLandscapeIntro ? 0.6 : 0.62)), 420, 600);
-    const introArtHeight = portraitIntro
-      ? Phaser.Math.Clamp(Math.round(height * 0.24), 168, 208)
-      : shortLandscapeIntro
-        ? 164
-        : 196;
-    const introTextWidth = portraitIntro
-      ? Math.min(introArtWidth - 24, 360)
-      : Phaser.Math.Clamp(introGroupWidth - introArtWidth - introGap, 270, 340);
-    const introTextInnerWidth = Math.max(180, introTextWidth - introTextInsetX * 2);
-
-    this.mapIntroMetaText.setWordWrapWidth(introTextInnerWidth, true);
-    this.mapIntroFlavorText.setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
-
-    const eyebrowWidth = Phaser.Math.Clamp(this.mapIntroEyebrowText.width + 28, 132, introTextInnerWidth);
-    const eyebrowHeight = Math.max(24, this.mapIntroEyebrowText.height + 10);
-    const summaryBoxHeight = Math.max(34, this.mapIntroFlavorText.height + UI_PANEL_COMPACT_INSET * 2);
-    const introTextHeight = Math.ceil(
-      introTextInsetY +
-      eyebrowHeight +
-      introTextGap +
-      this.mapIntroTitleText.height +
-      UI_PANEL_MICRO_GAP +
-      this.mapIntroMetaText.height +
-      UI_PANEL_GAP +
-      summaryBoxHeight +
-      introTextInsetY
-    );
-    const introGroupHeight = portraitIntro
-      ? introArtHeight + introGap + introTextHeight
-      : Math.max(introArtHeight, introTextHeight);
-    const introTop = Phaser.Math.Clamp(
-      Math.round(height * (portraitIntro ? 0.11 : 0.14)) + this.mapIntroOffsetY,
-      36 + this.mapIntroOffsetY,
-      Math.max(36 + this.mapIntroOffsetY, height - introGroupHeight - 48)
-    );
-    const introLeft = Math.round((width - introGroupWidth) * 0.5);
-
-    if (portraitIntro) {
-      this.mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
-      this.mapIntroTextBounds.setTo(
-        Math.round((width - introTextWidth) * 0.5),
-        this.mapIntroArtBounds.bottom + introGap,
-        introTextWidth,
-        introTextHeight
-      );
-    } else {
-      this.mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
-      this.mapIntroTextBounds.setTo(
-        this.mapIntroArtBounds.right + introGap,
-        Math.round(introTop + Math.max(0, (introArtHeight - introTextHeight) * 0.5)),
-        introTextWidth,
-        introTextHeight
-      );
-    }
-
-    const introGroupLeft = Math.min(this.mapIntroArtBounds.x, this.mapIntroTextBounds.x);
-    const introGroupTop = Math.min(this.mapIntroArtBounds.y, this.mapIntroTextBounds.y);
-    const introGroupRight = Math.max(this.mapIntroArtBounds.right, this.mapIntroTextBounds.right);
-    const introGroupBottom = Math.max(this.mapIntroArtBounds.bottom, this.mapIntroTextBounds.bottom);
-    this.mapIntroArtImageBounds.setTo(
-      this.mapIntroArtBounds.x,
-      this.mapIntroArtBounds.y,
-      this.mapIntroArtBounds.width,
-      this.mapIntroArtBounds.height
-    );
-    this.mapIntroBounds.setTo(
-      introGroupLeft,
-      introGroupTop,
-      introGroupRight - introGroupLeft,
-      introGroupBottom - introGroupTop
-    );
-
-    const introTextGrid = createUiSubGrid(
-      this.mapIntroTextBounds,
-      1,
-      introTextInsetX,
-      introTextInsetY,
-      introTextGap
-    );
-    const headerPanel = new Phaser.Geom.Rectangle(
-      this.headerRect.x + this.mapPlaqueOffsetX,
-      this.headerRect.y,
-      this.headerRect.width,
-      this.headerRect.height
-    );
-    const plaqueContentBounds = BattleUiChrome.getContentBounds(headerPanel, 'narrow');
-    const plaqueGrid = createUiSubGrid(plaqueContentBounds, 1, 0, 0, UI_PANEL_MINI_GAP);
-
-    BattleUiChrome.layoutHeaderTitle(this.mapPlaqueTitleText, headerPanel, 'narrow');
-    this.mapPlaqueTitleText
-      .setAlpha(this.mapPlaqueAlpha)
-      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
-    this.mapPlaqueMetaText
-      .setPosition(plaqueGrid.content.x, plaqueGrid.content.y)
-      .setWordWrapWidth(plaqueContentBounds.width, true)
-      .setAlpha(this.mapPlaqueAlpha)
-      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
-    this.mapObjectiveText
-      .setPosition(plaqueGrid.content.x, this.mapPlaqueMetaText.y + this.mapPlaqueMetaText.height + plaqueGrid.gutter)
-      .setWordWrapWidth(plaqueGrid.content.width, true)
-      .setAlpha(this.mapPlaqueAlpha)
-      .setVisible(hudVisible && this.mapPlaqueAlpha > 0.01);
-    this.headerMenuButtonBounds.setTo(
-      hudVisible ? headerPanel.x : 0,
-      hudVisible ? headerPanel.y : 0,
-      hudVisible ? headerPanel.width : 0,
-      hudVisible ? headerPanel.height : 0
-    );
-
-    const menuPanelWidth = 248;
-    const optionRowHeight = 30;
-    const optionGap = UI_PANEL_COMPACT_GAP;
-    const headerMenuActions = this.getHeaderMenuActions();
-    const menuContentHeight = headerMenuActions.length * optionRowHeight + Math.max(0, headerMenuActions.length - 1) * optionGap;
-    const menuPanelHeight = UI_NARROW_PLAQUE_HEADER_HEIGHT + UI_PANEL_CONTENT_GAP + menuContentHeight + UI_PANEL_CONTENT_INSET;
-    this.headerMenuPanelBounds.setTo(
-      Math.round((width - menuPanelWidth) * 0.5),
-      Math.round((height - menuPanelHeight) * 0.5),
-      menuPanelWidth,
-      menuPanelHeight
-    );
-    const menuContentBounds = BattleUiChrome.getContentBounds(this.headerMenuPanelBounds, 'narrow');
-    const menuGrid = createUiSubGrid(menuContentBounds, 1, 0, 0, optionGap);
-    BattleUiChrome.layoutHeaderTitle(this.headerMenuTitleText, this.headerMenuPanelBounds, 'narrow').setVisible(hudVisible && this.headerMenuOpen);
-    for (const [index, text] of this.headerMenuOptionTexts.entries()) {
-      const optionBounds = this.headerMenuOptionBounds[index];
-      if (index >= headerMenuActions.length) {
-        optionBounds.setTo(0, 0, 0, 0);
-        text.setVisible(false);
-        continue;
-      }
-      const rowBounds = menuGrid.band(menuGrid.content.y + index * (optionRowHeight + menuGrid.gutter), optionRowHeight);
-      optionBounds.setTo(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height);
-      text
-        .setPosition(optionBounds.x + UI_PANEL_COMPACT_INSET, optionBounds.centerY)
-        .setOrigin(0, 0.5)
-        .setVisible(hudVisible && this.headerMenuOpen);
-    }
-
-    this.mapIntroEyebrowBounds.setTo(
-      introTextGrid.content.x,
-      introTextGrid.content.y,
-      eyebrowWidth,
-      eyebrowHeight
-    );
-    const introTitleBand = introTextGrid.band(this.mapIntroEyebrowBounds.bottom + introTextGap, this.mapIntroTitleText.height);
-    const introMetaBand = introTextGrid.band(introTitleBand.bottom + UI_PANEL_MICRO_GAP, this.mapIntroMetaText.height);
-    this.mapObjectiveBoxBounds.setTo(
-      introTextGrid.content.x,
-      introMetaBand.bottom + UI_PANEL_GAP,
-      introTextGrid.content.width,
-      summaryBoxHeight
-    );
-    const introFlavorBand = introTextGrid.band(
-      this.mapObjectiveBoxBounds.y + UI_PANEL_COMPACT_INSET,
-      this.mapIntroFlavorText.height
-    );
-
-    const introFrame = this.mapIntroArt.frame;
-    if (introFrame) {
-      const artVisible = this.mapIntroAlpha > 0.01;
-      this.mapIntroArt
-        .setCrop(0, 0, introFrame.width, introFrame.height)
-        .setDisplaySize(this.mapIntroArtImageBounds.width, this.mapIntroArtImageBounds.height)
-        .setPosition(this.mapIntroArtImageBounds.centerX, this.mapIntroArtImageBounds.centerY)
-        .setAlpha(this.mapIntroAlpha)
-        .setTint(0xffffff)
-        .setVisible(artVisible);
-      this.mapIntroArtMask.clear();
-      this.mapIntroArtMask.setPosition(this.mapIntroArtImageBounds.x, this.mapIntroArtImageBounds.y);
-      this.mapIntroArtMask.fillStyle(0xffffff, 1);
-      this.mapIntroArtMask.fillRoundedRect(
-        0,
-        0,
-        this.mapIntroArtImageBounds.width,
-        this.mapIntroArtImageBounds.height,
-        24
-      );
-    }
-
-    this.mapIntroEyebrowText
-      .setOrigin(0, 0.5)
-      .setPosition(this.mapIntroEyebrowBounds.x + 14, this.mapIntroEyebrowBounds.centerY)
-      .setAlpha(this.mapIntroAlpha)
-      .setVisible(introVisible);
-    this.mapIntroTitleText
-      .setOrigin(0, 0)
-      .setPosition(introTextGrid.content.x, introTitleBand.y)
-      .setAlpha(this.mapIntroAlpha)
-      .setVisible(introVisible);
-    this.mapIntroMetaText
-      .setOrigin(0, 0)
-      .setPosition(introTextGrid.content.x, introMetaBand.y)
-      .setAlpha(this.mapIntroAlpha)
-      .setVisible(introVisible)
-      .setWordWrapWidth(introTextInnerWidth, true);
-    this.mapIntroFlavorText
-      .setOrigin(0, 0)
-      .setPosition(this.mapObjectiveBoxBounds.x + UI_PANEL_COMPACT_INSET, introFlavorBand.y)
-      .setAlpha(this.mapIntroAlpha)
-      .setVisible(introVisible)
-      .setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
+    layoutSharedMapTitleSection({
+      width,
+      height,
+      headerRect: this.headerRect,
+      mapPlaqueOffsetX: this.mapPlaqueOffsetX,
+      mapIntroOffsetY: this.mapIntroOffsetY,
+      mapIntroAlpha: this.mapIntroAlpha,
+      mapPlaqueAlpha: this.mapPlaqueAlpha,
+      mapIntroVisible: this.mapIntroAlpha > 0.01,
+      hudVisible,
+      mapPlaqueTitleText: this.mapPlaqueTitleText,
+      mapPlaqueMetaText: this.mapPlaqueMetaText,
+      mapObjectiveText: this.mapObjectiveText,
+      mapIntroArt: this.mapIntroArt,
+      mapIntroArtMask: this.mapIntroArtMask,
+      mapIntroArtBounds: this.mapIntroArtBounds,
+      mapIntroArtImageBounds: this.mapIntroArtImageBounds,
+      mapIntroTextBounds: this.mapIntroTextBounds,
+      mapIntroBounds: this.mapIntroBounds,
+      mapIntroEyebrowBounds: this.mapIntroEyebrowBounds,
+      mapObjectiveBoxBounds: this.mapObjectiveBoxBounds,
+      mapIntroEyebrowText: this.mapIntroEyebrowText,
+      mapIntroTitleText: this.mapIntroTitleText,
+      mapIntroMetaText: this.mapIntroMetaText,
+      mapIntroFlavorText: this.mapIntroFlavorText,
+      headerMenuTitleText: this.headerMenuTitleText,
+      headerMenuButtonBounds: this.headerMenuButtonBounds,
+      headerMenuPanelBounds: this.headerMenuPanelBounds,
+      headerMenuOptionBounds: this.headerMenuOptionBounds,
+      headerMenuOptionTexts: this.headerMenuOptionTexts,
+      headerMenuActionCount: resolveHeaderMenuActions(this.isBattlePlayerPhase() || this.isWorldBattleActive()).length,
+      headerMenuOpen: this.headerMenuOpen
+    });
   }
 
   private getTargetBattleDetailPanelHeight(panelWidth: number, height: number): number {
@@ -3310,9 +3114,7 @@ export class WorldScene extends Phaser.Scene {
     const portraitVisible = this.getHudPortraitDescriptor(inspection) !== null;
     const hasHealthBar = inspection.kind === 'battle-unit';
     const requiredHeight = this.measureBattleDetailPanelLayout(probePanel, portraitVisible, hasHealthBar).bodyBoxBounds.bottom + UI_PANEL_CONTENT_INSET;
-    const maxHeight = Math.max(184, height - this.headerRect.bottom - 24);
-
-    return Phaser.Math.Clamp(Math.ceil(requiredHeight), 184, maxHeight);
+    return resolveSharedBattleDetailPanelHeight(requiredHeight, height, this.headerRect.bottom);
   }
 
   private measureBattleDetailPanelLayout(
@@ -3335,136 +3137,72 @@ export class WorldScene extends Phaser.Scene {
     inspection: WorldHudInspection,
     hudViewModel: BattleHudViewModel | null
   ): void {
-    if (inspection.kind === 'mission' || !hudViewModel || !this.showDetailPanel || this.isBattleIntroActive()) {
-      this.detailBodyBoxBounds.setTo(0, 0, 0, 0);
-      this.detailHealthBarBounds.setTo(0, 0, 0, 0);
-      this.uiPanels.portrait.setTo(0, 0, 0, 0);
-      for (const bounds of this.detailStatChipBounds) {
-        bounds.setTo(0, 0, 0, 0);
-      }
-      this.activeBadge.setVisible(false).setAlpha(0);
-      this.detailMetaText.setVisible(false).setAlpha(0);
-      this.detailTitleText.setVisible(false).setAlpha(0);
-      this.detailBodyText.setVisible(false).setAlpha(0);
-      this.hideHudPortrait();
-      for (const text of this.detailStatTexts) {
-        text.setVisible(false).setAlpha(0);
-      }
-      return;
-    }
-
-    const alpha = this.detailPanelAlpha;
-    const visible = alpha > 0.01;
-    const panel = new Phaser.Geom.Rectangle(
-      this.uiPanels.topRight.x + this.detailPanelOffsetX,
-      this.uiPanels.topRight.y,
-      this.uiPanels.topRight.width,
-      this.uiPanels.topRight.height
-    );
     const portraitVisible = this.getHudPortraitDescriptor(inspection) !== null && this.showPortraitPanel;
     const hasHealthBar = inspection.kind === 'battle-unit';
-    const metrics = this.measureBattleDetailPanelLayout(panel, portraitVisible, hasHealthBar);
-
-    BattleUiChrome.layoutHeaderTitle(this.activeBadge, panel, 'narrow');
-    this.activeBadge
-      .setAlpha(alpha)
-      .setVisible(visible);
-
-    this.detailMetaText
-      .setPosition(metrics.infoBounds.x, 0)
-      .setAlpha(alpha)
-      .setVisible(visible);
-    this.detailTitleText
-      .setPosition(metrics.infoBounds.x, 0)
-      .setAlpha(alpha)
-      .setVisible(visible);
-    this.detailBodyText
-      .setAlpha(alpha)
-      .setVisible(visible);
-    for (const text of this.detailStatTexts) {
-      text
-        .setAlpha(alpha)
-        .setVisible(visible && text.text.length > 0);
-    }
-
-    this.detailMetaText.setY(metrics.metaY);
-    this.detailTitleText.setY(metrics.titleY);
-    this.detailHealthBarBounds.setTo(
-      metrics.healthBarBounds.x,
-      metrics.healthBarBounds.y,
-      metrics.healthBarBounds.width,
-      metrics.healthBarBounds.height
-    );
-
-    for (const [index, text] of this.detailStatTexts.entries()) {
-      const position = metrics.statPositions[index];
-      const chipBounds = metrics.statChipBounds[index];
-      this.detailStatChipBounds[index].setTo(chipBounds.x, chipBounds.y, chipBounds.width, chipBounds.height);
-
-      if (!position || !text.text) {
-        this.detailStatChipBounds[index].setTo(0, 0, 0, 0);
-        continue;
+    layoutSharedDetailPanelSection({
+      panel: new Phaser.Geom.Rectangle(
+        this.uiPanels.topRight.x + this.detailPanelOffsetX,
+        this.uiPanels.topRight.y,
+        this.uiPanels.topRight.width,
+        this.uiPanels.topRight.height
+      ),
+      alpha: this.detailPanelAlpha,
+      portraitVisible,
+      hasHealthBar,
+      showDetailPanel: this.showDetailPanel && inspection.kind !== 'mission' && Boolean(hudViewModel),
+      isIntroActive: this.isBattleIntroActive(),
+      activeBadge: this.activeBadge,
+      detailMetaText: this.detailMetaText,
+      detailTitleText: this.detailTitleText,
+      detailBodyText: this.detailBodyText,
+      detailStatTexts: this.detailStatTexts,
+      detailStatChipBounds: this.detailStatChipBounds,
+      detailHealthBarBounds: this.detailHealthBarBounds,
+      detailBodyBoxBounds: this.detailBodyBoxBounds,
+      portraitPanel: this.uiPanels.portrait,
+      portrait: this.portrait,
+      portraitMask: this.portraitMask,
+      measureDetailPanelLayout: (panel, portraitVisible, hasHealthBar) =>
+        this.measureBattleDetailPanelLayout(panel, portraitVisible, hasHealthBar),
+      onSyncPortrait: () => this.syncHudPortrait(inspection),
+      onClear: () => {
+        this.uiPanels.portrait.setTo(0, 0, 0, 0);
+        syncDetailPortrait({
+          image: this.portrait,
+          mask: this.portraitMask,
+          panel: this.uiPanels.portrait,
+          descriptor: null,
+          visible: false
+        });
       }
-
-      text.setPosition(position.x, position.y);
-    }
-
-    this.uiPanels.portrait.setTo(
-      metrics.portraitBounds.x,
-      metrics.portraitBounds.y,
-      metrics.portraitBounds.width,
-      metrics.portraitBounds.height
-    );
-    this.detailBodyBoxBounds.setTo(
-      metrics.bodyBoxBounds.x,
-      metrics.bodyBoxBounds.y,
-      metrics.bodyBoxBounds.width,
-      metrics.bodyBoxBounds.height
-    );
-    this.detailBodyText.setPosition(metrics.bodyTextX, metrics.bodyTextY);
-    this.syncHudPortrait(inspection);
-    this.portrait
-      .setPosition(this.uiPanels.portrait.centerX, this.uiPanels.portrait.centerY)
-      .setAlpha(alpha)
-      .setVisible(visible && portraitVisible);
-    this.portraitMask.clear();
-    if (visible && portraitVisible) {
-      this.portraitMask.fillStyle(0xffffff, 1);
-      this.portraitMask.fillRoundedRect(
-        this.uiPanels.portrait.x,
-        this.uiPanels.portrait.y,
-        this.uiPanels.portrait.width,
-        this.uiPanels.portrait.height,
-        UI_INSET_RADIUS
-      );
-    }
-    this.portraitMask.setVisible(false);
-  }
-
-  private hideHudPortrait(): void {
-    clearDetailPortrait(this.portrait, this.portraitMask);
+    });
   }
 
   private getHudPortraitDescriptor(
     inspection: WorldHudInspection
-  ): { textureKey: string; kind: DetailPortraitKind; flipX: boolean } | null {
+  ) {
     switch (inspection.kind) {
       case 'battle-unit':
-      case 'npc': {
-        const spriteKey = inspection.kind === 'battle-unit' ? inspection.unit.spriteKey : inspection.npc.spriteKey;
-        const portraitKey = getUnitPortraitImageKey(spriteKey) ?? spriteKey;
-        const actorId = inspection.kind === 'battle-unit' ? inspection.unit.id : inspection.npc.id;
-        const facing = this.actorViews.get(actorId)?.facing ?? DEFAULT_FACING;
-        return {
-          textureKey: portraitKey,
-          kind: portraitKey === spriteKey ? 'unit' : 'unit-portrait',
-          flipX: portraitKey === spriteKey ? shouldFlipSpriteForFacing(facing) : false
-        };
-      }
+        return resolveDetailPortraitDescriptor({
+          unit: {
+            spriteKey: inspection.unit.spriteKey,
+            facing: this.actorViews.get(inspection.unit.id)?.facing ?? DEFAULT_FACING
+          }
+        });
+      case 'npc':
+        return resolveDetailPortraitDescriptor({
+          npc: {
+            spriteKey: inspection.npc.spriteKey,
+            facing: this.actorViews.get(inspection.npc.id)?.facing ?? DEFAULT_FACING
+          }
+        });
       case 'tile':
-        return inspection.prop
-          ? { textureKey: inspection.prop.assetId, kind: 'prop', flipX: false }
-          : { textureKey: TERRAIN_TILE_ASSETS[inspection.tile.terrain][0], kind: 'terrain', flipX: false };
+        return resolveDetailPortraitDescriptor({
+          tile: inspection.tile,
+          hasChest: false,
+          chestOpened: false,
+          propAssetId: inspection.prop?.assetId ?? null
+        });
       case 'mission':
       default:
         return null;
@@ -3473,22 +3211,11 @@ export class WorldScene extends Phaser.Scene {
 
   private syncHudPortrait(inspection: WorldHudInspection): void {
     const descriptor = this.getHudPortraitDescriptor(inspection);
-    if (!descriptor || this.uiPanels.portrait.width <= 0 || this.uiPanels.portrait.height <= 0 || !this.showPortraitPanel) {
-      this.hideHudPortrait();
-      return;
-    }
-
-    this.showHudDetailPortrait(descriptor.textureKey, descriptor.kind, descriptor.flipX);
-  }
-
-  private showHudDetailPortrait(textureKey: string, kind: DetailPortraitKind, flipX = false): void {
-    renderDetailPortrait({
+    syncDetailPortrait({
       image: this.portrait,
       mask: this.portraitMask,
       panel: this.uiPanels.portrait,
-      textureKey,
-      kind,
-      flipX,
+      descriptor,
       visible: this.showPortraitPanel
     });
   }
@@ -3534,13 +3261,6 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const inspection = this.getCurrentHudInspection();
-    const accentColor = resolveDetailAccentColor({
-      focusUnitTeam: null,
-      isExplorationMode: false,
-      inspectionUnitTeam: inspection.kind === 'battle-unit' ? inspection.unit.team : null,
-      inspectionNpcHostile: inspection.kind === 'npc' ? inspection.npc.disposition === 'hostile' : null,
-      inspectionTileVisible: inspection.kind === 'tile'
-    });
     const alpha = this.detailPanelAlpha;
     const panel = new Phaser.Geom.Rectangle(
       this.uiPanels.topRight.x + this.detailPanelOffsetX,
@@ -3549,17 +3269,21 @@ export class WorldScene extends Phaser.Scene {
       this.uiPanels.topRight.height
     );
 
-    drawSharedDetailPlaque({
+    drawSharedDetailPlaqueFrame({
       graphics: this.uiGraphics,
       panel,
-      accentColor,
       alpha,
       bodyBoxBounds: this.detailBodyBoxBounds,
       statChipBounds: this.detailStatChipBounds,
       statTexts: this.detailStatTexts,
       healthBarBounds: this.detailHealthBarBounds,
       healthRatio: hudViewModel.healthRatio,
-      healthColor: hudViewModel.healthColor
+      healthColor: hudViewModel.healthColor,
+      focusUnitTeam: null,
+      isExplorationMode: false,
+      inspectionUnitTeam: inspection.kind === 'battle-unit' ? inspection.unit.team : null,
+      inspectionNpcHostile: inspection.kind === 'npc' ? inspection.npc.disposition === 'hostile' : null,
+      inspectionTileVisible: inspection.kind === 'tile'
     });
   }
 
@@ -3633,17 +3357,17 @@ export class WorldScene extends Phaser.Scene {
     const selectedAbility = this.getSelectedBattleAbility();
     const selectedItemId = this.worldBattle?.selectedItemId;
     const submenuEntries = this.getBattleSubmenuEntries();
+    const inventoryEntries = getInventoryEntries(this.getBattleUnitInventory(activeUnit));
 
-    return createBattleCommandMenuPanels({
+    return createBattleCommandMenuPanelsFromState({
       phase: this.phase,
       rootPanelId: 'battle-command-list',
       rootTitle: activeUnit.name,
-      rootEntries: this.getBattleMenuEntries().map((entry) => ({
-        id: entry.action,
-        label: entry.label,
-        enabled: entry.enabled
-      })),
-      currentRootActionId: resolveBattleCommandMenuAction(this.phase, this.canUndoBattleMove()),
+      canUndoMove: this.canUndoBattleMove(),
+      turnMoveUsed: Boolean(this.worldBattle?.turnMoveUsed),
+      turnActionUsed: Boolean(this.worldBattle?.turnActionUsed),
+      hasAbilities: activeUnit.abilities.length > 0,
+      hasItems: inventoryEntries.length > 0,
       selectedAbilityId: this.worldBattle?.selectedAbilityId ?? null,
       selectedItemId: selectedItemId ?? null,
       movePanelId: 'battle-move-detail',
@@ -3694,39 +3418,15 @@ export class WorldScene extends Phaser.Scene {
       return [];
     }
 
-    const rootPanel: ActionMenuPanelDescriptor = {
-      id: 'npc-actions',
-      kind: 'list',
-      title: npc.name,
-      blocksWorldInput: true,
-      entries: npc.actions.map((action) => ({
-        id: action.id,
-        label: action.label,
-        enabled: true,
-        active: action.id === this.selectedNpcActionId
-      }))
-    };
-
-    if (this.phase !== 'detail') {
-      return [rootPanel];
-    }
-
-    const detailAction = npc.actions.find((action) => action.id === this.selectedNpcActionId);
-
-    if (!detailAction) {
-      return [rootPanel];
-    }
-
-    return [
-      rootPanel,
-      {
-        id: 'npc-detail',
-        kind: 'detail',
-        title: detailAction.title ?? detailAction.label,
-        blocksWorldInput: true,
-        body: detailAction.body
-      }
-    ];
+    return createNpcActionMenuPanels({
+      phase: this.phase,
+      menuPhase: 'menu',
+      detailPhase: 'detail',
+      npc,
+      selectedActionId: this.selectedNpcActionId,
+      rootPanelId: 'npc-actions',
+      detailPanelId: 'npc-detail'
+    });
   }
 
   private shouldShowActionMenu(): boolean {
@@ -3830,7 +3530,7 @@ export class WorldScene extends Phaser.Scene {
     return quantity > 1 ? `${quantity}x ${item.name}` : item.name;
   }
 
-  private getBattleMenuEntries(): Array<{ action: BattleMenuAction; label: string; enabled: boolean }> {
+  private getBattleMenuEntries(): ActionMenuEntryDescriptor[] {
     const activeUnit = this.getActiveBattleUnit();
 
     if (!activeUnit || activeUnit.team !== 'player') {
@@ -3839,30 +3539,13 @@ export class WorldScene extends Phaser.Scene {
 
     const inventoryEntries = getInventoryEntries(this.getBattleUnitInventory(activeUnit));
 
-    return [
-      this.canUndoBattleMove()
-        ? { action: 'undo-move', label: 'Undo Move', enabled: true }
-        : {
-            action: 'move',
-            label: this.worldBattle?.turnMoveUsed ? 'Move [Done]' : 'Move',
-            enabled: !this.worldBattle?.turnMoveUsed
-          },
-      {
-        action: 'abilities',
-        label: this.worldBattle?.turnActionUsed ? 'Abilities [Done]' : 'Abilities',
-        enabled: !this.worldBattle?.turnActionUsed && activeUnit.abilities.length > 0
-      },
-      {
-        action: 'items',
-        label: this.worldBattle?.turnActionUsed ? 'Items [Done]' : 'Items',
-        enabled: !this.worldBattle?.turnActionUsed && inventoryEntries.length > 0
-      },
-      {
-        action: 'wait',
-        label: 'Wait',
-        enabled: true
-      }
-    ];
+    return createBattleCommandMenuEntries({
+      canUndoMove: this.canUndoBattleMove(),
+      turnMoveUsed: Boolean(this.worldBattle?.turnMoveUsed),
+      turnActionUsed: Boolean(this.worldBattle?.turnActionUsed),
+      hasAbilities: activeUnit.abilities.length > 0,
+      hasItems: inventoryEntries.length > 0
+    });
   }
 
   private canUndoBattleMove(): boolean {
@@ -3941,10 +3624,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (hit.panelId === 'battle-command-list') {
-      const entry = this.getBattleMenuEntries().find((candidate) => candidate.action === hit.entryId);
+      const entry = this.getBattleMenuEntries().find((candidate) => candidate.id === hit.entryId);
 
       if (entry?.enabled) {
-        await this.activateBattleMenuEntry(entry.action);
+        await this.activateBattleMenuEntry(entry.id as BattleMenuAction);
       }
       return true;
     }
@@ -4103,7 +3786,7 @@ export class WorldScene extends Phaser.Scene {
       return true;
     }
 
-    const actions = this.getHeaderMenuActions();
+    const actions = resolveHeaderMenuActions(this.isBattlePlayerPhase() || this.isWorldBattleActive());
     for (const [index, bounds] of this.headerMenuOptionBounds.entries()) {
       if (!bounds.contains(x, y)) {
         continue;
@@ -4151,10 +3834,6 @@ export class WorldScene extends Phaser.Scene {
     this.phase = 'detail';
     this.invalidatePresentation();
     return true;
-  }
-
-  private getHeaderMenuActions(): HeaderMenuAction[] {
-    return this.isWorldBattleActive() ? ['auto', 'audio', 'restart', 'setup'] : ['audio', 'restart', 'title'];
   }
 
   private async executeHeaderMenuAction(action: HeaderMenuAction): Promise<void> {
@@ -6290,9 +5969,7 @@ export class WorldScene extends Phaser.Scene {
         .text(
           0,
           0,
-          result === 'Victory'
-            ? 'The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.'
-            : 'The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.',
+          '',
           UI_TEXT_BODY
         )
         .setOrigin(0, 0)
@@ -6356,7 +6033,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    drawSharedBattleResultOverlay({
+    drawSharedBattleResultOverlayFrame({
       overlayShade: this.resultOverlayShade,
       panel: this.resultOverlayPanel,
       art: this.resultOverlayArt,
@@ -6369,26 +6046,7 @@ export class WorldScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
       panelBoundsTarget: this.resultOverlayPanelBounds,
-      eyebrowText: this.resultOverlayResult === 'Victory' ? 'MISSION SECURED' : 'MISSION BROKEN',
-      bodyText:
-        this.resultOverlayResult === 'Victory'
-          ? 'The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.'
-          : 'The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.',
-      buttonDescriptorOptions: {
-        secondaryLabel: 'RETURN TO ROAD',
-        victoryRetryFillColor: UI_COLOR_ACCENT_NEUTRAL,
-        victoryRetryStrokeColor: UI_COLOR_PANEL_BORDER,
-        victoryRetryFillAlpha: 0.82,
-        victorySecondaryFillColor: UI_COLOR_SUCCESS,
-        victorySecondaryStrokeColor: UI_COLOR_PANEL_BORDER,
-        victorySecondaryFillAlpha: 0.3,
-        defeatRetryFillColor: UI_COLOR_ACCENT_DANGER,
-        defeatRetryStrokeColor: UI_COLOR_DANGER,
-        defeatRetryFillAlpha: 0.48,
-        defeatSecondaryFillColor: UI_COLOR_ACCENT_COOL,
-        defeatSecondaryStrokeColor: UI_COLOR_PANEL_BORDER,
-        defeatSecondaryFillAlpha: 0.82
-      }
+      isWorldEncounterBattle: true
     });
   }
 

@@ -2,14 +2,12 @@ export interface SceneInvalidationState {
   hudDirty: boolean;
   highlightsDirty: boolean;
   turnOrderDirty: boolean;
-  battleShellDirty?: boolean;
 }
 
 export interface SceneInvalidationCounters {
   hudInvalidations: number;
   highlightInvalidations: number;
   turnOrderInvalidations: number;
-  battleShellInvalidations?: number;
 }
 
 interface SceneInvalidationFlushCallbacks {
@@ -32,11 +30,6 @@ export function invalidateTurnOrder(state: SceneInvalidationState, counters: Sce
   counters.turnOrderInvalidations += 1;
 }
 
-export function invalidateBattleShell(state: SceneInvalidationState, counters: SceneInvalidationCounters): void {
-  state.battleShellDirty = true;
-  counters.battleShellInvalidations = (counters.battleShellInvalidations ?? 0) + 1;
-}
-
 export function invalidatePresentation(state: SceneInvalidationState, counters: SceneInvalidationCounters): void {
   invalidateHud(state, counters);
   invalidateHighlights(state, counters);
@@ -57,10 +50,9 @@ export function flushSceneInvalidations(
     callbacks.drawHighlights();
   }
 
-  if (state.hudDirty || state.turnOrderDirty || state.battleShellDirty) {
+  if (state.hudDirty || state.turnOrderDirty) {
     state.hudDirty = false;
     state.turnOrderDirty = false;
-    state.battleShellDirty = false;
     callbacks.refreshUi();
   }
 }

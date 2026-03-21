@@ -1,5 +1,6 @@
 import type { ActionMenuEntryDescriptor, ActionMenuPanelDescriptor } from '../scenes/components/BattleActionMenuStack';
 import type { UnitAbility } from '../core/types';
+import type { NpcActionDefinition } from '../exploration/types';
 
 export interface BattleCommandMenuPanelOptions {
   phase: string;
@@ -19,6 +20,31 @@ export interface BattleCommandMenuPanelOptions {
   itemEntries: readonly ActionMenuEntryDescriptor[];
   itemDetailPanelId: string;
   itemDetail: { title: string; body: string } | null;
+}
+
+export interface BattleCommandMenuPanelsFromStateOptions
+  extends Omit<BattleCommandMenuPanelOptions, 'rootEntries' | 'currentRootActionId'>,
+    BattleCommandMenuEntriesOptions {}
+
+export interface BattleCommandMenuEntriesOptions {
+  canUndoMove: boolean;
+  turnMoveUsed: boolean;
+  turnActionUsed: boolean;
+  hasAbilities: boolean;
+  hasItems: boolean;
+}
+
+export interface NpcActionMenuPanelOptions {
+  phase: string;
+  menuPhase: string;
+  detailPhase: string;
+  npc: {
+    name: string;
+    actions: readonly NpcActionDefinition[];
+  };
+  selectedActionId: string | null;
+  rootPanelId: string;
+  detailPanelId: string;
 }
 
 type BattleCommandMenuPhase = 'menu' | 'move' | 'abilities' | 'action' | 'items' | 'item-action';
@@ -68,6 +94,39 @@ export function resolveBattleCommandMenuAction(phase: string, canUndoMove = fals
     default:
       return null;
   }
+}
+
+export function createBattleCommandMenuEntries({
+  canUndoMove,
+  turnMoveUsed,
+  turnActionUsed,
+  hasAbilities,
+  hasItems
+}: BattleCommandMenuEntriesOptions): ActionMenuEntryDescriptor[] {
+  return [
+    canUndoMove
+      ? { id: 'undo-move', label: 'Undo Move', enabled: true }
+      : {
+          id: 'move',
+          label: turnMoveUsed ? 'Move [Done]' : 'Move',
+          enabled: !turnMoveUsed
+        },
+    {
+      id: 'abilities',
+      label: turnActionUsed ? 'Abilities [Done]' : 'Abilities',
+      enabled: !turnActionUsed && hasAbilities
+    },
+    {
+      id: 'items',
+      label: turnActionUsed ? 'Items [Done]' : 'Items',
+      enabled: !turnActionUsed && hasItems
+    },
+    {
+      id: 'wait',
+      label: 'Wait',
+      enabled: true
+    }
+  ];
 }
 
 function createListPanel(
@@ -178,6 +237,67 @@ export function createBattleCommandMenuPanels({
     default:
       return [];
   }
+}
+
+export function createBattleCommandMenuPanelsFromState({
+  canUndoMove,
+  turnMoveUsed,
+  turnActionUsed,
+  hasAbilities,
+  hasItems,
+  ...options
+}: BattleCommandMenuPanelsFromStateOptions): ActionMenuPanelDescriptor[] {
+  return createBattleCommandMenuPanels({
+    ...options,
+    currentRootActionId: resolveBattleCommandMenuAction(options.phase, canUndoMove),
+    rootEntries: createBattleCommandMenuEntries({
+      canUndoMove,
+      turnMoveUsed,
+      turnActionUsed,
+      hasAbilities,
+      hasItems
+    })
+  });
+}
+
+export function createNpcActionMenuPanels({
+  phase,
+  menuPhase,
+  detailPhase,
+  npc,
+  selectedActionId,
+  rootPanelId,
+  detailPanelId
+}: NpcActionMenuPanelOptions): ActionMenuPanelDescriptor[] {
+  if (phase !== menuPhase && phase !== detailPhase) {
+    return [];
+  }
+
+  const rootPanel = createListPanel(
+    rootPanelId,
+    npc.name,
+    npc.actions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      enabled: true
+    })),
+    selectedActionId
+  );
+
+  if (phase !== detailPhase) {
+    return [rootPanel];
+  }
+
+  const detailAction = npc.actions.find((action) => action.id === selectedActionId);
+
+  if (!detailAction) {
+    return [rootPanel];
+  }
+
+  return [
+    rootPanel,
+    createDetailPanel(detailPanelId, detailAction.title ?? detailAction.label, detailAction.body)
+  ];
 }
 
 export function createBattleMoveDetailBody(

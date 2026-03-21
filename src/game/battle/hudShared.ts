@@ -1,16 +1,22 @@
 import Phaser from 'phaser';
 import type { TerrainType } from '../core/types';
 import type { BattleUnit } from '../core/types';
+import type { SpriteFacing } from '../core/types';
 import type { TileData } from '../core/types';
 import type { MapPropAssetId } from '../levels/types';
 import { getFactionProfile } from '../levels/factions';
+import { getUnitPortraitImageKey } from '../assets';
 import {
   UI_COLOR_ACCENT_COOL,
   UI_COLOR_ACCENT_DANGER,
   UI_COLOR_ACCENT_NEUTRAL,
-  UI_COLOR_ACCENT_WARM
+  UI_COLOR_ACCENT_WARM,
+  UI_COLOR_DANGER,
+  UI_COLOR_PANEL_BORDER,
+  UI_COLOR_SUCCESS
 } from '../scenes/components/UiColors';
-import { PROP_RENDER_CONFIG } from '../world/rendering';
+import { shouldFlipSpriteForFacing } from './actorViews';
+import { PROP_RENDER_CONFIG, getTerrainTileAssetKey } from '../world/rendering';
 
 export type BattleInspectionTarget =
   | { kind: 'unit'; unitId: string }
@@ -27,6 +33,24 @@ export interface BattleHudViewModel {
   healthColor: number;
 }
 
+export interface StatusHudViewModelOptions {
+  badgeText: string;
+  metaText: string;
+  titleText: string;
+  bodyText: string;
+  statValues: string[];
+  healthRatio?: number | null;
+  healthColor: number;
+}
+
+export interface BattleHudTextTargets {
+  activeBadge: Phaser.GameObjects.Text;
+  detailMetaText: Phaser.GameObjects.Text;
+  detailTitleText: Phaser.GameObjects.Text;
+  detailBodyText: Phaser.GameObjects.Text;
+  detailStatTexts: Phaser.GameObjects.Text[];
+}
+
 export interface CombatUnitHudOptions {
   unit: BattleUnit;
   badgeText: string;
@@ -35,6 +59,12 @@ export interface CombatUnitHudOptions {
 }
 
 export type CombatUnitBodyMode = 'idle' | 'move' | 'items' | 'abilities';
+
+export interface CombatUnitBodyModeOptions {
+  isMove: boolean;
+  isItems: boolean;
+  isAbilities: boolean;
+}
 
 export interface CombatUnitBodyTextOptions {
   unit: BattleUnit;
@@ -50,11 +80,55 @@ export interface CombatUnitBodyTextOptions {
   abilityPromptText?: string;
 }
 
+export interface CombatUnitInspectionHudOptions extends CombatUnitBodyTextOptions {
+  badgeText: string;
+  healthColor: number;
+}
+
+export interface NpcInspectionHudOptions {
+  npc: {
+    factionId: BattleUnit['factionId'];
+    className?: string;
+    name: string;
+    summary: string;
+  };
+  badgeText: string;
+  bodyText: string;
+  statValues: string[];
+  healthColor: number;
+}
+
+export interface ActorPortraitDescriptor {
+  textureKey: string;
+  kind: DetailPortraitKind;
+  flipX: boolean;
+}
+
+export interface DetailPortraitDescriptorOptions {
+  unit?: {
+    spriteKey: string;
+    facing: SpriteFacing;
+  } | null;
+  npc?: {
+    spriteKey: string;
+    facing: SpriteFacing;
+  } | null;
+  tile?: Pick<TileData, 'x' | 'y' | 'height' | 'terrain'> | null;
+  propAssetId?: MapPropAssetId | null;
+  hasChest?: boolean;
+  chestOpened?: boolean | null;
+}
+
 export interface HeaderMenuLabelOptions {
   autoBattleEnabled: boolean;
   audioMuted: boolean;
   restartLabel: string;
   setupLabel: string;
+}
+
+export interface HeaderMenuTextTargets {
+  headerMenuTitleText: Phaser.GameObjects.Text;
+  headerMenuOptionTexts: Phaser.GameObjects.Text[];
 }
 
 export interface DetailAccentColorOptions {
@@ -98,6 +172,12 @@ export interface ResultOverlayButtonDescriptorOptions {
   defeatSecondaryFillAlpha: number;
 }
 
+export interface BattleResultOverlayCopy {
+  eyebrowText: string;
+  bodyText: string;
+  secondaryLabel: string;
+}
+
 export type BattleIntroPhase = 'intro' | 'hud';
 export type HeaderMenuAction = 'auto' | 'audio' | 'restart' | 'setup' | 'title';
 export type DetailPortraitKind = 'unit' | 'unit-portrait' | 'prop' | 'chest' | 'terrain';
@@ -123,6 +203,26 @@ export const DETAIL_PANEL_SECTION_GAP = 10;
 export const DETAIL_PANEL_CHIP_PADDING_X = 10;
 export const DETAIL_PANEL_CHIP_PADDING_Y = 5;
 
+export function createStatusHudViewModel({
+  badgeText,
+  metaText,
+  titleText,
+  bodyText,
+  statValues,
+  healthRatio = null,
+  healthColor
+}: StatusHudViewModelOptions): BattleHudViewModel {
+  return {
+    badgeText,
+    metaText,
+    titleText,
+    bodyText,
+    statValues,
+    healthRatio,
+    healthColor
+  };
+}
+
 export function formatPlaqueHeaderTitle(
   prefix: string | undefined,
   region: string | undefined,
@@ -132,6 +232,55 @@ export function formatPlaqueHeaderTitle(
   const resolvedPrefix = prefix ?? defaultPrefix;
   const resolvedRegion = region ?? fallbackName;
   return `${resolvedPrefix} - ${resolvedRegion}`.toUpperCase();
+}
+
+export function formatMapPlaqueEyebrow(
+  prefix: string | null | undefined,
+  region: string | null | undefined,
+  fallback = 'FIELD ENGAGEMENT'
+): string {
+  const parts = [prefix, region]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toUpperCase());
+
+  return parts.length > 0 ? parts.join('  •  ') : fallback;
+}
+
+export function formatMapPlaqueMeta(
+  firstLabel: string,
+  secondLabel: string | null | undefined
+): string {
+  const parts = [firstLabel, secondLabel].filter((value): value is string => Boolean(value));
+  return parts.join('  •  ');
+}
+
+export function formatMapIntroEyebrow(
+  titlePrefix: string | null | undefined,
+  encounterType: string | null | undefined,
+  fallback = 'Battle Report'
+): string {
+  return (titlePrefix ?? encounterType ?? fallback).toUpperCase();
+}
+
+export function formatMapIntroMeta(
+  region: string | null | undefined,
+  encounterType: string | null | undefined
+): string {
+  return formatMapPlaqueMeta(region ?? '', encounterType);
+}
+
+export function formatMapIntroSummary(
+  shortObjective: string | null | undefined,
+  objective: string,
+  titleFlavor: string | null | undefined
+): string {
+  const resolvedShortObjective = shortObjective ?? objective;
+  const flavor = titleFlavor?.trim() ?? '';
+  if (!flavor) {
+    return resolvedShortObjective;
+  }
+
+  return flavor.length <= resolvedShortObjective.length ? flavor : resolvedShortObjective;
 }
 
 export function coverImageBounds(
@@ -285,6 +434,138 @@ export function createCombatUnitBodyText(options: CombatUnitBodyTextOptions): st
   return [unit.attackName, unit.attackText].join('\n');
 }
 
+export function resolveCombatUnitBodyMode({
+  isMove,
+  isItems,
+  isAbilities
+}: CombatUnitBodyModeOptions): CombatUnitBodyMode {
+  if (isMove) {
+    return 'move';
+  }
+
+  if (isItems) {
+    return 'items';
+  }
+
+  if (isAbilities) {
+    return 'abilities';
+  }
+
+  return 'idle';
+}
+
+export function createCombatUnitInspectionHudViewModel({
+  badgeText,
+  healthColor,
+  ...bodyOptions
+}: CombatUnitInspectionHudOptions): BattleHudViewModel {
+  return createCombatUnitHudViewModel({
+    unit: bodyOptions.unit,
+    badgeText,
+    bodyText: createCombatUnitBodyText(bodyOptions),
+    healthColor
+  });
+}
+
+export function createNpcInspectionHudViewModel({
+  npc,
+  badgeText,
+  bodyText,
+  statValues,
+  healthColor
+}: NpcInspectionHudOptions): BattleHudViewModel {
+  return {
+    badgeText,
+    metaText: `${getFactionProfile(npc.factionId).displayName}  •  ${npc.className?.trim() || 'Wanderer'}`,
+    titleText: npc.name,
+    bodyText,
+    statValues,
+    healthRatio: null,
+    healthColor
+  };
+}
+
+export function resolveActorPortraitDescriptor(spriteKey: string, facing: SpriteFacing): ActorPortraitDescriptor {
+  const portraitKey = getUnitPortraitImageKey(spriteKey) ?? spriteKey;
+
+  return {
+    textureKey: portraitKey,
+    kind: portraitKey === spriteKey ? 'unit' : 'unit-portrait',
+    flipX: portraitKey === spriteKey ? shouldFlipSpriteForFacing(facing) : false
+  };
+}
+
+export function resolveDetailPortraitDescriptor({
+  unit = null,
+  npc = null,
+  tile = null,
+  propAssetId = null,
+  hasChest = false,
+  chestOpened = false
+}: DetailPortraitDescriptorOptions): ActorPortraitDescriptor | null {
+  if (unit) {
+    return resolveActorPortraitDescriptor(unit.spriteKey, unit.facing);
+  }
+
+  if (npc) {
+    return resolveActorPortraitDescriptor(npc.spriteKey, npc.facing);
+  }
+
+  if (tile) {
+    if (hasChest) {
+      return {
+        textureKey: chestOpened ? 'chapel-chest-open' : 'chapel-chest-closed',
+        kind: 'chest',
+        flipX: false
+      };
+    }
+
+    if (propAssetId) {
+      return {
+        textureKey: propAssetId,
+        kind: 'prop',
+        flipX: false
+      };
+    }
+
+    return {
+      textureKey: getTerrainTileAssetKey(tile),
+      kind: 'terrain',
+      flipX: false
+    };
+  }
+
+  if (propAssetId) {
+    return {
+      textureKey: propAssetId,
+      kind: 'prop',
+      flipX: false
+    };
+  }
+
+  return null;
+}
+
+export function syncBattleHudViewModelTexts(
+  targets: BattleHudTextTargets,
+  viewModel: BattleHudViewModel | null
+): void {
+  if (!viewModel) {
+    targets.activeBadge.setText('');
+    targets.detailMetaText.setText('');
+    targets.detailTitleText.setText('');
+    targets.detailBodyText.setText('');
+    setTextValues(targets.detailStatTexts, []);
+    return;
+  }
+
+  targets.activeBadge.setText(viewModel.badgeText);
+  targets.detailMetaText.setText(viewModel.metaText);
+  targets.detailTitleText.setText(viewModel.titleText);
+  targets.detailBodyText.setText(viewModel.bodyText);
+  setTextValues(targets.detailStatTexts, viewModel.statValues);
+}
+
 export function createHeaderMenuLabels({
   autoBattleEnabled,
   audioMuted,
@@ -298,6 +579,23 @@ export function createHeaderMenuLabels({
     setup: setupLabel,
     title: 'TITLE'
   };
+}
+
+export function syncHeaderMenuTexts(
+  targets: HeaderMenuTextTargets,
+  titleText: string,
+  labels: Record<HeaderMenuAction, string>,
+  actions: readonly HeaderMenuAction[]
+): void {
+  targets.headerMenuTitleText.setText(titleText);
+  for (const [index, text] of targets.headerMenuOptionTexts.entries()) {
+    const action = actions[index];
+    text.setText(action ? labels[action] : '');
+  }
+}
+
+export function resolveHeaderMenuActions(isExplorationMode: boolean): HeaderMenuAction[] {
+  return isExplorationMode ? ['audio', 'restart', 'title'] : ['auto', 'audio', 'restart', 'setup'];
 }
 
 export function describeTerrain(terrain: TerrainType): string {
@@ -385,4 +683,38 @@ export function createResultOverlayButtonDescriptors(
       fillAlpha: options.defeatSecondaryFillAlpha
     }
   ];
+}
+
+export function createBattleResultOverlayCopy(
+  result: 'Victory' | 'Defeat',
+  isWorldEncounterBattle: boolean
+): BattleResultOverlayCopy {
+  return {
+    eyebrowText: isWorldEncounterBattle ? 'MISSION SECURED' : 'MISSION BROKEN',
+    bodyText:
+      result === 'Victory'
+        ? 'The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.'
+        : 'The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.',
+    secondaryLabel: isWorldEncounterBattle ? 'RETURN TO ROAD' : 'MAP SELECT'
+  };
+}
+
+export function createBattleResultOverlayButtonDescriptorOptions(
+  secondaryLabel: string
+): ResultOverlayButtonDescriptorOptions {
+  return {
+    secondaryLabel,
+    victoryRetryFillColor: UI_COLOR_ACCENT_NEUTRAL,
+    victoryRetryStrokeColor: UI_COLOR_PANEL_BORDER,
+    victoryRetryFillAlpha: 0.82,
+    victorySecondaryFillColor: UI_COLOR_SUCCESS,
+    victorySecondaryStrokeColor: UI_COLOR_PANEL_BORDER,
+    victorySecondaryFillAlpha: 0.3,
+    defeatRetryFillColor: UI_COLOR_ACCENT_DANGER,
+    defeatRetryStrokeColor: UI_COLOR_DANGER,
+    defeatRetryFillAlpha: 0.48,
+    defeatSecondaryFillColor: UI_COLOR_ACCENT_COOL,
+    defeatSecondaryStrokeColor: UI_COLOR_PANEL_BORDER,
+    defeatSecondaryFillAlpha: 0.82
+  };
 }

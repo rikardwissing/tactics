@@ -263,3 +263,13 @@ export function resolveSharedBattleResultOverlayLayout(
     portraitLayout
   };
 }
+
+export function resolveSharedBattleDetailPanelHeight(
+  requiredHeight: number,
+  viewportHeight: number,
+  headerBottom: number,
+  minHeight = 184
+): number {
+  const maxHeight = Math.max(0, viewportHeight - headerBottom - 24);
+  return Phaser.Math.Clamp(Math.ceil(requiredHeight), minHeight, maxHeight);
+}

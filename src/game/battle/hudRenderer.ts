@@ -3,9 +3,14 @@ import {
   BattleUiChrome,
   UI_INSET_RADIUS,
   UI_NARROW_PLAQUE_HEADER_HEIGHT,
+  UI_PANEL_COMPACT_GAP,
+  UI_PANEL_COMPACT_INSET,
   UI_PANEL_CONTENT_GAP,
   UI_PANEL_CONTENT_INSET,
   UI_PANEL_GAP,
+  UI_PANEL_MICRO_GAP,
+  UI_PANEL_TIGHT_GAP,
+  UI_PANEL_MINI_GAP,
   UI_PLAQUE_HEADER_HEIGHT
 } from '../scenes/components/BattleUiChrome';
 import {
@@ -19,6 +24,7 @@ import {
   UI_COLOR_PANEL_SURFACE_ALT,
   UI_COLOR_TEXT
 } from '../scenes/components/UiColors';
+import type { BattleUnit } from '../core/types';
 import {
   DETAIL_PANEL_BODY_PADDING_X,
   DETAIL_PANEL_BODY_PADDING_Y,
@@ -34,12 +40,16 @@ import {
   DETAIL_PANEL_TITLE_GAP,
   DETAIL_PANEL_TOP_PADDING_Y,
   coverImageBounds,
+  createBattleResultOverlayButtonDescriptorOptions,
+  createBattleResultOverlayCopy,
   createResultOverlayButtonDescriptors,
   type DetailPortraitKind,
   type ResultOverlayButtonDescriptor,
   type ResultOverlayButtonDescriptorOptions
 } from './hudShared';
+import { resolveDetailAccentColor } from './hudShared';
 import { resolveSharedBattleResultOverlayLayout } from './hudLayout';
+import { createUiSubGrid } from '../scenes/components/UiGrid';
 
 export interface DetailPanelLayoutMetrics {
   contentBounds: Phaser.Geom.Rectangle;
@@ -139,6 +149,40 @@ interface SharedMapTitlePanelsOptions {
   headerMenuOptionBounds: readonly Phaser.Geom.Rectangle[];
 }
 
+export interface SharedMapTitleLayoutOptions {
+  width: number;
+  height: number;
+  headerRect: Phaser.Geom.Rectangle;
+  mapPlaqueOffsetX: number;
+  mapIntroOffsetY: number;
+  mapIntroAlpha: number;
+  mapPlaqueAlpha: number;
+  mapIntroVisible: boolean;
+  hudVisible: boolean;
+  mapPlaqueTitleText: Phaser.GameObjects.Text;
+  mapPlaqueMetaText: Phaser.GameObjects.Text;
+  mapObjectiveText: Phaser.GameObjects.Text;
+  mapIntroArt: Phaser.GameObjects.Image;
+  mapIntroArtMask: Phaser.GameObjects.Graphics;
+  mapIntroArtBounds: Phaser.Geom.Rectangle;
+  mapIntroArtImageBounds: Phaser.Geom.Rectangle;
+  mapIntroTextBounds: Phaser.Geom.Rectangle;
+  mapIntroBounds: Phaser.Geom.Rectangle;
+  mapIntroEyebrowBounds: Phaser.Geom.Rectangle;
+  mapObjectiveBoxBounds: Phaser.Geom.Rectangle;
+  mapIntroEyebrowText: Phaser.GameObjects.Text;
+  mapIntroTitleText: Phaser.GameObjects.Text;
+  mapIntroMetaText: Phaser.GameObjects.Text;
+  mapIntroFlavorText: Phaser.GameObjects.Text;
+  headerMenuTitleText: Phaser.GameObjects.Text;
+  headerMenuButtonBounds: Phaser.Geom.Rectangle;
+  headerMenuPanelBounds: Phaser.Geom.Rectangle;
+  headerMenuOptionBounds: readonly Phaser.Geom.Rectangle[];
+  headerMenuOptionTexts: Phaser.GameObjects.Text[];
+  headerMenuActionCount: number;
+  headerMenuOpen: boolean;
+}
+
 interface SharedBattleHudPanelsOptions {
   graphics: Phaser.GameObjects.Graphics;
   viewportWidth: number;
@@ -169,6 +213,41 @@ interface SharedBattleHudPanelsOptions {
 interface SharedBattleResultOverlayButton {
   bounds: Phaser.Geom.Rectangle;
   labelText: Phaser.GameObjects.Text;
+}
+
+interface SharedDetailPlaqueFrameOptions extends Omit<SharedDetailPlaqueOptions, 'accentColor'> {
+  focusUnitTeam?: BattleUnit['team'] | null;
+  isExplorationMode?: boolean;
+  inspectionUnitTeam?: BattleUnit['team'] | null;
+  inspectionNpcHostile?: boolean | null;
+  inspectionTileVisible?: boolean;
+}
+
+interface SharedBattleResultOverlayFrameOptions extends Omit<
+  SharedBattleResultOverlayOptions,
+  'eyebrowText' | 'bodyText' | 'buttonDescriptorOptions'
+> {
+  isWorldEncounterBattle: boolean;
+}
+
+interface SharedDetailPanelLayoutOptions {
+  panel: Phaser.Geom.Rectangle;
+  alpha: number;
+  visible: boolean;
+  portraitVisible: boolean;
+  activeBadge: Phaser.GameObjects.Text;
+  detailMetaText: Phaser.GameObjects.Text;
+  detailTitleText: Phaser.GameObjects.Text;
+  detailBodyText: Phaser.GameObjects.Text;
+  detailStatTexts: Phaser.GameObjects.Text[];
+  detailStatChipBounds: Phaser.Geom.Rectangle[];
+  detailHealthBarBounds: Phaser.Geom.Rectangle;
+  detailBodyBoxBounds: Phaser.Geom.Rectangle;
+  portraitPanel: Phaser.Geom.Rectangle;
+  portrait: Phaser.GameObjects.Image;
+  portraitMask: Phaser.GameObjects.Graphics;
+  metrics: DetailPanelLayoutMetrics;
+  onSyncPortrait: () => void;
 }
 
 export interface SharedBattleResultOverlayOptions {
@@ -300,9 +379,175 @@ export function measureDetailPanelLayout({
   };
 }
 
+export function clearSharedDetailPanelLayout({
+  detailBodyBoxBounds,
+  detailHealthBarBounds,
+  detailStatChipBounds,
+  activeBadge,
+  detailMetaText,
+  detailTitleText,
+  detailBodyText,
+  portrait,
+  portraitMask,
+  detailStatTexts
+}: Pick<
+  SharedDetailPanelLayoutOptions,
+  | 'detailBodyBoxBounds'
+  | 'detailHealthBarBounds'
+  | 'detailStatChipBounds'
+  | 'activeBadge'
+  | 'detailMetaText'
+  | 'detailTitleText'
+  | 'detailBodyText'
+  | 'portrait'
+  | 'portraitMask'
+  | 'detailStatTexts'
+>): void {
+  detailBodyBoxBounds.setTo(0, 0, 0, 0);
+  detailHealthBarBounds.setTo(0, 0, 0, 0);
+  for (const bounds of detailStatChipBounds) {
+    bounds.setTo(0, 0, 0, 0);
+  }
+  activeBadge.setVisible(false).setAlpha(0);
+  detailMetaText.setVisible(false).setAlpha(0);
+  detailTitleText.setVisible(false).setAlpha(0);
+  detailBodyText.setVisible(false).setAlpha(0);
+  portrait.setVisible(false).setAlpha(0);
+  portraitMask.clear();
+  for (const text of detailStatTexts) {
+    text.setVisible(false).setAlpha(0);
+  }
+}
+
+export function applySharedDetailPanelLayout({
+  panel,
+  alpha,
+  visible,
+  portraitVisible,
+  activeBadge,
+  detailMetaText,
+  detailTitleText,
+  detailBodyText,
+  detailStatTexts,
+  detailStatChipBounds,
+  detailHealthBarBounds,
+  detailBodyBoxBounds,
+  portraitPanel,
+  portrait,
+  portraitMask,
+  metrics,
+  onSyncPortrait
+}: SharedDetailPanelLayoutOptions): void {
+  BattleUiChrome.layoutHeaderTitle(activeBadge, panel, 'narrow');
+  activeBadge.setAlpha(alpha).setVisible(visible);
+
+  detailMetaText
+    .setPosition(metrics.infoBounds.x, 0)
+    .setAlpha(alpha)
+    .setVisible(visible);
+  detailTitleText
+    .setPosition(metrics.infoBounds.x, 0)
+    .setAlpha(alpha)
+    .setVisible(visible);
+  detailBodyText.setAlpha(alpha).setVisible(visible);
+  for (const text of detailStatTexts) {
+    text.setAlpha(alpha).setVisible(visible && text.text.length > 0);
+  }
+
+  detailMetaText.setY(metrics.metaY);
+  detailTitleText.setY(metrics.titleY);
+  detailHealthBarBounds.setTo(
+    metrics.healthBarBounds.x,
+    metrics.healthBarBounds.y,
+    metrics.healthBarBounds.width,
+    metrics.healthBarBounds.height
+  );
+
+  for (const [index, text] of detailStatTexts.entries()) {
+    const position = metrics.statPositions[index];
+    const chipBounds = metrics.statChipBounds[index];
+    detailStatChipBounds[index].setTo(chipBounds.x, chipBounds.y, chipBounds.width, chipBounds.height);
+
+    if (!position || !text.text) {
+      detailStatChipBounds[index].setTo(0, 0, 0, 0);
+      continue;
+    }
+
+    text.setPosition(position.x, position.y);
+  }
+
+  portraitPanel.setTo(
+    metrics.portraitBounds.x,
+    metrics.portraitBounds.y,
+    metrics.portraitBounds.width,
+    metrics.portraitBounds.height
+  );
+  detailBodyBoxBounds.setTo(
+    metrics.bodyBoxBounds.x,
+    metrics.bodyBoxBounds.y,
+    metrics.bodyBoxBounds.width,
+    metrics.bodyBoxBounds.height
+  );
+  detailBodyText.setPosition(metrics.bodyTextX, metrics.bodyTextY);
+  onSyncPortrait();
+  portrait
+    .setPosition(portraitPanel.centerX, portraitPanel.centerY)
+    .setAlpha(alpha)
+    .setVisible(visible && portraitVisible);
+  portraitMask.clear();
+  if (visible && portraitVisible) {
+    portraitMask.fillStyle(0xffffff, 1);
+    portraitMask.fillRoundedRect(
+      portraitPanel.x,
+      portraitPanel.y,
+      portraitPanel.width,
+      portraitPanel.height,
+      UI_INSET_RADIUS
+    );
+  }
+  portraitMask.setVisible(false);
+}
+
 export function clearDetailPortrait(image: Phaser.GameObjects.Image, mask: Phaser.GameObjects.Graphics): void {
   image.setVisible(false);
   mask.clear().setVisible(false);
+}
+
+export interface SharedDetailPortraitDescriptor {
+  textureKey: string;
+  kind: DetailPortraitKind;
+  flipX: boolean;
+}
+
+export interface SyncDetailPortraitOptions {
+  image: Phaser.GameObjects.Image;
+  mask: Phaser.GameObjects.Graphics;
+  panel: Phaser.Geom.Rectangle;
+  descriptor: SharedDetailPortraitDescriptor | null;
+  visible: boolean;
+}
+
+export function syncDetailPortrait({
+  image,
+  mask,
+  panel,
+  descriptor,
+  visible
+}: SyncDetailPortraitOptions): void {
+  if (!descriptor || panel.width <= 0 || panel.height <= 0 || !visible) {
+    clearDetailPortrait(image, mask);
+    return;
+  }
+
+  renderDetailPortrait({
+    image,
+    mask,
+    panel,
+    textureKey: descriptor.textureKey,
+    kind: descriptor.kind,
+    flipX: descriptor.flipX,
+    visible
+  });
 }
 
 export function renderDetailPortrait({
@@ -501,6 +746,26 @@ export function drawSharedDetailPlaque({
   }
 }
 
+export function drawSharedDetailPlaqueFrame({
+  focusUnitTeam = null,
+  isExplorationMode = false,
+  inspectionUnitTeam = null,
+  inspectionNpcHostile = null,
+  inspectionTileVisible = false,
+  ...options
+}: SharedDetailPlaqueFrameOptions): void {
+  drawSharedDetailPlaque({
+    ...options,
+    accentColor: resolveDetailAccentColor({
+      focusUnitTeam,
+      isExplorationMode,
+      inspectionUnitTeam,
+      inspectionNpcHostile,
+      inspectionTileVisible
+    })
+  });
+}
+
 export function drawSharedPortraitFrame(
   graphics: Phaser.GameObjects.Graphics,
   panel: Phaser.Geom.Rectangle,
@@ -688,6 +953,252 @@ export function drawSharedMapTitlePanels({
   }
 }
 
+export function applySharedMapTitleLayout({
+  width,
+  height,
+  headerRect,
+  mapPlaqueOffsetX,
+  mapIntroOffsetY,
+  mapIntroAlpha,
+  mapPlaqueAlpha,
+  mapIntroVisible,
+  hudVisible,
+  mapPlaqueTitleText,
+  mapPlaqueMetaText,
+  mapObjectiveText,
+  mapIntroArt,
+  mapIntroArtMask,
+  mapIntroArtBounds,
+  mapIntroArtImageBounds,
+  mapIntroTextBounds,
+  mapIntroBounds,
+  mapIntroEyebrowBounds,
+  mapObjectiveBoxBounds,
+  mapIntroEyebrowText,
+  mapIntroTitleText,
+  mapIntroMetaText,
+  mapIntroFlavorText,
+  headerMenuTitleText,
+  headerMenuButtonBounds,
+  headerMenuPanelBounds,
+  headerMenuOptionBounds,
+  headerMenuOptionTexts,
+  headerMenuActionCount,
+  headerMenuOpen
+}: SharedMapTitleLayoutOptions): void {
+  const introVisible = mapIntroAlpha > 0.01;
+  const introMargin = width <= 540 ? 18 : 28;
+  const portraitIntro = height >= width;
+  const shortLandscapeIntro = width > height && height < 620;
+  const introTextInsetX = 18;
+  const introTextInsetY = 18;
+  const introTextGap = UI_PANEL_TIGHT_GAP;
+  const introGap = portraitIntro ? 12 : 18;
+  const introGroupWidth = Phaser.Math.Clamp(
+    width - introMargin * 2,
+    320,
+    portraitIntro ? 400 : shortLandscapeIntro ? 760 : 900
+  );
+  const introArtWidth = portraitIntro
+    ? introGroupWidth
+    : Phaser.Math.Clamp(Math.round(introGroupWidth * (shortLandscapeIntro ? 0.6 : 0.62)), 420, 600);
+  const introArtHeight = portraitIntro
+    ? Phaser.Math.Clamp(Math.round(height * 0.24), 168, 208)
+    : shortLandscapeIntro
+      ? 164
+      : 196;
+  const introTextWidth = portraitIntro
+    ? Math.min(introArtWidth - 24, 360)
+    : Phaser.Math.Clamp(introGroupWidth - introArtWidth - introGap, 270, 340);
+  const introTextInnerWidth = Math.max(180, introTextWidth - introTextInsetX * 2);
+
+  mapIntroMetaText.setWordWrapWidth(introTextInnerWidth, true);
+  mapIntroFlavorText.setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
+
+  const eyebrowWidth = Phaser.Math.Clamp(mapIntroEyebrowText.width + 28, 132, introTextInnerWidth);
+  const eyebrowHeight = Math.max(24, mapIntroEyebrowText.height + 10);
+  const summaryBoxHeight = Math.max(34, mapIntroFlavorText.height + UI_PANEL_COMPACT_INSET * 2);
+  const introTextHeight = Math.ceil(
+    introTextInsetY +
+    eyebrowHeight +
+    introTextGap +
+    mapIntroTitleText.height +
+    UI_PANEL_MICRO_GAP +
+    mapIntroMetaText.height +
+    UI_PANEL_GAP +
+    summaryBoxHeight +
+    introTextInsetY
+  );
+  const introGroupHeight = portraitIntro
+    ? introArtHeight + introGap + introTextHeight
+    : Math.max(introArtHeight, introTextHeight);
+  const introTop = Phaser.Math.Clamp(
+    Math.round(height * (portraitIntro ? 0.11 : 0.14)) + mapIntroOffsetY,
+    36 + mapIntroOffsetY,
+    Math.max(36 + mapIntroOffsetY, height - introGroupHeight - 48)
+  );
+  const introLeft = Math.round((width - introGroupWidth) * 0.5);
+
+  if (portraitIntro) {
+    mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
+    mapIntroTextBounds.setTo(
+      Math.round((width - introTextWidth) * 0.5),
+      mapIntroArtBounds.bottom + introGap,
+      introTextWidth,
+      introTextHeight
+    );
+  } else {
+    mapIntroArtBounds.setTo(introLeft, introTop, introArtWidth, introArtHeight);
+    mapIntroTextBounds.setTo(
+      mapIntroArtBounds.right + introGap,
+      Math.round(introTop + Math.max(0, (introArtHeight - introTextHeight) * 0.5)),
+      introTextWidth,
+      introTextHeight
+    );
+  }
+
+  const introGroupLeft = Math.min(mapIntroArtBounds.x, mapIntroTextBounds.x);
+  const introGroupTop = Math.min(mapIntroArtBounds.y, mapIntroTextBounds.y);
+  const introGroupRight = Math.max(mapIntroArtBounds.right, mapIntroTextBounds.right);
+  const introGroupBottom = Math.max(mapIntroArtBounds.bottom, mapIntroTextBounds.bottom);
+  mapIntroArtImageBounds.setTo(
+    mapIntroArtBounds.x,
+    mapIntroArtBounds.y,
+    mapIntroArtBounds.width,
+    mapIntroArtBounds.height
+  );
+  mapIntroBounds.setTo(
+    introGroupLeft,
+    introGroupTop,
+    introGroupRight - introGroupLeft,
+    introGroupBottom - introGroupTop
+  );
+
+  const introTextGrid = createUiSubGrid(
+    mapIntroTextBounds,
+    1,
+    introTextInsetX,
+    introTextInsetY,
+    introTextGap
+  );
+  const headerPanel = new Phaser.Geom.Rectangle(
+    headerRect.x + mapPlaqueOffsetX,
+    headerRect.y,
+    headerRect.width,
+    headerRect.height
+  );
+  const plaqueContentBounds = BattleUiChrome.getContentBounds(headerPanel, 'narrow');
+  const plaqueGrid = createUiSubGrid(plaqueContentBounds, 1, 0, 0, UI_PANEL_MINI_GAP);
+
+  mapIntroEyebrowText
+    .setPosition(plaqueContentBounds.x, plaqueContentBounds.y)
+    .setAlpha(mapPlaqueAlpha)
+    .setVisible(false);
+  BattleUiChrome.layoutHeaderTitle(mapPlaqueTitleText, headerPanel, 'narrow');
+  mapPlaqueTitleText
+    .setAlpha(mapPlaqueAlpha)
+    .setVisible(hudVisible && mapPlaqueAlpha > 0.01);
+  mapPlaqueMetaText
+    .setPosition(plaqueGrid.content.x, plaqueGrid.content.y)
+    .setAlpha(mapPlaqueAlpha)
+    .setVisible(hudVisible && mapPlaqueAlpha > 0.01);
+  mapObjectiveText
+    .setPosition(plaqueGrid.content.x, mapPlaqueMetaText.y + mapPlaqueMetaText.height + plaqueGrid.gutter)
+    .setWordWrapWidth(plaqueGrid.content.width, true)
+    .setAlpha(mapPlaqueAlpha)
+    .setVisible(hudVisible && mapPlaqueAlpha > 0.01);
+  headerMenuButtonBounds.setTo(
+    hudVisible ? headerPanel.x : 0,
+    hudVisible ? headerPanel.y : 0,
+    hudVisible ? headerPanel.width : 0,
+    hudVisible ? headerPanel.height : 0
+  );
+  headerMenuTitleText.setVisible(hudVisible && headerMenuOpen);
+  headerMenuPanelBounds.setTo(
+    Math.round((width - 248) * 0.5),
+    Math.round((height - (UI_NARROW_PLAQUE_HEADER_HEIGHT + UI_PANEL_CONTENT_GAP + headerMenuActionCount * 30 + Math.max(0, headerMenuActionCount - 1) * UI_PANEL_COMPACT_GAP + UI_PANEL_CONTENT_INSET)) * 0.5),
+    248,
+    UI_NARROW_PLAQUE_HEADER_HEIGHT + UI_PANEL_CONTENT_GAP + headerMenuActionCount * 30 + Math.max(0, headerMenuActionCount - 1) * UI_PANEL_COMPACT_GAP + UI_PANEL_CONTENT_INSET
+  );
+  const menuContentBounds = BattleUiChrome.getContentBounds(headerMenuPanelBounds, 'narrow');
+  const menuGrid = createUiSubGrid(menuContentBounds, 1, 0, 0, UI_PANEL_COMPACT_GAP);
+  BattleUiChrome.layoutHeaderTitle(headerMenuTitleText, headerMenuPanelBounds, 'narrow').setVisible(hudVisible && headerMenuOpen);
+
+  for (const [index, text] of headerMenuOptionTexts.entries()) {
+    const optionBounds = headerMenuOptionBounds[index];
+    if (index >= headerMenuActionCount) {
+      optionBounds.setTo(0, 0, 0, 0);
+      text.setVisible(false);
+      continue;
+    }
+
+    const rowBounds = menuGrid.band(menuGrid.content.y + index * (30 + menuGrid.gutter), 30);
+    optionBounds.setTo(rowBounds.x, rowBounds.y, rowBounds.width, rowBounds.height);
+    text
+      .setPosition(optionBounds.x + UI_PANEL_COMPACT_INSET, optionBounds.centerY)
+      .setOrigin(0, 0.5)
+      .setVisible(hudVisible && headerMenuOpen);
+  }
+
+  mapIntroEyebrowBounds.setTo(
+    introTextGrid.content.x,
+    introTextGrid.content.y,
+    eyebrowWidth,
+    eyebrowHeight
+  );
+  const introTitleBand = introTextGrid.band(mapIntroEyebrowBounds.bottom + introTextGap, mapIntroTitleText.height);
+  const introMetaBand = introTextGrid.band(introTitleBand.bottom + UI_PANEL_MICRO_GAP, mapIntroMetaText.height);
+  mapObjectiveBoxBounds.setTo(
+    introTextGrid.content.x,
+    introMetaBand.bottom + UI_PANEL_GAP,
+    introTextGrid.content.width,
+    summaryBoxHeight
+  );
+  const introFlavorBand = introTextGrid.band(
+    mapObjectiveBoxBounds.y + UI_PANEL_COMPACT_INSET,
+    mapIntroFlavorText.height
+  );
+
+  const introFrame = mapIntroArt.frame;
+  if (introFrame) {
+    const artVisible = mapIntroAlpha > 0.01;
+    mapIntroArt
+      .setCrop(0, 0, introFrame.width, introFrame.height)
+      .setDisplaySize(mapIntroArtImageBounds.width, mapIntroArtImageBounds.height)
+      .setPosition(mapIntroArtImageBounds.centerX, mapIntroArtImageBounds.centerY)
+      .setAlpha(mapIntroAlpha)
+      .setTint(0xffffff)
+      .setVisible(artVisible);
+    mapIntroArtMask.clear();
+    mapIntroArtMask.setPosition(mapIntroArtImageBounds.x, mapIntroArtImageBounds.y);
+    mapIntroArtMask.fillStyle(0xffffff, 1);
+    mapIntroArtMask.fillRoundedRect(0, 0, mapIntroArtImageBounds.width, mapIntroArtImageBounds.height, 24);
+  }
+
+  mapIntroEyebrowText
+    .setOrigin(0, 0.5)
+    .setPosition(mapIntroEyebrowBounds.x + 14, mapIntroEyebrowBounds.centerY)
+    .setAlpha(mapIntroAlpha)
+    .setVisible(introVisible);
+  mapIntroTitleText
+    .setOrigin(0, 0)
+    .setPosition(introTextGrid.content.x, introTitleBand.y)
+    .setAlpha(mapIntroAlpha)
+    .setVisible(introVisible);
+  mapIntroMetaText
+    .setOrigin(0, 0)
+    .setPosition(introTextGrid.content.x, introMetaBand.y)
+    .setAlpha(mapIntroAlpha)
+    .setVisible(introVisible)
+    .setWordWrapWidth(introTextInnerWidth, true);
+  mapIntroFlavorText
+    .setOrigin(0, 0)
+    .setPosition(mapObjectiveBoxBounds.x + UI_PANEL_COMPACT_INSET, introFlavorBand.y)
+    .setAlpha(mapIntroAlpha)
+    .setVisible(introVisible)
+    .setWordWrapWidth(introTextInnerWidth - UI_PANEL_COMPACT_INSET * 2, true);
+}
+
 export function drawSharedBattleHudPanels({
   graphics,
   viewportWidth,
@@ -858,4 +1369,20 @@ export function drawSharedBattleResultOverlay({
     .setOrigin(portraitLayout ? 0.5 : 0, 0)
     .setStyle({ align: portraitLayout ? 'center' : 'left' })
     .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 360), true);
+}
+
+export function drawSharedBattleResultOverlayFrame({
+  isWorldEncounterBattle,
+  result,
+  ...options
+}: SharedBattleResultOverlayFrameOptions): void {
+  const overlayCopy = createBattleResultOverlayCopy(result, isWorldEncounterBattle);
+
+  drawSharedBattleResultOverlay({
+    ...options,
+    result,
+    eyebrowText: overlayCopy.eyebrowText,
+    bodyText: overlayCopy.bodyText,
+    buttonDescriptorOptions: createBattleResultOverlayButtonDescriptorOptions(overlayCopy.secondaryLabel)
+  });
 }

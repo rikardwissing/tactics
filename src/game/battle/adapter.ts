@@ -8,7 +8,6 @@ export interface BattleSceneAdapter {
   invalidateHighlights(): void;
   invalidateLighting(): void;
   invalidateTurnOrder(): void;
-  invalidateBattleShell(): void;
   restartBattle(): Promise<void>;
   returnFromBattle(): Promise<void>;
 }
