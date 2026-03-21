@@ -53,6 +53,21 @@ export interface SharedBattleChromeLayout {
   };
 }
 
+export interface SharedBattleResultOverlayLayout {
+  panelBounds: Phaser.Geom.Rectangle;
+  artBounds: Phaser.Geom.Rectangle;
+  copyX: number;
+  copyTop: number;
+  bodyY: number;
+  buttonX: number;
+  buttonAreaY: number;
+  buttonWidth: number;
+  buttonHeight: number;
+  buttonGap: number;
+  copyWidth: number;
+  portraitLayout: boolean;
+}
+
 export function resolveSharedBattleDetailPanelWidth(viewportWidth: number): number {
   const maxWidth = Math.max(DETAIL_PANEL_MIN_WIDTH, viewportWidth - UI_SCREEN_MARGIN * 2);
   return Math.round(Phaser.Math.Clamp(DETAIL_PANEL_FIXED_WIDTH, DETAIL_PANEL_MIN_WIDTH, maxWidth));
@@ -196,5 +211,55 @@ export function resolveSharedBattleChromeLayout(
         detail: SHARED_BATTLE_ACTION_MENU_ROOT_WIDTH
       }
     }
+  };
+}
+
+export function resolveSharedBattleResultOverlayLayout(
+  viewportWidth: number,
+  viewportHeight: number
+): SharedBattleResultOverlayLayout {
+  const grid = createUiGrid(viewportWidth, viewportHeight, viewportWidth >= viewportHeight ? 12 : 4);
+  const portraitLayout = viewportHeight > viewportWidth;
+  const panelWidth = portraitLayout
+    ? Math.min(grid.content.width, 430)
+    : Math.min(grid.content.width, 920);
+  const panelHeight = portraitLayout
+    ? Math.min(grid.content.height, 610)
+    : Math.min(grid.content.height, 430);
+  const panelX = Math.round(grid.content.centerX - panelWidth / 2);
+  const panelY = Math.round(grid.content.centerY - panelHeight / 2);
+  const panelBounds = new Phaser.Geom.Rectangle(panelX, panelY, Math.round(panelWidth), Math.round(panelHeight));
+  const contentInsetX = 22;
+  const contentInsetY = 18;
+  const contentX = panelBounds.x + contentInsetX;
+  const contentY = panelBounds.y + contentInsetY;
+  const contentWidth = panelBounds.width - contentInsetX * 2;
+  const buttonAreaY = portraitLayout ? panelBounds.bottom - 166 : panelBounds.bottom - 98;
+  const artTop = contentY + 72;
+  const artHeight = portraitLayout ? 170 : Math.max(148, buttonAreaY - artTop - 14);
+  const artWidth = portraitLayout ? contentWidth : Math.round(Math.min(330, panelBounds.width * 0.38));
+  const artBounds = new Phaser.Geom.Rectangle(contentX, artTop, Math.round(artWidth), Math.round(artHeight));
+  const copyX = portraitLayout ? panelBounds.centerX : artBounds.right + 22;
+  const copyWidth = portraitLayout ? contentWidth : Math.max(180, panelBounds.right - 22 - copyX);
+  const copyTop = portraitLayout ? artBounds.bottom + 18 : artBounds.y + 8;
+  const bodyY = copyTop + 78;
+  const buttonHeight = portraitLayout ? 60 : 74;
+  const buttonGap = 14;
+  const buttonWidth = portraitLayout ? contentWidth : Math.floor((copyWidth - buttonGap) / 2);
+  const buttonX = portraitLayout ? contentX : copyX;
+
+  return {
+    panelBounds,
+    artBounds,
+    copyX,
+    copyTop,
+    bodyY,
+    buttonX,
+    buttonAreaY,
+    buttonWidth,
+    buttonHeight,
+    buttonGap,
+    copyWidth,
+    portraitLayout
   };
 }

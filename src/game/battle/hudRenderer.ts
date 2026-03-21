@@ -11,11 +11,13 @@ import {
 import {
   UI_COLOR_OVERLAY,
   UI_COLOR_ACCENT_NEUTRAL,
+  UI_COLOR_ACCENT_DANGER,
   UI_COLOR_ACCENT_WARM,
   UI_COLOR_PANEL_BORDER,
+  UI_COLOR_PANEL_SHADOW,
   UI_COLOR_PANEL_SURFACE,
   UI_COLOR_PANEL_SURFACE_ALT,
-  UI_COLOR_PANEL_SHADOW
+  UI_COLOR_TEXT
 } from '../scenes/components/UiColors';
 import {
   DETAIL_PANEL_BODY_PADDING_X,
@@ -31,8 +33,13 @@ import {
   DETAIL_PANEL_STAT_ROW_GAP,
   DETAIL_PANEL_TITLE_GAP,
   DETAIL_PANEL_TOP_PADDING_Y,
-  type DetailPortraitKind
+  coverImageBounds,
+  createResultOverlayButtonDescriptors,
+  type DetailPortraitKind,
+  type ResultOverlayButtonDescriptor,
+  type ResultOverlayButtonDescriptorOptions
 } from './hudShared';
+import { resolveSharedBattleResultOverlayLayout } from './hudLayout';
 
 export interface DetailPanelLayoutMetrics {
   contentBounds: Phaser.Geom.Rectangle;
@@ -107,6 +114,79 @@ interface SharedMapTitleIntroOptions {
   eyebrowBounds: Phaser.Geom.Rectangle;
   objectiveBounds: Phaser.Geom.Rectangle;
   alpha: number;
+}
+
+interface SharedMapTitlePanelsOptions {
+  graphics: Phaser.GameObjects.Graphics;
+  viewportWidth: number;
+  viewportHeight: number;
+  headerPanel: Phaser.Geom.Rectangle;
+  mapPlaqueArt: Phaser.GameObjects.Image;
+  mapPlaqueArtMask: Phaser.GameObjects.Graphics;
+  mapPlaqueAlpha: number;
+  mapPlaqueVisible: boolean;
+  introOverlayShade: Phaser.GameObjects.Rectangle;
+  mapIntroArt: Phaser.GameObjects.Image;
+  mapIntroArtMask: Phaser.GameObjects.Graphics;
+  mapIntroArtBounds: Phaser.Geom.Rectangle;
+  mapIntroTextBounds: Phaser.Geom.Rectangle;
+  mapIntroEyebrowBounds: Phaser.Geom.Rectangle;
+  mapObjectiveBoxBounds: Phaser.Geom.Rectangle;
+  mapIntroAlpha: number;
+  mapIntroVisible: boolean;
+  headerMenuOpen: boolean;
+  headerMenuPanelBounds: Phaser.Geom.Rectangle;
+  headerMenuOptionBounds: readonly Phaser.Geom.Rectangle[];
+}
+
+interface SharedBattleHudPanelsOptions {
+  graphics: Phaser.GameObjects.Graphics;
+  viewportWidth: number;
+  viewportHeight: number;
+  headerPanel: Phaser.Geom.Rectangle;
+  mapPlaqueArt: Phaser.GameObjects.Image;
+  mapPlaqueArtMask: Phaser.GameObjects.Graphics;
+  mapPlaqueAlpha: number;
+  mapPlaqueVisible: boolean;
+  introOverlayShade: Phaser.GameObjects.Rectangle;
+  mapIntroArt: Phaser.GameObjects.Image;
+  mapIntroArtMask: Phaser.GameObjects.Graphics;
+  mapIntroArtBounds: Phaser.Geom.Rectangle;
+  mapIntroTextBounds: Phaser.Geom.Rectangle;
+  mapIntroEyebrowBounds: Phaser.Geom.Rectangle;
+  mapObjectiveBoxBounds: Phaser.Geom.Rectangle;
+  mapIntroAlpha: number;
+  mapIntroVisible: boolean;
+  headerMenuOpen: boolean;
+  headerMenuPanelBounds: Phaser.Geom.Rectangle;
+  headerMenuOptionBounds: readonly Phaser.Geom.Rectangle[];
+  drawDetailPanel: () => void;
+  shouldDrawPortraitFrame: boolean;
+  portraitPanel: Phaser.Geom.Rectangle;
+  portraitAlpha: number;
+}
+
+interface SharedBattleResultOverlayButton {
+  bounds: Phaser.Geom.Rectangle;
+  labelText: Phaser.GameObjects.Text;
+}
+
+export interface SharedBattleResultOverlayOptions {
+  overlayShade: Phaser.GameObjects.Rectangle;
+  panel: Phaser.GameObjects.Graphics;
+  art: Phaser.GameObjects.Image;
+  artMask: Phaser.GameObjects.Graphics;
+  eyebrow: Phaser.GameObjects.Text;
+  title: Phaser.GameObjects.Text;
+  body: Phaser.GameObjects.Text;
+  buttons: readonly SharedBattleResultOverlayButton[];
+  result: 'Victory' | 'Defeat';
+  viewportWidth: number;
+  viewportHeight: number;
+  panelBoundsTarget?: Phaser.Geom.Rectangle;
+  eyebrowText: string;
+  bodyText: string;
+  buttonDescriptorOptions: ResultOverlayButtonDescriptorOptions;
 }
 
 export function measureDetailPanelLayout({
@@ -544,4 +624,238 @@ export function drawSharedMapTitleIntro({
       radius: UI_INSET_RADIUS
     });
   }
+}
+
+export function drawSharedMapTitlePanels({
+  graphics,
+  viewportWidth,
+  viewportHeight,
+  headerPanel,
+  mapPlaqueArt,
+  mapPlaqueArtMask,
+  mapPlaqueAlpha,
+  mapPlaqueVisible,
+  introOverlayShade,
+  mapIntroArt,
+  mapIntroArtMask,
+  mapIntroArtBounds,
+  mapIntroTextBounds,
+  mapIntroEyebrowBounds,
+  mapObjectiveBoxBounds,
+  mapIntroAlpha,
+  mapIntroVisible,
+  headerMenuOpen,
+  headerMenuPanelBounds,
+  headerMenuOptionBounds
+}: SharedMapTitlePanelsOptions): void {
+  if (mapPlaqueVisible && mapPlaqueAlpha > 0.01 && headerPanel.width > 0 && headerPanel.height > 0) {
+    drawSharedMapPlaque({
+      graphics,
+      art: mapPlaqueArt,
+      artMask: mapPlaqueArtMask,
+      panel: headerPanel,
+      alpha: mapPlaqueAlpha
+    });
+  } else {
+    mapPlaqueArt.setVisible(false);
+    mapPlaqueArtMask.clear().setVisible(false);
+  }
+
+  if (mapIntroVisible && mapIntroAlpha > 0.01) {
+    drawSharedMapTitleIntro({
+      graphics,
+      overlayShade: introOverlayShade,
+      artBounds: mapIntroArtBounds,
+      textBounds: mapIntroTextBounds,
+      eyebrowBounds: mapIntroEyebrowBounds,
+      objectiveBounds: mapObjectiveBoxBounds,
+      alpha: mapIntroAlpha
+    });
+  } else {
+    introOverlayShade.setAlpha(0);
+    mapIntroArt.setVisible(false);
+    mapIntroArtMask.clear().setVisible(false);
+  }
+
+  if (headerMenuOpen) {
+    drawSharedHeaderMenuOverlay({
+      graphics,
+      viewportWidth,
+      viewportHeight,
+      panel: headerMenuPanelBounds,
+      optionBounds: headerMenuOptionBounds
+    });
+  }
+}
+
+export function drawSharedBattleHudPanels({
+  graphics,
+  viewportWidth,
+  viewportHeight,
+  headerPanel,
+  mapPlaqueArt,
+  mapPlaqueArtMask,
+  mapPlaqueAlpha,
+  mapPlaqueVisible,
+  introOverlayShade,
+  mapIntroArt,
+  mapIntroArtMask,
+  mapIntroArtBounds,
+  mapIntroTextBounds,
+  mapIntroEyebrowBounds,
+  mapObjectiveBoxBounds,
+  mapIntroAlpha,
+  mapIntroVisible,
+  headerMenuOpen,
+  headerMenuPanelBounds,
+  headerMenuOptionBounds,
+  drawDetailPanel,
+  shouldDrawPortraitFrame,
+  portraitPanel,
+  portraitAlpha
+}: SharedBattleHudPanelsOptions): void {
+  graphics.clear();
+  drawSharedMapTitlePanels({
+    graphics,
+    viewportWidth,
+    viewportHeight,
+    headerPanel,
+    mapPlaqueArt,
+    mapPlaqueArtMask,
+    mapPlaqueAlpha,
+    mapPlaqueVisible,
+    introOverlayShade,
+    mapIntroArt,
+    mapIntroArtMask,
+    mapIntroArtBounds,
+    mapIntroTextBounds,
+    mapIntroEyebrowBounds,
+    mapObjectiveBoxBounds,
+    mapIntroAlpha,
+    mapIntroVisible,
+    headerMenuOpen,
+    headerMenuPanelBounds,
+    headerMenuOptionBounds
+  });
+  drawDetailPanel();
+  if (shouldDrawPortraitFrame && portraitAlpha > 0.01) {
+    drawSharedPortraitFrame(graphics, portraitPanel, portraitAlpha);
+  }
+}
+
+export function drawSharedBattleResultOverlay({
+  overlayShade,
+  panel,
+  art,
+  artMask,
+  eyebrow,
+  title,
+  body,
+  buttons,
+  result,
+  viewportWidth,
+  viewportHeight,
+  panelBoundsTarget,
+  eyebrowText,
+  bodyText,
+  buttonDescriptorOptions
+}: SharedBattleResultOverlayOptions): void {
+  const layout = resolveSharedBattleResultOverlayLayout(viewportWidth, viewportHeight);
+  const {
+    panelBounds,
+    artBounds,
+    copyX,
+    copyTop,
+    bodyY,
+    buttonX,
+    buttonAreaY,
+    buttonWidth,
+    buttonHeight,
+    buttonGap,
+    copyWidth,
+    portraitLayout
+  } = layout;
+
+  panelBoundsTarget?.setTo(panelBounds.x, panelBounds.y, panelBounds.width, panelBounds.height);
+
+  const accentColor = result === 'Victory' ? UI_COLOR_ACCENT_WARM : UI_COLOR_ACCENT_DANGER;
+  const titleText = result.toUpperCase();
+  const titleColor = result === 'Victory' ? '#f7edd9' : '#f3d9de';
+  const eyebrowColor = result === 'Victory' ? '#f0d8a2' : '#e7a4ab';
+  const imageAlpha = result === 'Victory' ? 0.74 : 0.54;
+  const imageTint = result === 'Victory' ? 0xf0d8a2 : 0xb98696;
+
+  overlayShade
+    .setPosition(viewportWidth / 2, viewportHeight / 2)
+    .setSize(viewportWidth, viewportHeight);
+
+  panel.clear();
+  BattleUiChrome.drawPanelShell(panel, panelBounds, 1, 38, 24, accentColor);
+  BattleUiChrome.drawInsetBox(panel, artBounds, {
+    fillColor: UI_COLOR_PANEL_SURFACE_ALT,
+    fillAlpha: 0.94,
+    strokeColor: UI_COLOR_PANEL_BORDER,
+    strokeAlpha: 0.28,
+    radius: 18
+  });
+
+  artMask.clear();
+  artMask.fillStyle(0xffffff, 1);
+  artMask.fillRoundedRect(artBounds.x + 2, artBounds.y + 2, artBounds.width - 4, artBounds.height - 4, 16);
+  coverImageBounds(art, artBounds, 1.06);
+  art
+    .setVisible(true)
+    .setAlpha(imageAlpha)
+    .setTint(imageTint);
+
+  const buttonDescriptors = createResultOverlayButtonDescriptors(result, buttonDescriptorOptions);
+  for (const [index, button] of buttons.entries()) {
+    const descriptor: ResultOverlayButtonDescriptor | undefined = buttonDescriptors[index];
+    if (!descriptor) {
+      continue;
+    }
+
+    const row = portraitLayout ? index : 0;
+    const column = portraitLayout ? 0 : index;
+    button.bounds.setTo(
+      buttonX + column * (buttonWidth + buttonGap),
+      buttonAreaY + row * (buttonHeight + 12),
+      buttonWidth,
+      buttonHeight
+    );
+
+    BattleUiChrome.drawPill(panel, button.bounds, {
+      fillColor: descriptor.fillColor,
+      strokeColor: descriptor.strokeColor,
+      fillAlpha: descriptor.fillAlpha,
+      strokeAlpha: 0.56,
+      radius: 16
+    });
+
+    button.labelText
+      .setText(descriptor.label)
+      .setPosition(button.bounds.centerX, button.bounds.centerY)
+      .setOrigin(0.5, 0.5)
+      .setColor(UI_COLOR_TEXT);
+  }
+
+  eyebrow
+    .setText(eyebrowText)
+    .setPosition(copyX, copyTop)
+    .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
+    .setColor(eyebrowColor);
+  title
+    .setText(titleText)
+    .setPosition(copyX, copyTop + 28)
+    .setOrigin(portraitLayout ? 0.5 : 0, 0.5)
+    .setStyle({
+      align: portraitLayout ? 'center' : 'left',
+      color: titleColor
+    });
+  body
+    .setText(bodyText)
+    .setPosition(copyX, bodyY)
+    .setOrigin(portraitLayout ? 0.5 : 0, 0)
+    .setStyle({ align: portraitLayout ? 'center' : 'left' })
+    .setWordWrapWidth(Math.min(copyWidth, portraitLayout ? copyWidth : 360), true);
 }
