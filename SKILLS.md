@@ -20,7 +20,7 @@ This file lists the common project workflows for contributors and agents working
 
 ## 2. Add Or Change A Unit
 - Update unit data in [`src/game/levels/unitBlueprints.ts`](src/game/levels/unitBlueprints.ts).
-- If the unit needs a new ability shape or combat rule, update the relevant core types in [`src/game/core/types.ts`](src/game/core/types.ts) and combat flow in [`src/game/core/combat.ts`](src/game/core/combat.ts) or [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
+- If the unit needs a new ability shape or combat rule, update the relevant core types in [`src/game/core/types.ts`](src/game/core/types.ts) and combat flow in [`src/game/core/combat.ts`](src/game/core/combat.ts) or [`src/game/scenes/WorldScene.ts`](src/game/scenes/WorldScene.ts).
 - If the unit needs new art, add the final PNG to [`src/assets/game/units`](src/assets/game/units) and register it in [`src/game/assets.ts`](src/game/assets.ts).
 
 ## 3. Add A Runtime Asset
@@ -91,14 +91,14 @@ This file lists the common project workflows for contributors and agents working
 - same item family with totally different shape language between tiers
 
 ## 5. Adjust Map Rendering
-- Tile projection, depth sorting, highlights, props, cliffs, and lighting all live in [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
+- Tile projection, depth sorting, highlights, props, cliffs, and lighting all live in [`src/game/scenes/WorldScene.ts`](src/game/scenes/WorldScene.ts).
 - Be careful with depth ordering. Terrain-plane effects should usually sort below props and units.
 - If you add a new terrain or prop behavior, also update the level types in [`src/game/levels/types.ts`](src/game/levels/types.ts).
 
 ## 6. Add Items, Chests, Or Drops
 - Items live in [`src/game/core/items.ts`](src/game/core/items.ts).
 - Chest and prop placement data comes from level files parsed through [`src/game/levels/tiled.ts`](src/game/levels/tiled.ts).
-- Unit-owned inventory behavior is handled in [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
+- Unit-owned inventory behavior is handled in [`src/game/scenes/WorldScene.ts`](src/game/scenes/WorldScene.ts).
 
 ## 7. Audio Work
 - Music and SFX are generated in code in [`src/game/audio/audioDirector.ts`](src/game/audio/audioDirector.ts).

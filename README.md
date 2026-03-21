@@ -109,5 +109,5 @@ The deployed site target is:
 
 ## Notes
 
-- The battle scene is large and renderer-heavy for the current prototype. Production builds work, but bundle size is still on the heavy side.
+- The world scene now owns both exploration and battle mode, so it is large and renderer-heavy for the current prototype. Production builds work, but bundle size is still on the heavy side.
 - The current art and generation workflow rules are documented in [AGENTS.md](/Users/rikardwissing/Projects/tactics/AGENTS.md) and [SKILLS.md](/Users/rikardwissing/Projects/tactics/SKILLS.md).

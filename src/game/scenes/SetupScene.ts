@@ -264,8 +264,7 @@ export class SetupScene extends Phaser.Scene {
 
       audioDirector.playUiConfirm();
       this.scene.start('world', {
-        setup: this.buildBattleSetup(),
-        battleLaunchOrigin: 'setup'
+        setup: this.buildBattleSetup()
       });
     });
 

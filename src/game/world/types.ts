@@ -1,6 +1,8 @@
+import type { BattleSetup } from '../battleSetup';
 import type { BattleUnit, Point, TerrainType } from '../core/types';
 import type { MapPropPlacement } from '../levels/types';
 import type { NpcActionDefinition } from '../exploration/types';
+import type { RuntimeBattleStartData } from '../sceneSession';
 
 export type WorldAreaKind = 'outdoor' | 'interior';
 export type WorldTransitionTargetKind = 'interior' | 'spawn' | 'return';
@@ -104,6 +106,20 @@ export interface ResolvedWorldSpawn extends Point {
   areaId: string;
 }
 
+export type GameplayMode = 'exploration' | 'battle' | 'transition' | 'setup-return';
+export type GameplayBattleOrigin = 'setup' | 'world-encounter';
+
+export interface GameplayBattleContext {
+  origin: GameplayBattleOrigin;
+  encounterId: string | null;
+  setup: BattleSetup | null;
+}
+
+export interface WorldBattleSessionState {
+  context: GameplayBattleContext;
+  runtimeBattle: RuntimeBattleStartData;
+}
+
 export interface WorldSessionState {
   areaKind: WorldAreaKind;
   areaId: string;
@@ -112,6 +128,7 @@ export interface WorldSessionState {
   returnOutdoorPosition: Point | null;
   suppressedEncounterId: string | null;
   outdoorNpcStates: Record<string, OutdoorNpcSessionState | undefined>;
+  activeBattle: WorldBattleSessionState | null;
 }
 
 export interface WorldNpcRuntime

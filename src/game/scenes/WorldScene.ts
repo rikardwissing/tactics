@@ -117,9 +117,25 @@ import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getTile, getTraversalNodes, manhattanDistance, pointKey } from '../core/pathfinding';
 import type { BattleUnit, FactionId, Point, ReachNode, SpriteFacing, TileData, UnitAbility } from '../core/types';
-import { createBattleUnitFromBlueprint, createDefaultBattleSetup, createLevelMap, createLevelUnits, getLevel } from '../levels';
+import { createBattleUnitFromBlueprint, createLevelMap, createLevelUnits, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import type { LevelDefinition, MapPropPlacement } from '../levels/types';
+import {
+  createGameplayBattleSessionState,
+  createGameplayBattleState,
+  createGameplayRuntimeState,
+  type GameplayBattleState,
+  type GameplayRuntimeState
+} from '../runtime/gameplayRuntime';
+import {
+  createEncounterSuppressedSession,
+  createInteriorTransitionSession,
+  createReturnTransitionSession,
+  createSpawnTransitionSession,
+  syncInteriorSessionPlayerPosition,
+  syncOutdoorSessionPlayerPosition
+} from '../runtime/worldSessionCommands';
+import { getBattleEncounterId, isSetupBattleState, isWorldEncounterBattleState } from '../runtime/battleSelectors';
 import type {
   RuntimeBattleArenaBounds,
   RuntimeBattleIntroEntryState,
@@ -213,6 +229,7 @@ import { type WorldDynamicLightSource, WorldLightingController } from '../world/
 import { WorldSpatialIndex } from '../world/spatial';
 import { WorldStreamingController } from '../world/streaming';
 import type {
+  GameplayBattleContext,
   WorldChunkRuntime,
   WorldEncounterDefinition,
   WorldNpcRuntime,
@@ -283,13 +300,6 @@ interface ResolvedOutdoorAreaState {
   npcs: WorldNpcRuntime[];
 }
 
-interface WorldBattleState extends BattleRuntimeState {
-  encounterId: string;
-  runtimeBattle: RuntimeBattleStartData;
-  sourcePreviewActive: boolean;
-  battleOrigin: 'setup' | 'world';
-}
-
 interface CombatEffectPlayback {
   definition: CombatEffectDefinition;
   source: BattleUnit;
@@ -302,6 +312,7 @@ interface CombatEffectPlayback {
 }
 
 type DynamicLightSource = WorldDynamicLightSource<PropView>;
+type WorldBattleState = GameplayBattleState;
 
 type WorldBattleResultAction = 'retry' | 'return';
 
@@ -405,7 +416,7 @@ const TIME_OF_DAY_CONFIG: Record<
 };
 
 export class WorldScene extends Phaser.Scene {
-  private sessionState!: WorldSessionState;
+  private gameplay!: GameplayRuntimeState;
   private phase: Phase = 'idle';
   private player!: BattleUnit;
   private npcs: WorldNpcRuntime[] = [];
@@ -557,16 +568,68 @@ export class WorldScene extends Phaser.Scene {
   private npcNextMoveAt = new Map<string, number>();
   private npcPatrolIndices = new Map<string, number>();
   private movingNpcIds = new Set<string>();
-  private worldBattle: WorldBattleState | null = null;
   private battleTimeOfDay: TimeOfDayId = 'dusk';
-  private pendingSetupBattle: BattleSetup | null = null;
-  private battleLaunchOrigin: 'setup' | 'world' = 'world';
 
   constructor() {
     super('world');
   }
 
+  private get sessionState(): WorldSessionState {
+    return this.gameplay.session;
+  }
+
+  private set sessionState(value: WorldSessionState) {
+    this.gameplay.session = value;
+  }
+
+  private get worldBattle(): WorldBattleState | null {
+    return this.gameplay.battle;
+  }
+
+  private set worldBattle(value: WorldBattleState | null) {
+    this.gameplay.battle = value;
+  }
+
+  private get pendingSetupBattle(): BattleSetup | null {
+    return this.gameplay.pendingSetupBattle;
+  }
+
+  private set pendingSetupBattle(value: BattleSetup | null) {
+    this.gameplay.pendingSetupBattle = value;
+  }
+
+  private setGameplayMode(mode: GameplayRuntimeState['mode']): void {
+    this.gameplay.mode = mode;
+  }
+
+  private persistSessionState(nextSessionState: WorldSessionState): WorldSessionState {
+    const persisted = persistWorldSession(nextSessionState);
+    this.sessionState = persisted;
+    return persisted;
+  }
+
+  private syncActiveBattleSessionState(): void {
+    this.persistSessionState({
+      ...this.sessionState,
+      activeBattle: this.worldBattle
+        ? createGameplayBattleSessionState(this.worldBattle.context, this.worldBattle.runtimeBattle)
+        : null
+    });
+  }
+
   init(data?: WorldSceneStartData): void {
+    const pendingSetupBattle = data?.setup
+      ? {
+          levelId: data.setup.levelId,
+          playerAssignments: { ...data.setup.playerAssignments }
+        }
+      : null;
+    const initialSessionState = resolveWorldSceneStart(data ?? { spawnId: DEFAULT_WORLD_SPAWN_ID });
+
+    this.gameplay = createGameplayRuntimeState(initialSessionState, {
+      pendingSetupBattle,
+      ...(pendingSetupBattle ? { mode: 'transition' as const } : {})
+    });
     this.phase = 'idle';
     this.battleInspectionTarget = { kind: 'mission' };
     this.headerMenuOpen = false;
@@ -578,14 +641,6 @@ export class WorldScene extends Phaser.Scene {
     this.selectedNpcActionId = null;
     this.moveNodes.clear();
     this.messages = [];
-    this.pendingSetupBattle = data?.setup
-      ? {
-          levelId: data.setup.levelId,
-          playerAssignments: { ...data.setup.playerAssignments }
-        }
-      : null;
-    this.battleLaunchOrigin = data?.battleLaunchOrigin ?? (this.pendingSetupBattle ? 'setup' : 'world');
-    this.sessionState = resolveWorldSceneStart(data ?? { spawnId: DEFAULT_WORLD_SPAWN_ID });
     this.worldStateVersion = getWorldStateVersion();
     this.restarting = false;
     this.busy = false;
@@ -595,7 +650,6 @@ export class WorldScene extends Phaser.Scene {
     this.npcNextMoveAt.clear();
     this.npcPatrolIndices.clear();
     this.movingNpcIds.clear();
-    this.worldBattle = null;
     this.factionMottoPlayed.clear();
     this.pendingFactionMottoId = null;
     this.hudDirty = false;
@@ -630,7 +684,15 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     audioDirector.bindScene(this);
-    audioDirector.setMusic(this.pendingSetupBattle ? 'battle' : 'setup');
+    const pendingSetupBattle = this.pendingSetupBattle;
+    const resumedBattle = this.worldBattle
+      ? {
+          context: this.worldBattle.context,
+          runtimeBattle: this.worldBattle.runtimeBattle
+        }
+      : null;
+    this.pendingSetupBattle = null;
+    audioDirector.setMusic(pendingSetupBattle || resumedBattle ? 'battle' : 'setup');
     void audioDirector.unlock().catch(() => undefined);
     this.syncSceneAudioMute();
 
@@ -728,10 +790,19 @@ export class WorldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize();
 
-    if (this.pendingSetupBattle) {
+    if (pendingSetupBattle) {
       this.phase = 'transition';
       this.busy = true;
-      void this.beginBattleFromSetup(this.pendingSetupBattle);
+      this.setGameplayMode('transition');
+      void this.beginSetupBattle(pendingSetupBattle);
+      return;
+    }
+
+    if (resumedBattle) {
+      this.phase = 'transition';
+      this.busy = true;
+      this.setGameplayMode('transition');
+      void this.beginWorldBattle(resumedBattle.context, resumedBattle.runtimeBattle);
     }
   }
 
@@ -900,6 +971,7 @@ export class WorldScene extends Phaser.Scene {
     this.worldBattle.turnActionUsed = state.turnActionUsed;
     this.worldBattle.pendingMoveUndo = state.pendingMoveUndo;
     this.worldBattle.autoBattleEnabled = state.autoBattleEnabled;
+    this.syncActiveBattleSessionState();
   }
 
   private registerInputs(): void {
@@ -1409,7 +1481,7 @@ export class WorldScene extends Phaser.Scene {
       };
     }
 
-    this.sessionState = persistWorldSession({
+    this.persistSessionState({
       ...this.sessionState,
       outdoorNpcStates
     });
@@ -2582,7 +2654,7 @@ export class WorldScene extends Phaser.Scene {
       autoBattleEnabled: this.worldBattle?.autoBattleEnabled ?? false,
       audioMuted: audioDirector.isMuted(),
       restartLabel: this.isWorldBattleActive() ? 'RESTART' : 'RESTART VISIT',
-      setupLabel: this.isSetupBattleActive() ? 'SETUP' : 'WORLD'
+      setupLabel: this.isSetupBattle() ? 'SETUP' : 'WORLD'
     });
     const headerMenuActions = resolveHeaderMenuActions(this.isBattlePlayerPhase() || this.isWorldBattleActive());
     syncHeaderMenuTexts(
@@ -3384,8 +3456,8 @@ export class WorldScene extends Phaser.Scene {
     return this.worldBattle !== null;
   }
 
-  private isSetupBattleActive(): boolean {
-    return this.worldBattle?.battleOrigin === 'setup';
+  private isSetupBattle(): boolean {
+    return isSetupBattleState(this.worldBattle);
   }
 
   private getBattleUnitById(unitId: string | null): BattleUnit | null {
@@ -3795,8 +3867,8 @@ export class WorldScene extends Phaser.Scene {
         return;
       case 'setup':
         if (this.isWorldBattleActive()) {
-          if (this.isSetupBattleActive()) {
-            await this.returnSetupBattleToSetup();
+          if (this.isSetupBattle()) {
+            await this.returnSetupBattle();
             return;
           }
           await this.returnWorldBattleToRoad();
@@ -3985,26 +4057,11 @@ export class WorldScene extends Phaser.Scene {
   private syncSessionWithPlayerPosition(): void {
     if (this.sessionState.areaKind === 'outdoor') {
       const absolutePosition = this.localToAbsoluteOutdoorPoint({ x: this.player.x, y: this.player.y });
-      const playerChunk = getChunkCoordinatesForWorldPosition(absolutePosition);
-      const playerChunkDefinition = getWorldChunkAt(playerChunk.x, playerChunk.y);
-
-      this.sessionState = persistWorldSession({
-        ...this.sessionState,
-        areaKind: 'outdoor',
-        areaId: playerChunkDefinition?.id ?? this.sessionState.areaId,
-        outdoorPosition: absolutePosition,
-        interiorPosition: null,
-        suppressedEncounterId: this.sessionState.suppressedEncounterId
-      });
+      this.persistSessionState(syncOutdoorSessionPlayerPosition(this.sessionState, absolutePosition));
       return;
     }
 
-    this.sessionState = persistWorldSession({
-      ...this.sessionState,
-      areaKind: 'interior',
-      interiorPosition: { x: this.player.x, y: this.player.y },
-      suppressedEncounterId: this.sessionState.suppressedEncounterId
-    });
+    this.persistSessionState(syncInteriorSessionPlayerPosition(this.sessionState, { x: this.player.x, y: this.player.y }));
   }
 
   private async handleArrivalTile(previousPlayerPosition: Point | null): Promise<void> {
@@ -4037,20 +4094,12 @@ export class WorldScene extends Phaser.Scene {
   private async performTransition(transition: LocalWorldTransition): Promise<void> {
     this.phase = 'transition';
     this.busy = true;
+    this.setGameplayMode('transition');
     audioDirector.playUiConfirm();
 
     if (this.sessionState.areaKind === 'outdoor' && transition.targetKind === 'interior' && transition.targetId) {
-      const spawn = getWorldSpawn(transition.targetSpawnId);
       const absolutePosition = this.localToAbsoluteOutdoorPoint({ x: this.player.x, y: this.player.y });
-      this.sessionState = persistWorldSession({
-        areaKind: 'interior',
-        areaId: transition.targetId,
-        outdoorPosition: absolutePosition,
-        interiorPosition: { x: spawn.x, y: spawn.y },
-        returnOutdoorPosition: absolutePosition,
-        suppressedEncounterId: this.sessionState.suppressedEncounterId,
-        outdoorNpcStates: this.sessionState.outdoorNpcStates
-      });
+      this.persistSessionState(createInteriorTransitionSession(this.sessionState, transition, absolutePosition));
       await this.fadeAndRebuild();
       this.pushMessage(`${this.areaName} opens before you.`);
       return;
@@ -4058,51 +4107,21 @@ export class WorldScene extends Phaser.Scene {
 
     if (transition.targetKind === 'return' && this.sessionState.returnOutdoorPosition) {
       const outdoorPosition = { ...this.sessionState.returnOutdoorPosition };
-      const playerChunk = getChunkCoordinatesForWorldPosition(outdoorPosition);
-      const chunk = getWorldChunkAt(playerChunk.x, playerChunk.y);
-      this.sessionState = persistWorldSession({
-        areaKind: 'outdoor',
-        areaId: chunk?.id ?? this.sessionState.areaId,
-        outdoorPosition,
-        interiorPosition: null,
-        returnOutdoorPosition: null,
-        suppressedEncounterId: this.sessionState.suppressedEncounterId,
-        outdoorNpcStates: this.sessionState.outdoorNpcStates
-      });
+      this.persistSessionState(createReturnTransitionSession(this.sessionState, outdoorPosition));
       await this.fadeAndRebuild();
       this.pushMessage(`You return to ${this.areaName}.`);
       return;
     }
 
     if (transition.targetKind === 'spawn' && transition.targetSpawnId) {
-      const spawn = getWorldSpawn(transition.targetSpawnId);
-      this.sessionState = persistWorldSession(
-        spawn.areaKind === 'outdoor'
-          ? {
-              areaKind: 'outdoor',
-              areaId: spawn.areaId,
-              outdoorPosition: { x: spawn.x, y: spawn.y },
-              interiorPosition: null,
-              returnOutdoorPosition: null,
-              suppressedEncounterId: this.sessionState.suppressedEncounterId,
-              outdoorNpcStates: this.sessionState.outdoorNpcStates
-            }
-          : {
-              areaKind: 'interior',
-              areaId: spawn.areaId,
-              outdoorPosition: this.sessionState.outdoorPosition,
-              interiorPosition: { x: spawn.x, y: spawn.y },
-              returnOutdoorPosition: this.sessionState.returnOutdoorPosition,
-              suppressedEncounterId: this.sessionState.suppressedEncounterId,
-              outdoorNpcStates: this.sessionState.outdoorNpcStates
-            }
-      );
+      this.persistSessionState(createSpawnTransitionSession(this.sessionState, transition.targetSpawnId));
       await this.fadeAndRebuild();
       return;
     }
 
     this.phase = 'idle';
     this.busy = false;
+    this.setGameplayMode(this.isWorldBattleActive() ? 'battle' : 'exploration');
     this.invalidatePresentation();
   }
 
@@ -4119,6 +4138,7 @@ export class WorldScene extends Phaser.Scene {
     this.cameras.main.fadeIn(180, 8, 6, 10);
     this.phase = 'idle';
     this.busy = false;
+    this.setGameplayMode('exploration');
   }
 
   private async startEncounter(
@@ -4132,14 +4152,19 @@ export class WorldScene extends Phaser.Scene {
 
     this.phase = 'transition';
     this.busy = true;
+    this.setGameplayMode('transition');
     audioDirector.playUiConfirm();
     this.syncSessionWithPlayerPosition();
     const runtimeBattle = this.buildRuntimeBattleStartData(encounter, previousPlayerPosition, initiatorNpc);
-    this.sessionState = persistWorldSession({
-      ...this.sessionState,
-      suppressedEncounterId: encounter.id
-    });
-    await this.beginWorldBattle(encounter.id, runtimeBattle);
+    this.persistSessionState(createEncounterSuppressedSession(this.sessionState, encounter.id));
+    await this.beginWorldBattle(
+      {
+        origin: 'world-encounter',
+        encounterId: encounter.id,
+        setup: null
+      },
+      runtimeBattle
+    );
   }
 
   private async startHostileNpcEncounter(npc: WorldNpcRuntime, previousPlayerPosition: Point | null): Promise<void> {
@@ -4154,32 +4179,27 @@ export class WorldScene extends Phaser.Scene {
     await this.startEncounter(this.createEncounterFromHostileNpc(npc), previousPlayerPosition, npc);
   }
 
-  private async beginBattleFromSetup(setup: BattleSetup): Promise<void> {
-    this.battleLaunchOrigin = 'setup';
-    await this.beginWorldBattle('', this.buildRuntimeBattleStartDataFromSetup(setup));
+  private async beginSetupBattle(setup: BattleSetup): Promise<void> {
+    await this.beginWorldBattle(
+      {
+        origin: 'setup',
+        encounterId: null,
+        setup
+      },
+      this.buildRuntimeBattleStartDataFromSetup(setup)
+    );
   }
 
-  private async beginWorldBattle(encounterId: string, runtimeBattle: RuntimeBattleStartData): Promise<void> {
+  private async beginWorldBattle(context: GameplayBattleContext, runtimeBattle: RuntimeBattleStartData): Promise<void> {
     const introStartPoints = this.getWorldBattleIntroStartPoints(runtimeBattle);
     const sourceArenaFocusPoint = this.getWorldBattleArenaFocusPoint(runtimeBattle);
     this.autoBattleRunToken += 1;
     this.activeAutoBattleRunToken = null;
     this.unitInventories.clear();
 
-    this.worldBattle = {
-      encounterId,
-      runtimeBattle,
-      sourcePreviewActive: true,
-      battleOrigin: this.battleLaunchOrigin,
-      units: runtimeBattle.units.map((unit) => ({ ...unit })),
-      activeUnitId: null,
-      selectedAbilityId: null,
-      selectedItemId: null,
-      turnMoveUsed: false,
-      turnActionUsed: false,
-      pendingMoveUndo: null,
-      autoBattleEnabled: false
-    };
+    this.worldBattle = createGameplayBattleState(context, runtimeBattle);
+    this.syncActiveBattleSessionState();
+    this.setGameplayMode('battle');
     this.battleObjectCountBaseline = this.children.list.length;
     this.battleObjectCountDelta = null;
     for (const unit of this.worldBattle.units) {
@@ -4217,6 +4237,7 @@ export class WorldScene extends Phaser.Scene {
     this.applyWorldBattleRuntimeState(runtimeBattle);
     if (this.worldBattle) {
       this.worldBattle.sourcePreviewActive = false;
+      this.syncActiveBattleSessionState();
     }
     this.freezeWorldDynamicLighting = false;
     this.updateWorldDynamicLighting(this.time.now);
@@ -5090,6 +5111,7 @@ export class WorldScene extends Phaser.Scene {
         this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
         this.phase = 'battle-player-move';
         this.pushMessage(`Choose a tile for ${activeUnit.name}.`);
+        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'undo-move':
@@ -5106,6 +5128,7 @@ export class WorldScene extends Phaser.Scene {
         this.worldBattle.selectedItemId = null;
         this.phase = 'battle-player-abilities';
         this.pushMessage(`Choose an ability for ${activeUnit.name}.`);
+        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'items':
@@ -5118,6 +5141,7 @@ export class WorldScene extends Phaser.Scene {
         this.worldBattle.selectedItemId = null;
         this.phase = 'battle-player-items';
         this.pushMessage(`Choose an item for ${activeUnit.name}.`);
+        this.syncActiveBattleSessionState();
         this.invalidateBattlePresentation();
         return;
       case 'wait':
@@ -5149,6 +5173,7 @@ export class WorldScene extends Phaser.Scene {
       this.worldBattle.selectedAbilityId = null;
       this.phase = 'battle-player-item-action';
       this.pushMessage(`Choose a target for ${item.name}.`);
+      this.syncActiveBattleSessionState();
       this.invalidateBattlePresentation();
       return;
     }
@@ -5165,6 +5190,7 @@ export class WorldScene extends Phaser.Scene {
       this.worldBattle.selectedItemId = null;
       this.phase = 'battle-player-action';
       this.pushMessage(`Choose a target for ${ability.name}.`);
+      this.syncActiveBattleSessionState();
       this.invalidateBattlePresentation();
     }
   }
@@ -5207,6 +5233,7 @@ export class WorldScene extends Phaser.Scene {
         return;
     }
 
+    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5235,6 +5262,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.worldBattle.pendingMoveUndo = moveUndo;
     this.worldBattle.turnMoveUsed = true;
+    this.syncActiveBattleSessionState();
     await this.finishWorldBattlePlayerCommand(activeUnit, `${activeUnit.name} is in position. Choose the next command.`);
   }
 
@@ -5273,6 +5301,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = false;
     this.phase = 'battle-player-menu';
     this.moveNodes = this.getBattleMoveNodesForUnit(activeUnit);
+    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5295,6 +5324,7 @@ export class WorldScene extends Phaser.Scene {
     if (attacker.team === 'player') {
       this.worldBattle.turnActionUsed = true;
       this.worldBattle.selectedAbilityId = ability.id;
+      this.syncActiveBattleSessionState();
     }
     this.pushMessage(`${attacker.name} uses ${ability.name} on ${target.name}.`);
     this.invalidateBattlePresentation();
@@ -5554,6 +5584,7 @@ export class WorldScene extends Phaser.Scene {
     this.busy = true;
     this.phase = 'battle-animating';
     this.worldBattle.turnActionUsed = true;
+    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
 
     switch (item.effect.kind) {
@@ -5615,6 +5646,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.phase = 'battle-player-menu';
     this.pushMessage(pendingMoveMessage);
+    this.syncActiveBattleSessionState();
     this.invalidateBattlePresentation();
   }
 
@@ -5795,6 +5827,7 @@ export class WorldScene extends Phaser.Scene {
 
     audioDirector.playUiConfirm();
     this.pushMessage(`Auto-Battle ${this.worldBattle.autoBattleEnabled ? 'enabled' : 'disabled'}.`);
+    this.syncActiveBattleSessionState();
     this.invalidateHud();
     this.tryStartAutoBattle(this.getActiveBattleUnit());
   }
@@ -5858,7 +5891,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async endWorldBattle(result: 'victory' | 'defeat'): Promise<void> {
-    const encounterId = this.worldBattle?.encounterId;
+    const encounterId = getBattleEncounterId(this.worldBattle);
 
     if (!this.worldBattle) {
       return;
@@ -5883,8 +5916,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async finalizeWorldBattleReturn(result: 'Victory' | 'Defeat'): Promise<void> {
-    if (this.isSetupBattleActive()) {
-      await this.returnSetupBattleToSetup();
+    if (this.isSetupBattle()) {
+      await this.returnSetupBattle();
       return;
     }
 
@@ -5997,8 +6030,8 @@ export class WorldScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
       panelBoundsTarget: this.resultOverlayPanelBounds,
-      isWorldEncounterBattle: this.worldBattle?.battleOrigin === 'world',
-      isSetupBattle: this.worldBattle?.battleOrigin === 'setup'
+      isWorldEncounterBattle: isWorldEncounterBattleState(this.worldBattle),
+      isSetupBattle: isSetupBattleState(this.worldBattle)
     });
   }
 
@@ -6021,11 +6054,12 @@ export class WorldScene extends Phaser.Scene {
 
     if (action === 'retry') {
       const retryData = this.worldBattle.runtimeBattle;
-      const encounterId = this.worldBattle.encounterId;
+      const battleContext = this.worldBattle.context;
       this.destroyWorldBattleResultOverlay();
       this.worldBattle = null;
+      this.syncActiveBattleSessionState();
       this.restoreWorldBattleSourcePreview(retryData);
-      await this.beginWorldBattle(encounterId, retryData);
+      await this.beginWorldBattle(battleContext, retryData);
       return;
     }
 
@@ -6903,7 +6937,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (this.sessionState.areaKind !== 'outdoor' || isWorldEncounterCleared(suppressedEncounterId)) {
-      this.sessionState = persistWorldSession({
+      this.persistSessionState({
         ...this.sessionState,
         suppressedEncounterId: null
       });
@@ -6924,7 +6958,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    this.sessionState = persistWorldSession({
+    this.persistSessionState({
       ...this.sessionState,
       suppressedEncounterId: null
     });
@@ -7601,14 +7635,15 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const retryData = this.worldBattle.runtimeBattle;
-    const encounterId = this.worldBattle.encounterId;
+    const battleContext = this.worldBattle.context;
     this.setPauseMenuOpen(false);
     this.destroyWorldBattleResultOverlay();
     this.clearTurnStartCatchPhrase();
     this.activeAutoBattleRunToken = null;
     this.worldBattle = null;
+    this.syncActiveBattleSessionState();
     this.restoreWorldBattleSourcePreview(retryData);
-    await this.beginWorldBattle(encounterId, retryData);
+    await this.beginWorldBattle(battleContext, retryData);
   }
 
   private async returnWorldBattleToRoad(): Promise<void> {
@@ -7619,12 +7654,16 @@ export class WorldScene extends Phaser.Scene {
     await this.restoreExplorationFromWorldBattle('The skirmish disperses and the road opens again.');
   }
 
-  private async returnSetupBattleToSetup(): Promise<void> {
+  private async returnSetupBattle(): Promise<void> {
     if (!this.worldBattle) {
       return;
     }
 
-    const setup = this.pendingSetupBattle ?? createDefaultBattleSetup(this.worldBattle.runtimeBattle.level);
+    const setup = this.worldBattle.context.setup;
+
+    if (!setup) {
+      return;
+    }
 
     this.setPauseMenuOpen(false);
     this.destroyWorldBattleResultOverlay();
@@ -7635,9 +7674,10 @@ export class WorldScene extends Phaser.Scene {
     this.input.enabled = false;
     this.input.keyboard?.removeAllListeners();
     this.worldBattle = null;
+    this.syncActiveBattleSessionState();
+    this.setGameplayMode('setup-return');
     this.scene.start('setup', {
-      setup,
-      battleLaunchOrigin: 'setup'
+      setup
     });
   }
 
@@ -7649,6 +7689,7 @@ export class WorldScene extends Phaser.Scene {
     this.autoBattleRunToken += 1;
     this.unitInventories.clear();
     this.worldBattle = null;
+    this.syncActiveBattleSessionState();
     this.headerMenuOpen = false;
     this.battleIntroPhase = 'hud';
     this.mapIntroAlpha = 0;
@@ -7662,12 +7703,14 @@ export class WorldScene extends Phaser.Scene {
     this.freezeWorldDynamicLighting = false;
     this.phase = 'transition';
     this.busy = true;
+    this.setGameplayMode('transition');
     audioDirector.setMusic('setup');
     this.rebuildArea(true);
     this.battleObjectCountDelta =
       this.battleObjectCountBaseline === null ? null : this.children.list.length - this.battleObjectCountBaseline;
     this.phase = 'idle';
     this.busy = false;
+    this.setGameplayMode('exploration');
     this.pushMessage(message);
     this.refreshNpcInteraction();
     this.invalidatePresentation();

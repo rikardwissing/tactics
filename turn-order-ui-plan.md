@@ -70,7 +70,7 @@
 - Validate grayscale differentiation using border style + glyph shape, not color alone.
 
 ## Technical Notes
-- Keep source-of-truth turn sequencing in existing projection flow (`projectTurnOrder` + `BattleScene`).
+- Keep source-of-truth turn sequencing in the existing projection flow (`projectTurnOrder` + `WorldScene` battle mode).
 - Keep rendering/state logic centralized in `TurnOrderPanel`.
 - Avoid reintroducing per-row name/HP objects to prevent object-count growth and layout regression.
 - Use constants for portrait slot size, row padding, border thickness, per-mode visible counts, and animation durations.

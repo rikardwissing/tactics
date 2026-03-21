@@ -2,7 +2,7 @@
 
 ## Project
 - `renations-tactics` is a TypeScript + Vite + Phaser 3 tactics prototype.
-- The main gameplay scene is [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
+- The main gameplay scene is [`src/game/scenes/WorldScene.ts`](src/game/scenes/WorldScene.ts), which owns both exploration and battle mode.
 - Runtime art belongs in [`src/assets/game`](src/assets/game), not in `output/`.
 
 ## Style Direction
@@ -49,7 +49,7 @@
 - Preview build: `npm run preview`
 
 ## Repo Map
-- [`src/game/scenes`](src/game/scenes): Phaser scenes (`BootScene`, `TitleScene`, `BattleScene`)
+- [`src/game/scenes`](src/game/scenes): Phaser scenes (`BootScene`, `TitleScene`, `SetupScene`, `WorldScene`)
 - [`src/game/core`](src/game/core): combat, items, pathfinding, board data types
 - [`src/game/levels`](src/game/levels): level registry, Tiled parser, unit blueprints
 - [`src/game/levels/data`](src/game/levels/data): Tiled JSON level files
@@ -83,7 +83,7 @@
 
 ## Working Rules
 - Run `npm run build` after gameplay, rendering, level-format, or asset-manifest changes.
-- Keep world-depth, lighting, and tile rendering behavior centralized in [`src/game/scenes/BattleScene.ts`](src/game/scenes/BattleScene.ts).
+- Keep world-depth, lighting, and tile rendering behavior centralized in [`src/game/scenes/WorldScene.ts`](src/game/scenes/WorldScene.ts).
 - Keep data changes explicit. If you add a new prop, terrain type, item, or ability, update the relevant type definitions as part of the same change.
 - Prefer extending existing systems over adding parallel one-off logic.
 

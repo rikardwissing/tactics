@@ -665,7 +665,8 @@ export function resolveWorldSceneStart(data?: WorldSceneStartData): WorldSession
           interiorPosition: null,
           returnOutdoorPosition: null,
           suppressedEncounterId: null,
-          outdoorNpcStates: {}
+          outdoorNpcStates: {},
+          activeBattle: null
         }
       : {
           areaKind: 'interior',
@@ -674,7 +675,8 @@ export function resolveWorldSceneStart(data?: WorldSceneStartData): WorldSession
           interiorPosition: { x: spawn.x, y: spawn.y },
           returnOutdoorPosition: null,
           suppressedEncounterId: null,
-          outdoorNpcStates: {}
+          outdoorNpcStates: {},
+          activeBattle: null
         };
 
   return setWorldSessionState(state);

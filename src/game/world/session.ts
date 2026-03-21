@@ -24,7 +24,43 @@ function cloneState(state: WorldSessionState): WorldSessionState {
             }
           : undefined
       ])
-    )
+    ),
+    activeBattle: state.activeBattle
+      ? {
+          context: {
+            origin: state.activeBattle.context.origin,
+            encounterId: state.activeBattle.context.encounterId,
+            setup: state.activeBattle.context.setup
+              ? {
+                  levelId: state.activeBattle.context.setup.levelId,
+                  playerAssignments: { ...state.activeBattle.context.setup.playerAssignments }
+                }
+              : null
+          },
+          runtimeBattle: {
+            ...state.activeBattle.runtimeBattle,
+            units: state.activeBattle.runtimeBattle.units.map((unit) => ({ ...unit })),
+            camera: {
+              ...state.activeBattle.runtimeBattle.camera,
+              origin: { ...state.activeBattle.runtimeBattle.camera.origin }
+            },
+            seamlessEntry: state.activeBattle.runtimeBattle.seamlessEntry
+              ? {
+                  ...state.activeBattle.runtimeBattle.seamlessEntry,
+                  arenaBounds: { ...state.activeBattle.runtimeBattle.seamlessEntry.arenaBounds },
+                  introEntries: state.activeBattle.runtimeBattle.seamlessEntry.introEntries.map((entry) => ({
+                    ...entry,
+                    start: { ...entry.start },
+                    target: { ...entry.target }
+                  })),
+                  preservedLightSources: state.activeBattle.runtimeBattle.seamlessEntry.preservedLightSources.map((source) => ({
+                    ...source
+                  }))
+                }
+              : undefined
+          }
+        }
+      : null
   };
 }
 

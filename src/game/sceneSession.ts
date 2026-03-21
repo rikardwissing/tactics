@@ -48,7 +48,6 @@ export interface WorldSceneStartData {
   spawnId?: string;
   resumeSession?: boolean;
   setup?: BattleSetup;
-  battleLaunchOrigin?: 'setup' | 'world';
 }
 
 export interface RuntimeBattleStartData {
