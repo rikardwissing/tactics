@@ -48,29 +48,28 @@ import {
   renderDetailPortrait,
   type DetailPanelLayoutMetrics
 } from '../battle/hudRenderer';
+import { BattleHighlightController } from '../battle/highlightController';
 import {
   showSharedTurnStartCatchPhrase,
   TURN_START_CATCH_PHRASE_HEIGHT_FACTOR
 } from '../battle/presentation';
 import {
   BATTLE_INSPECTION_HIGHLIGHT_STYLE,
-  buildBattleTurnQueue,
-  chooseEnemyBattleTurnPlan,
   chooseAutoBattleActionPlan,
   chooseAutoBattleItem,
   chooseAutoBattleMoveTile,
-  getBasicAttackAbility,
   getBattleMovementFacing,
   getInitialBattleFacing,
-  getTargetableUnitsForAbility,
-  getTargetableUnitsForItem,
   isAbilityInRange,
   rotateFacingForBoardRotation,
   shouldShowBattleActiveUnitAura,
   shouldShowBattleActiveUnitFocus
 } from '../battle/shared';
-import { calculateDamage, pickNextActor } from '../core/combat';
+import { BattleRuntimeController } from '../battle/controller';
+import type { BattleMoveUndoState, BattleRuntimeState, BattleRuntimeTurnState } from '../battle/runtime';
+import { calculateDamage } from '../core/combat';
 import { type CombatEffectDefinition, type CombatEffectId, getCombatEffectDefinition } from '../core/combatEffects';
+import { clearEngineSceneMetrics, publishEngineSceneMetrics } from '../core/engineMetrics';
 import {
   getBasePlanePoint as getSharedBasePlanePoint,
   getTileDepth as getSharedTileDepth,
@@ -140,7 +139,6 @@ import {
   getChunkCoordinatesForWorldPosition,
   getWorldNpcRuntimeId,
   getWorldChunkAt,
-  getWorldChunksForWindow,
   getWorldInterior,
   isWorldEncounterCleared,
   getWorldSpawn,
@@ -174,7 +172,10 @@ import {
   type ResidentWorldChunkRenderSet,
   updateResidentWorldChunkRenderSet
 } from '../world/WorldChunkRenderer';
-import { diffResidentChunks, getResidentChunkKey } from '../world/WorldResidencyController';
+import { getResidentChunkKey } from '../world/WorldResidencyController';
+import { type WorldDynamicLightSource, WorldLightingController } from '../world/lighting';
+import { WorldSpatialIndex } from '../world/spatial';
+import { WorldStreamingController } from '../world/streaming';
 import type {
   WorldChunkRuntime,
   WorldEncounterDefinition,
@@ -245,23 +246,10 @@ interface ResolvedOutdoorAreaState {
   npcs: WorldNpcRuntime[];
 }
 
-interface WorldBattleState {
+interface WorldBattleState extends BattleRuntimeState {
   encounterId: string;
   runtimeBattle: RuntimeBattleStartData;
   sourcePreviewActive: boolean;
-  units: BattleUnit[];
-  activeUnitId: string | null;
-  selectedAbilityId: string | null;
-  selectedItemId: ItemId | null;
-  turnMoveUsed: boolean;
-  turnActionUsed: boolean;
-  pendingMoveUndo: {
-    unitId: string;
-    origin: Point;
-    path: Point[];
-    facing: SpriteFacing;
-  } | null;
-  autoBattleEnabled: boolean;
 }
 
 interface CombatEffectPlayback {
@@ -275,16 +263,7 @@ interface CombatEffectPlayback {
   angle: number;
 }
 
-interface DynamicLightSource {
-  propId: string | null;
-  tile: Point & { height: number };
-  point: Phaser.Math.Vector2;
-  radius: number;
-  color: number;
-  strength: number;
-  sourceOffsetY: number;
-  view?: PropView;
-}
+type DynamicLightSource = WorldDynamicLightSource<PropView>;
 
 type WorldBattleResultAction = 'retry' | 'return';
 
@@ -508,8 +487,26 @@ export class WorldScene extends Phaser.Scene {
   private unitInventories = new Map<string, Partial<Record<ItemId, number>>>();
   private lightGroundOverlays: Phaser.GameObjects.Graphics[] = [];
   private lightShadowOverlays: Phaser.GameObjects.Graphics[] = [];
-  private highlightOverlays: Phaser.GameObjects.Graphics[] = [];
+  private highlightController!: BattleHighlightController;
   private freezeWorldDynamicLighting = false;
+  private readonly battleRuntimeController = new BattleRuntimeController();
+  private readonly outdoorSpatialIndex = new WorldSpatialIndex();
+  private readonly outdoorStreamingController = new WorldStreamingController(OUTDOOR_WINDOW_CHUNK_RADIUS);
+  private readonly worldLightingController = new WorldLightingController<PropView>();
+  private hudDirty = false;
+  private highlightsDirty = false;
+  private turnOrderDirty = false;
+  private battleShellDirty = false;
+  private highlightInvalidations = 0;
+  private hudInvalidations = 0;
+  private lightingInvalidations = 0;
+  private turnOrderInvalidations = 0;
+  private battleShellInvalidations = 0;
+  private hudRefreshCount = 0;
+  private lightingRefreshCount = 0;
+  private lastMetricsPublishAt = 0;
+  private battleObjectCountBaseline: number | null = null;
+  private battleObjectCountDelta: number | null = null;
 
   private cursorKeys?: Phaser.Types.Input.Keyboard.CursorKeys;
   private panKeys?: PanKeys;
@@ -552,6 +549,20 @@ export class WorldScene extends Phaser.Scene {
     this.worldBattle = null;
     this.factionMottoPlayed.clear();
     this.pendingFactionMottoId = null;
+    this.hudDirty = false;
+    this.highlightsDirty = false;
+    this.turnOrderDirty = false;
+    this.battleShellDirty = false;
+    this.highlightInvalidations = 0;
+    this.hudInvalidations = 0;
+    this.lightingInvalidations = 0;
+    this.turnOrderInvalidations = 0;
+    this.battleShellInvalidations = 0;
+    this.hudRefreshCount = 0;
+    this.lightingRefreshCount = 0;
+    this.lastMetricsPublishAt = 0;
+    this.battleObjectCountBaseline = null;
+    this.battleObjectCountDelta = null;
     this.detailPanelTween?.remove();
     this.detailPanelTween = undefined;
     this.showDetailPanel = false;
@@ -651,6 +662,7 @@ export class WorldScene extends Phaser.Scene {
     this.portrait.setMask(this.portraitMask.createGeometryMask());
 
     this.boardGraphics = this.registerWorldObject(this.add.graphics().setDepth(40));
+    this.highlightController = new BattleHighlightController(this, (object) => this.registerWorldObject(object));
     this.actionMenuStack = new BattleActionMenuStack(this, {
       onCreateObject: (object) => {
         this.registerUiObject(object);
@@ -667,52 +679,56 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    if (!this.isWorldBattleActive()) {
-      const worldStateVersion = getWorldStateVersion();
+    try {
+      if (!this.isWorldBattleActive()) {
+        const worldStateVersion = getWorldStateVersion();
 
-      if (worldStateVersion !== this.worldStateVersion) {
-        this.worldStateVersion = worldStateVersion;
+        if (worldStateVersion !== this.worldStateVersion) {
+          this.worldStateVersion = worldStateVersion;
 
-        if (this.sessionState.areaKind === 'outdoor') {
-          this.rebuildArea(false);
+          if (this.sessionState.areaKind === 'outdoor') {
+            this.rebuildArea(false);
+            return;
+          }
+        }
+
+        if (this.rebuildOutdoorAreaForCamera()) {
           return;
         }
+
+        this.maybeAdvanceNpcPatrols(time);
+      } else {
+        this.updateBattleActorGlowFade(time);
       }
 
-      if (this.rebuildOutdoorAreaForCamera()) {
+      if (!this.freezeWorldDynamicLighting) {
+        this.updateWorldDynamicLighting(time);
+      }
+
+      if (this.phase === 'transition' || this.isPanning || this.headerMenuOpen) {
         return;
       }
 
-      this.maybeAdvanceNpcPatrols(time);
-    } else {
-      this.updateBattleActorGlowFade(time);
+      const dx =
+        (this.cursorKeys?.right.isDown || this.panKeys?.right.isDown ? 1 : 0) -
+        (this.cursorKeys?.left.isDown || this.panKeys?.left.isDown ? 1 : 0);
+      const dy =
+        (this.cursorKeys?.down.isDown || this.panKeys?.down.isDown ? 1 : 0) -
+        (this.cursorKeys?.up.isDown || this.panKeys?.up.isDown ? 1 : 0);
+
+      if (dx === 0 && dy === 0) {
+        return;
+      }
+
+      const magnitude = Math.max(1, Math.hypot(dx, dy));
+      const distance = 380 * (delta / 1000);
+      this.setCameraScroll(
+        this.worldCamera.scrollX + (dx / magnitude) * distance,
+        this.worldCamera.scrollY + (dy / magnitude) * distance
+      );
+    } finally {
+      this.flushSceneInvalidations(time);
     }
-
-    if (!this.freezeWorldDynamicLighting) {
-      this.updateWorldDynamicLighting(time);
-    }
-
-    if (this.phase === 'transition' || this.isPanning || this.headerMenuOpen) {
-      return;
-    }
-
-    const dx =
-      (this.cursorKeys?.right.isDown || this.panKeys?.right.isDown ? 1 : 0) -
-      (this.cursorKeys?.left.isDown || this.panKeys?.left.isDown ? 1 : 0);
-    const dy =
-      (this.cursorKeys?.down.isDown || this.panKeys?.down.isDown ? 1 : 0) -
-      (this.cursorKeys?.up.isDown || this.panKeys?.up.isDown ? 1 : 0);
-
-    if (dx === 0 && dy === 0) {
-      return;
-    }
-
-    const magnitude = Math.max(1, Math.hypot(dx, dy));
-    const distance = 380 * (delta / 1000);
-    this.setCameraScroll(
-      this.worldCamera.scrollX + (dx / magnitude) * distance,
-      this.worldCamera.scrollY + (dy / magnitude) * distance
-    );
   }
 
   private isBattleIntroActive(): boolean {
@@ -740,8 +756,93 @@ export class WorldScene extends Phaser.Scene {
     this.stopFactionMottoSound();
     this.destroyWorldBattleResultOverlay();
     this.actionMenuStack.destroy();
+    this.highlightController?.destroy();
     this.uiCamera?.destroy();
     this.uiCamera = undefined;
+    clearEngineSceneMetrics('WorldScene');
+  }
+
+  private invalidateHud(): void {
+    this.hudDirty = true;
+    this.hudInvalidations += 1;
+  }
+
+  private invalidateHighlights(): void {
+    this.highlightsDirty = true;
+    this.highlightInvalidations += 1;
+  }
+
+  private invalidateTurnOrder(): void {
+    this.turnOrderDirty = true;
+    this.turnOrderInvalidations += 1;
+  }
+
+  private invalidateLighting(): void {
+    this.lightingInvalidations += 1;
+  }
+
+  private invalidateBattleShell(): void {
+    this.battleShellDirty = true;
+    this.battleShellInvalidations += 1;
+  }
+
+  private flushSceneInvalidations(time: number): void {
+    if (this.highlightsDirty) {
+      this.highlightsDirty = false;
+      this.drawHighlights();
+    }
+
+    if (this.hudDirty || this.turnOrderDirty || this.battleShellDirty) {
+      this.hudDirty = false;
+      this.turnOrderDirty = false;
+      this.battleShellDirty = false;
+      this.refreshUi();
+    }
+
+    this.publishSceneMetrics(time);
+  }
+
+  private publishSceneMetrics(time: number): void {
+    if (time - this.lastMetricsPublishAt < 200) {
+      return;
+    }
+
+    this.lastMetricsPublishAt = time;
+    publishEngineSceneMetrics({
+      scene: 'WorldScene',
+      childCount: this.children.list.length,
+      residentChunkCount: this.outdoorChunkRenderSets.size,
+      pooledHighlightObjects: this.highlightController?.getPoolSize() ?? 0,
+      highlightDrawCount: this.highlightController?.getDrawCount() ?? 0,
+      highlightInvalidations: this.highlightInvalidations,
+      hudRefreshCount: this.hudRefreshCount,
+      hudInvalidations: this.hudInvalidations,
+      lightingRefreshCount: this.lightingRefreshCount,
+      lightingInvalidations: this.lightingInvalidations,
+      turnOrderInvalidations: this.turnOrderInvalidations,
+      battleShellInvalidations: this.battleShellInvalidations,
+      battleObjectCountBaseline: this.battleObjectCountBaseline,
+      battleObjectCountDelta: this.battleObjectCountDelta,
+      updatedAt: time
+    });
+  }
+
+  private getWorldBattleRuntimeState(): WorldBattleState | null {
+    return this.worldBattle;
+  }
+
+  private applyWorldBattleTurnState(state: BattleRuntimeTurnState): void {
+    if (!this.worldBattle) {
+      return;
+    }
+
+    this.worldBattle.activeUnitId = state.activeUnitId;
+    this.worldBattle.selectedAbilityId = state.selectedAbilityId;
+    this.worldBattle.selectedItemId = state.selectedItemId;
+    this.worldBattle.turnMoveUsed = state.turnMoveUsed;
+    this.worldBattle.turnActionUsed = state.turnActionUsed;
+    this.worldBattle.pendingMoveUndo = state.pendingMoveUndo;
+    this.worldBattle.autoBattleEnabled = state.autoBattleEnabled;
   }
 
   private registerInputs(): void {
@@ -1015,7 +1116,7 @@ export class WorldScene extends Phaser.Scene {
   private resolveOutdoorAreaState(centerChunkOverride?: Point): ResolvedOutdoorAreaState {
     const outdoorPosition = { ...this.sessionState.outdoorPosition };
     const centerChunk = centerChunkOverride ?? getChunkCoordinatesForWorldPosition(outdoorPosition);
-    const loadedChunks = getWorldChunksForWindow(centerChunk.x, centerChunk.y, OUTDOOR_WINDOW_CHUNK_RADIUS);
+    const loadedChunks = this.outdoorStreamingController.getWindowChunks(centerChunk);
     const playerChunk = getWorldChunkAt(centerChunk.x, centerChunk.y);
     const windowOrigin = {
       x: (centerChunk.x - OUTDOOR_WINDOW_CHUNK_RADIUS) * WORLD_CHUNK_SIZE,
@@ -1139,6 +1240,7 @@ export class WorldScene extends Phaser.Scene {
     this.transitions = resolved.transitions;
     this.areaName = resolved.playerChunk?.name ?? 'Ruined March';
     this.areaBackdropAssetId = resolved.playerChunk?.backdropAssetId ?? 'title-backdrop';
+    this.outdoorSpatialIndex.update(this.map, this.outdoorWindowOrigin);
   }
 
   private buildOutdoorArea(centerChunkOverride?: Point): void {
@@ -1209,6 +1311,7 @@ export class WorldScene extends Phaser.Scene {
     this.npcs = createWorldNpcs(interior.id, interior.npcs);
     this.areaName = interior.name;
     this.areaBackdropAssetId = interior.backdropAssetId ?? 'title-backdrop';
+    this.outdoorSpatialIndex.update(this.map, null);
   }
 
   private restoreOutdoorNpcPatrolIndices(): void {
@@ -1285,12 +1388,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const residentDiff = diffResidentChunks(this.outdoorChunkRenderSets.keys(), this.outdoorCenterChunk, OUTDOOR_WINDOW_CHUNK_RADIUS);
-    const desiredChunks = getWorldChunksForWindow(
-      this.outdoorCenterChunk.x,
-      this.outdoorCenterChunk.y,
-      OUTDOOR_WINDOW_CHUNK_RADIUS
+    const residentDiff = this.outdoorStreamingController.diffResidentChunks(
+      this.outdoorChunkRenderSets.keys(),
+      this.outdoorCenterChunk
     );
+    const desiredChunks = this.outdoorStreamingController.getWindowChunks(this.outdoorCenterChunk);
 
     if (forceRecreate) {
       this.destroyOutdoorChunkRenderSets();
@@ -1354,7 +1456,7 @@ export class WorldScene extends Phaser.Scene {
           renderSet,
           residentMap: this.map,
           boardRotationStep: this.boardRotationStep,
-          hasWorldChunkAt: (chunkX, chunkY) => getWorldChunkAt(chunkX, chunkY) !== null,
+          hasWorldChunkAt: (chunkX, chunkY) => this.outdoorStreamingController.hasWorldChunkAt(chunkX, chunkY),
           isoToScreen: (tile) => this.isoToScreen(tile),
           getTileDepth: (tile) => this.getTileDepth(tile),
           getTileTopPoints: (tile) => this.getTileTopPoints(tile)
@@ -1564,10 +1666,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.actorViews.clear();
 
-    for (const overlay of this.highlightOverlays) {
-      overlay.destroy();
-    }
-    this.highlightOverlays = [];
+    this.highlightController.clear();
 
     for (const overlay of this.lightGroundOverlays) {
       overlay.destroy();
@@ -1593,6 +1692,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.battleParticles) {
       persistentObjects.push(this.battleParticles);
     }
+    persistentObjects.push(...this.highlightController.getManagedObjects());
 
     const persistentWorldObjects = new Set<Phaser.GameObjects.GameObject>(persistentObjects);
     const uiSet = new Set(this.getUiObjects());
@@ -1776,6 +1876,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateWorldDynamicLighting(time: number): void {
+    this.lightingRefreshCount += 1;
     const timeConfig = TIME_OF_DAY_CONFIG[this.battleTimeOfDay];
     const lightSources = this.getWorldDynamicLightSources(time);
 
@@ -1837,54 +1938,14 @@ export class WorldScene extends Phaser.Scene {
         ? (this.worldBattle.runtimeBattle.seamlessEntry?.preservedLightSources ?? [])
         : [];
 
-    if (preservedLightSources.length > 0) {
-      return preservedLightSources.map((source) => {
-        const phase = (source.x * 17 + source.y * 31) * 0.11;
-        const flicker = 0.92 + Math.sin(time * 0.011 + phase) * 0.06 + Math.sin(time * 0.019 + phase * 1.7) * 0.04;
-        const tile = { x: source.x, y: source.y, height: source.height };
-        const point = this.isoToScreen(tile);
-
-        return {
-          propId: source.propId ?? null,
-          tile,
-          point: new Phaser.Math.Vector2(point.x, point.y + TILE_HEIGHT / 2 - 2),
-          radius: source.radius,
-          color: source.color,
-          strength: source.intensity * timeConfig.lightBoost * flicker,
-          sourceOffsetY: source.sourceOffsetY,
-          view: source.propId ? this.propViews.get(source.propId) : undefined
-        };
-      });
-    }
-
-    return this.props.flatMap((prop) => {
-      const propConfig = PROP_RENDER_CONFIG[prop.assetId];
-      const light = propConfig.light;
-
-      if (!light) {
-        return [];
-      }
-
-      const tile = getTile(this.map, prop.x, prop.y);
-
-      if (!tile) {
-        return [];
-      }
-
-      const phase = (prop.x * 17 + prop.y * 31) * 0.11;
-      const flicker = 0.92 + Math.sin(time * 0.011 + phase) * 0.06 + Math.sin(time * 0.019 + phase * 1.7) * 0.04;
-      const point = this.isoToScreen(tile);
-
-      return [{
-        propId: prop.id,
-        tile,
-        point: new Phaser.Math.Vector2(point.x, point.y + TILE_HEIGHT / 2 - 2),
-        radius: light.radius,
-        color: light.color,
-        strength: light.intensity * timeConfig.lightBoost * flicker,
-        sourceOffsetY: light.sourceOffsetY,
-        view: this.propViews.get(prop.id)
-      }];
+    return this.worldLightingController.collectDynamicLightSources({
+      time,
+      lightBoost: timeConfig.lightBoost,
+      props: this.props,
+      map: this.map,
+      preservedLightSources,
+      isoToScreen: (tile) => this.isoToScreen(tile),
+      getPropView: (propId) => this.propViews.get(propId)
     });
   }
 
@@ -2251,15 +2312,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawHighlights(): void {
+    this.highlightController.beginFrame();
+
     if (this.isWorldBattleActive()) {
       this.drawBattleHighlights();
       return;
     }
-
-    for (const overlay of this.highlightOverlays) {
-      overlay.destroy();
-    }
-    this.highlightOverlays = [];
 
     this.drawTransitionMarkers();
 
@@ -2318,15 +2376,14 @@ export class WorldScene extends Phaser.Scene {
     const mid = this.scaleTilePolygon(tilePoints, center, 0.74);
     const inner = this.scaleTilePolygon(tilePoints, center, 0.5);
 
-    const glow = this.registerWorldObject(this.add.graphics().setBlendMode(Phaser.BlendModes.ADD));
+    const glow = this.highlightController.acquireGraphics(Phaser.BlendModes.ADD);
     glow.fillStyle(0xffcf73, 0.12);
     glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 1.08), true);
     glow.fillStyle(0xff8c3d, 0.08);
     glow.fillPoints(this.scaleTilePolygon(tilePoints, center, 0.9), true);
     glow.setDepth(this.getHighlightDepth(tile) - 0.2);
-    this.highlightOverlays.push(glow);
 
-    const marker = this.registerWorldObject(this.add.graphics());
+    const marker = this.highlightController.acquireGraphics();
     marker.fillStyle(0x2b1610, 0.34);
     marker.fillPoints(outer, true);
     marker.fillStyle(0x4e2414, 0.28);
@@ -2344,15 +2401,9 @@ export class WorldScene extends Phaser.Scene {
     marker.fillStyle(0xfff0c8, 0.9);
     marker.fillCircle(center.x, center.y + 6, 2.6);
     marker.setDepth(this.getHighlightDepth(tile) - 0.05);
-    this.highlightOverlays.push(marker);
   }
 
   private drawBattleHighlights(): void {
-    for (const overlay of this.highlightOverlays) {
-      overlay.destroy();
-    }
-    this.highlightOverlays = [];
-
     const activeUnit = this.getActiveBattleUnit();
 
     if (activeUnit && this.shouldShowActiveUnitFocus()) {
@@ -2377,7 +2428,7 @@ export class WorldScene extends Phaser.Scene {
       const ability = this.getSelectedBattleAbility();
 
       if (ability) {
-        for (const unit of getTargetableUnitsForAbility(activeUnit, this.worldBattle?.units ?? [], ability)) {
+        for (const unit of this.getTargetableUnitsForBattleAbility(activeUnit, ability)) {
           const tile = getTile(this.map, unit.x, unit.y);
 
           if (tile) {
@@ -2396,7 +2447,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (this.phase === 'battle-player-item-action' && activeUnit && this.worldBattle?.selectedItemId) {
-      for (const unit of getTargetableUnitsForItem(activeUnit, this.worldBattle?.units ?? [], this.worldBattle.selectedItemId)) {
+      for (const unit of this.getTargetableUnitsForBattleItem(activeUnit, this.worldBattle.selectedItemId)) {
         const tile = getTile(this.map, unit.x, unit.y);
 
         if (tile) {
@@ -2433,29 +2484,28 @@ export class WorldScene extends Phaser.Scene {
     stroke: number,
     strokeAlpha: number
   ): void {
-    const points = this.getTileTopPoints(tile);
-    const overlay = this.registerWorldObject(this.add.graphics());
-    overlay.fillStyle(fill, fillAlpha);
-    overlay.fillPoints(points, true);
-    overlay.lineStyle(lineWidth, stroke, strokeAlpha);
-    overlay.strokePoints(points, true, true);
-    overlay.setDepth(this.getHighlightDepth(tile));
-    this.highlightOverlays.push(overlay);
+    this.highlightController.drawDiamond(
+      this.getTileTopPoints(tile),
+      this.getHighlightDepth(tile),
+      fill,
+      fillAlpha,
+      lineWidth,
+      stroke,
+      strokeAlpha
+    );
   }
 
   private drawActiveMarker(tile: TileData): void {
-    const center = this.isoToScreen(tile);
-    const tilePoints = this.getTileTopPoints(tile);
-    const [glow, overlay] = drawActiveTileMarker({
-      createGraphics: () => this.registerWorldObject(this.add.graphics()),
-      tilePoints,
-      center,
+    this.highlightController.drawActiveTileMarker({
+      tile,
+      tilePoints: this.getTileTopPoints(tile),
+      center: this.isoToScreen(tile),
       depth: this.getHighlightDepth(tile)
     });
-    this.highlightOverlays.push(glow, overlay);
   }
 
   private refreshUi(): void {
+    this.hudRefreshCount += 1;
     const inspection = this.getCurrentHudInspection();
     const hudViewModel = inspection.kind === 'mission' ? null : this.buildWorldHudViewModel(inspection);
     const hudVisible = !this.isWorldBattleActive() || this.battleIntroPhase === 'hud';
@@ -2485,7 +2535,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.isWorldBattleActive()) {
       const battle = this.worldBattle as WorldBattleState;
       const activeUnit = this.getActiveBattleUnit();
-      const queue = buildBattleTurnQueue(battle.units, activeUnit, this.visibleTurnOrderCount);
+      const queue = this.battleRuntimeController.buildTurnQueue(battle, this.visibleTurnOrderCount);
       this.playerAvatarPanel.setQueue(queue, battle.activeUnitId, this.visibleTurnOrderCount, true);
       this.playerAvatarPanel.setVisible(hudVisible && this.showTimelinePanel);
       this.actionMenuStack.setPanels(this.buildBattleActionMenuPanels());
@@ -2918,8 +2968,8 @@ export class WorldScene extends Phaser.Scene {
     this.battleInspectionTarget = toggleIfSame && unchanged && target.kind !== 'mission' ? { kind: 'mission' } : target;
 
     if (refresh) {
-      this.refreshUi();
-      this.drawHighlights();
+      this.invalidateHud();
+      this.invalidateHighlights();
     }
 
     return this.getResolvedBattleInspectionTarget();
@@ -3845,7 +3895,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getActiveBattleUnit(): BattleUnit | null {
-    return this.getBattleUnitById(this.worldBattle?.activeUnitId ?? null);
+    const battle = this.getWorldBattleRuntimeState();
+    return battle ? this.battleRuntimeController.getActiveUnit(battle) : null;
   }
 
   private getLivingBattleUnits(team?: BattleUnit['team']): BattleUnit[] {
@@ -3854,9 +3905,7 @@ export class WorldScene extends Phaser.Scene {
 
   private getBattleBlockedPoints(excludingUnitId?: string): Point[] {
     return [
-      ...this.props
-        .filter((prop) => PROP_RENDER_CONFIG[prop.assetId].blocksMovement)
-        .map((prop) => ({ x: prop.x, y: prop.y })),
+      ...this.battleRuntimeController.getBlockedPropPoints(this.props),
       ...this.getLivingBattleUnits()
         .filter((unit) => unit.id !== excludingUnitId)
         .map((unit) => ({ x: unit.x, y: unit.y }))
@@ -3873,7 +3922,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getTargetableBattleUnits(unit: BattleUnit): BattleUnit[] {
-    return getTargetableUnitsForAbility(unit, this.worldBattle?.units ?? [], getBasicAttackAbility(unit));
+    return this.getTargetableUnitsForBattleAbility(unit, this.battleRuntimeController.getBasicAttackAbility(unit));
   }
 
   private getBattleUnitInventory(unit: BattleUnit | string): Partial<Record<ItemId, number>> {
@@ -3974,13 +4023,18 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getSelectedBattleAbility(): UnitAbility | null {
-    const activeUnit = this.getActiveBattleUnit();
+    const battle = this.getWorldBattleRuntimeState();
+    return battle ? this.battleRuntimeController.getSelectedAbility(battle) : null;
+  }
 
-    if (!activeUnit || !this.worldBattle?.selectedAbilityId) {
-      return null;
-    }
+  private getTargetableUnitsForBattleAbility(unit: BattleUnit, ability: UnitAbility): BattleUnit[] {
+    const battle = this.getWorldBattleRuntimeState();
+    return battle ? this.battleRuntimeController.getTargetableUnitsForAbility(battle, unit, ability) : [];
+  }
 
-    return activeUnit.abilities.find((ability) => ability.id === this.worldBattle?.selectedAbilityId) ?? null;
+  private getTargetableUnitsForBattleItem(unit: BattleUnit, itemId: ItemId): BattleUnit[] {
+    const battle = this.getWorldBattleRuntimeState();
+    return battle ? this.battleRuntimeController.getTargetableUnitsForItem(battle, unit, itemId) : [];
   }
 
   private getBattleSubmenuEntries(): Array<{
@@ -3998,7 +4052,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action') {
       return activeUnit.abilities.map((ability) => ({
         label: ability.name,
-        enabled: getTargetableUnitsForAbility(activeUnit, this.worldBattle?.units ?? [], ability).length > 0,
+        enabled: this.getTargetableUnitsForBattleAbility(activeUnit, ability).length > 0,
         abilityId: ability.id
       }));
     }
@@ -4006,7 +4060,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action') {
       return getInventoryEntries(this.getBattleUnitInventory(activeUnit)).map((entry) => ({
         label: `${getItemDefinition(entry.itemId).name} x${entry.count}`,
-        enabled: getTargetableUnitsForItem(activeUnit, this.worldBattle?.units ?? [], entry.itemId).length > 0,
+        enabled: this.getTargetableUnitsForBattleItem(activeUnit, entry.itemId).length > 0,
         itemId: entry.itemId
       }));
     }
@@ -4116,7 +4170,7 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
 
-      if (!getTargetableUnitsForAbility(activeUnit, this.worldBattle?.units ?? [], ability).some((candidate) => candidate.id === target.id)) {
+      if (!this.getTargetableUnitsForBattleAbility(activeUnit, ability).some((candidate) => candidate.id === target.id)) {
         return;
       }
 
@@ -4132,7 +4186,7 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
 
-      if (!getTargetableUnitsForItem(activeUnit, this.worldBattle?.units ?? [], itemId).some((candidate) => candidate.id === target.id)) {
+      if (!this.getTargetableUnitsForBattleItem(activeUnit, itemId).some((candidate) => candidate.id === target.id)) {
         return;
       }
 
@@ -4651,6 +4705,8 @@ export class WorldScene extends Phaser.Scene {
       pendingMoveUndo: null,
       autoBattleEnabled: false
     };
+    this.battleObjectCountBaseline = this.children.list.length;
+    this.battleObjectCountDelta = null;
     for (const unit of this.worldBattle.units) {
       this.unitInventories.set(unit.id, {});
     }
@@ -5295,13 +5351,15 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    const actor = pickNextActor(this.worldBattle.units);
-    this.worldBattle.activeUnitId = actor.id;
-    this.worldBattle.selectedAbilityId = null;
-    this.worldBattle.selectedItemId = null;
-    this.worldBattle.turnMoveUsed = false;
-    this.worldBattle.turnActionUsed = false;
-    this.worldBattle.pendingMoveUndo = null;
+    const turnStart = this.battleRuntimeController.beginNextTurn(this.worldBattle);
+
+    this.applyWorldBattleTurnState(turnStart.state);
+
+    if (!turnStart.actor) {
+      return;
+    }
+
+    const actor = turnStart.actor;
     this.moveNodes = this.getBattleMoveNodesForUnit(actor);
     this.setBattleInspectionTarget({ kind: 'mission' }, false);
     await this.centerCameraOnActor(actor, 180);
@@ -5345,12 +5403,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.busy = true;
-    this.worldBattle.activeUnitId = null;
-    this.worldBattle.selectedAbilityId = null;
-    this.worldBattle.selectedItemId = null;
-    this.worldBattle.turnMoveUsed = false;
-    this.worldBattle.turnActionUsed = false;
-    this.worldBattle.pendingMoveUndo = null;
+    this.applyWorldBattleTurnState(this.battleRuntimeController.clearTurnState(this.worldBattle));
     this.moveNodes.clear();
 
     if (await this.resolveWorldBattleIfComplete()) {
@@ -5700,7 +5753,7 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const movePath = buildPath(this.moveNodes, tile);
-    const moveUndo = {
+    const moveUndo: BattleMoveUndoState = {
       unitId: activeUnit.id,
       origin: { x: activeUnit.x, y: activeUnit.y },
       path: movePath.map((step) => ({ x: step.x, y: step.y })),
@@ -5762,7 +5815,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async performWorldBattleAttack(attacker: BattleUnit, target: BattleUnit): Promise<void> {
-    await this.performWorldBattleAbility(attacker, target, getBasicAttackAbility(attacker));
+    await this.performWorldBattleAbility(attacker, target, this.battleRuntimeController.getBasicAttackAbility(attacker));
   }
 
   private async performWorldBattleAbility(
@@ -5789,7 +5842,7 @@ export class WorldScene extends Phaser.Scene {
       case 'attack': {
         await this.resolveWorldBattleStrike(attacker, target, ability);
 
-        const counterAbility = getBasicAttackAbility(target);
+        const counterAbility = this.battleRuntimeController.getBasicAttackAbility(target);
         if (
           ability.counterable !== false &&
           target.alive &&
@@ -6029,7 +6082,7 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
 
-    if (!getTargetableUnitsForItem(activeUnit, this.worldBattle.units, itemId).some((unit) => unit.id === target.id)) {
+    if (!this.getTargetableUnitsForBattleItem(activeUnit, itemId).some((unit) => unit.id === target.id)) {
       audioDirector.playUiCancel();
       this.pushMessage(`${item.name} cannot reach that target.`);
       this.refreshUi();
@@ -6129,12 +6182,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async runEnemyBattleTurn(actor: BattleUnit): Promise<void> {
-    const plan = chooseEnemyBattleTurnPlan(
-      actor,
-      this.worldBattle?.units ?? [],
-      this.map,
-      this.getBattleBlockedPoints()
-    );
+    const battle = this.getWorldBattleRuntimeState();
+
+    if (!battle) {
+      return;
+    }
+
+    const plan = this.battleRuntimeController.chooseEnemyPlan(battle, actor, this.map, this.props);
 
     if (plan?.kind === 'attack') {
       if (plan.moveTile.x !== actor.x || plan.moveTile.y !== actor.y) {
@@ -6329,15 +6383,14 @@ export class WorldScene extends Phaser.Scene {
       return false;
     }
 
-    const livingPlayers = this.getLivingBattleUnits('player');
-    const livingEnemies = this.getLivingBattleUnits('enemy');
+    const outcome = this.battleRuntimeController.getOutcome(this.worldBattle.units);
 
-    if (livingPlayers.length === 0) {
+    if (outcome === 'Defeat') {
       await this.endWorldBattle('defeat');
       return true;
     }
 
-    if (livingEnemies.length === 0) {
+    if (outcome === 'Victory') {
       await this.endWorldBattle('victory');
       return true;
     }
@@ -6872,25 +6925,7 @@ export class WorldScene extends Phaser.Scene {
     sourceLevel: LevelDefinition,
     arenaBounds: RuntimeBattleArenaBounds
   ): RuntimeBattlePreservedLightSourceState[] {
-    return sourceLevel.props.flatMap((prop) => {
-      const light = PROP_RENDER_CONFIG[prop.assetId].light;
-
-      if (!light) {
-        return [];
-      }
-
-      return [{
-        id: `world-encounter-light:${prop.id}`,
-        x: prop.x - arenaBounds.x,
-        y: prop.y - arenaBounds.y,
-        height: sourceLevel.heights[prop.y]?.[prop.x] ?? 0,
-        radius: light.radius,
-        color: light.color,
-        intensity: light.intensity,
-        sourceOffsetY: light.sourceOffsetY,
-        propId: prop.id
-      }];
-    });
+    return this.worldLightingController.createPreservedLightSources(sourceLevel, arenaBounds);
   }
 
   private getEncounterMidpoint(playerInitiator: Point, enemyInitiator: Point): Point {
@@ -7695,6 +7730,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private applyBattlePresentationShell(): void {
+    this.battleShellInvalidations += 1;
     const active = this.isWorldBattleActive();
     this.backdropImage.setTexture(this.getHudBackdropImageKey());
 
@@ -7914,25 +7950,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private localToAbsoluteOutdoorPoint(point: Point): Point {
-    if (!this.outdoorWindowOrigin) {
-      return point;
-    }
-
-    return {
-      x: this.outdoorWindowOrigin.x + point.x,
-      y: this.outdoorWindowOrigin.y + point.y
-    };
+    return this.outdoorSpatialIndex.localToAbsolute(point);
   }
 
   private absoluteToLocalOutdoorPoint(point: Point): Point {
-    if (!this.outdoorWindowOrigin) {
-      return point;
-    }
-
-    return {
-      x: point.x - this.outdoorWindowOrigin.x,
-      y: point.y - this.outdoorWindowOrigin.y
-    };
+    return this.outdoorSpatialIndex.absoluteToLocal(point);
   }
 
   private centerCameraOnOutdoorPoint(point: Point): void {
@@ -7947,8 +7969,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private getOutdoorCameraAnchorScenePoint(point: Point): Phaser.Math.Vector2 | null {
-    const localPoint = this.absoluteToLocalOutdoorPoint(point);
-    const tile = getTile(this.map, localPoint.x, localPoint.y);
+    const tile = this.outdoorSpatialIndex.getAbsoluteTile(point);
 
     if (!tile) {
       return null;
@@ -7969,7 +7990,7 @@ export class WorldScene extends Phaser.Scene {
       return null;
     }
 
-    return this.localToAbsoluteOutdoorPoint(localPoint);
+    return this.outdoorSpatialIndex.localToAbsolute(localPoint);
   }
 
   private screenToTilePoint(point: Point): Point | null {
@@ -8256,6 +8277,8 @@ export class WorldScene extends Phaser.Scene {
     this.busy = true;
     audioDirector.setMusic('setup');
     this.rebuildArea(true);
+    this.battleObjectCountDelta =
+      this.battleObjectCountBaseline === null ? null : this.children.list.length - this.battleObjectCountBaseline;
     this.phase = 'idle';
     this.busy = false;
     this.pushMessage(message);
@@ -8998,7 +9021,7 @@ export class WorldScene extends Phaser.Scene {
 
   private pushMessage(message: string): void {
     this.messages = [...this.messages.slice(-3), message];
-    this.refreshUi();
+    this.invalidateHud();
   }
 
   private playTurnStartAnimation(unit: BattleUnit): void {
