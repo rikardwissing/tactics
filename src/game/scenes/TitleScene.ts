@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { audioDirector } from '../audio/audioDirector';
 import { DEFAULT_WORLD_SPAWN_ID, resetWorldSession } from '../world';
-import type { BoardSceneStartData, WorldSceneStartData } from '../sceneSession';
+import type { WorldSceneStartData } from '../sceneSession';
 
 const SOFT_LIGHT_TEXTURE_KEY = 'title-soft-light';
 const TITLE_LOGO_MAX_WIDTH = 620;
@@ -178,8 +178,8 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private beginScene(
-    sceneKey: 'setup' | 'unit-editor' | 'battle' | 'world' | 'world-map-editor',
-    sceneData?: BoardSceneStartData | WorldSceneStartData
+    sceneKey: 'setup' | 'unit-editor' | 'world' | 'world-map-editor',
+    sceneData?: WorldSceneStartData
   ): void {
     if (this.transitionStarted) {
       return;

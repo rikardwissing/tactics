@@ -228,6 +228,7 @@ interface SharedBattleResultOverlayFrameOptions extends Omit<
   'eyebrowText' | 'bodyText' | 'buttonDescriptorOptions'
 > {
   isWorldEncounterBattle: boolean;
+  isSetupBattle?: boolean;
 }
 
 interface SharedDetailPanelLayoutOptions {
@@ -1373,10 +1374,11 @@ export function drawSharedBattleResultOverlay({
 
 export function drawSharedBattleResultOverlayFrame({
   isWorldEncounterBattle,
+  isSetupBattle = false,
   result,
   ...options
 }: SharedBattleResultOverlayFrameOptions): void {
-  const overlayCopy = createBattleResultOverlayCopy(result, isWorldEncounterBattle);
+  const overlayCopy = createBattleResultOverlayCopy(result, isWorldEncounterBattle, isSetupBattle);
 
   drawSharedBattleResultOverlay({
     ...options,

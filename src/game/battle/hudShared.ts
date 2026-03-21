@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getItemDefinition, type ItemId } from '../core/items';
 import type { TerrainType } from '../core/types';
 import type { BattleUnit } from '../core/types';
 import type { SpriteFacing } from '../core/types';
@@ -221,6 +222,367 @@ export function createStatusHudViewModel({
     healthRatio,
     healthColor
   };
+}
+
+export interface BattleHudViewModelOptions {
+  isExplorationMode: boolean;
+  isPlayerTurnPhase: boolean;
+  activeUnit: BattleUnit | null;
+  inspectionUnit: BattleUnit | null;
+  inspectionNpc: {
+    factionId: BattleUnit['factionId'];
+    className?: string;
+    name: string;
+    summary: string;
+    actions: readonly { label: string }[];
+  } | null;
+  inspectionTile: Pick<TileData, 'x' | 'y' | 'height' | 'terrain'> | null;
+  getPropAt: (x: number, y: number) => { assetId: MapPropAssetId } | null;
+  getChestAt: (x: number, y: number) => { itemId: ItemId; quantity: number; opened: boolean } | null;
+  selectedAbility: {
+    description: string;
+    rangeMin: number;
+    rangeMax: number;
+    target: 'ally' | 'enemy';
+  } | null;
+  combatBodyMode: CombatUnitBodyMode;
+  selectedItemId: ItemId | null;
+  turnMoveUsed: boolean;
+  units: readonly BattleUnit[];
+  chests: readonly { opened: boolean }[];
+  timeOfDayLabel: string;
+  levelName: string;
+  levelEncounterType?: string | null;
+  levelShortObjective?: string | null;
+  levelObjective: string;
+  explorationNpcCount: number;
+  levelPropCount: number;
+  describeItemGain: (itemId: ItemId, quantity: number) => string;
+  getUnitInventory: (unit: BattleUnit) => Partial<Record<ItemId, number>>;
+}
+
+export function createBattleHudViewModel({
+  isExplorationMode,
+  isPlayerTurnPhase,
+  activeUnit,
+  inspectionUnit,
+  inspectionNpc,
+  inspectionTile,
+  getPropAt,
+  getChestAt,
+  selectedAbility,
+  combatBodyMode,
+  selectedItemId,
+  turnMoveUsed,
+  units,
+  chests,
+  timeOfDayLabel,
+  levelName,
+  levelEncounterType,
+  levelShortObjective,
+  levelObjective,
+  explorationNpcCount,
+  levelPropCount,
+  describeItemGain,
+  getUnitInventory
+}: BattleHudViewModelOptions): BattleHudViewModel {
+  const commandFocusUnit =
+    inspectionUnit && activeUnit && inspectionUnit.id === activeUnit.id && activeUnit.team === 'player' && isPlayerTurnPhase
+      ? activeUnit
+      : null;
+
+  if (isExplorationMode) {
+    if (inspectionNpc) {
+      return {
+        ...createNpcInspectionHudViewModel({
+          npc: inspectionNpc,
+          badgeText: 'CAMP CONTACT',
+          bodyText: inspectionNpc.summary,
+          statValues: inspectionNpc.actions.slice(0, 4).map((action) => action.label.toUpperCase()),
+          healthColor: UI_COLOR_ACCENT_WARM
+        })
+      };
+    }
+
+    if (inspectionUnit) {
+      return {
+        badgeText: 'EXPEDITION LEADER',
+        metaText: `${getFactionProfile(inspectionUnit.factionId).displayName}  •  ${inspectionUnit.className}`,
+        titleText: inspectionUnit.name,
+        bodyText: 'Move freely through the camp. Stand beside a contact to open their action menu.',
+        statValues: [
+          `MOVE FREE`,
+          `JUMP ${inspectionUnit.jump}`,
+          `STYLE ${inspectionUnit.movementStyle.toUpperCase()}`,
+          `FOCUS READY`
+        ],
+        healthRatio: null,
+        healthColor: UI_COLOR_SUCCESS
+      };
+    }
+
+    if (inspectionTile) {
+      const prop = getPropAt(inspectionTile.x, inspectionTile.y);
+      const terrainName = formatBattleTerrainName(inspectionTile.terrain);
+      return {
+        ...createTerrainInspectionHudViewModel({
+          tile: inspectionTile,
+          propAssetId: prop?.assetId,
+          bodyLines: [
+            `Height ${inspectionTile.height}  •  ${terrainName}`,
+            prop ? describeProp(prop.assetId) : describeTerrain(inspectionTile.terrain)
+          ],
+          statValues: [
+            `HEIGHT ${inspectionTile.height}`,
+            terrainName.toUpperCase(),
+            prop ? 'OCCUPIED' : 'OPEN TILE',
+            prop && PROP_RENDER_CONFIG[prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+          ],
+          healthColor: UI_COLOR_SUCCESS
+        })
+      };
+    }
+
+    return {
+      ...createStatusHudViewModel({
+        badgeText: 'WAYSTATION',
+        metaText: `${timeOfDayLabel}  •  ${levelEncounterType ?? 'Sanctuary Visit'}`,
+        titleText: levelName,
+        bodyText: `${levelShortObjective ?? levelObjective}\nWalk the grounds and stand beside a contact to see what they offer.`,
+        statValues: [
+          `CONTACTS ${explorationNpcCount}`,
+          `PROPS ${levelPropCount}`,
+          `SCENE ${timeOfDayLabel.toUpperCase()}`,
+          ''
+        ],
+        healthColor: UI_COLOR_SUCCESS
+      })
+    };
+  }
+
+  if (inspectionUnit) {
+    return {
+      ...createCombatUnitInspectionHudViewModel({
+        unit: inspectionUnit,
+        badgeText: inspectionUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT',
+        isCommandFocus: commandFocusUnit?.id === inspectionUnit.id,
+        mode: combatBodyMode,
+        moveSpentText: `Stride up to ${inspectionUnit.move} tiles across open ground.`,
+        movePromptText: turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the field.',
+        itemDescriptionText: selectedItemId ? getItemDefinition(selectedItemId).description : undefined,
+        itemRangeText: selectedItemId ? `Range 1  •  Stock ${(getUnitInventory(inspectionUnit)[selectedItemId] ?? 0)}` : undefined,
+        itemPromptText: 'Choose an item below.',
+        abilityDescriptionText: selectedAbility?.description,
+        abilityRangeText: selectedAbility
+          ? `Range ${selectedAbility.rangeMin}-${selectedAbility.rangeMax}  •  ${
+              selectedAbility.target === 'ally' ? 'Allies' : 'Enemies'
+            }`
+          : undefined,
+        abilityPromptText: 'Choose an ability below.',
+        healthColor: inspectionUnit.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER
+      })
+    };
+  }
+
+  if (inspectionTile) {
+    const chest = getChestAt(inspectionTile.x, inspectionTile.y);
+    const prop = getPropAt(inspectionTile.x, inspectionTile.y);
+    const terrainName = formatBattleTerrainName(inspectionTile.terrain);
+    return {
+      ...createTerrainInspectionHudViewModel({
+        tile: inspectionTile,
+        propAssetId: prop?.assetId,
+        badgeText: chest ? 'CHEST CACHE' : prop ? 'FIELD PROP' : 'TERRAIN TILE',
+        titleText: chest ? 'Supply Chest' : prop ? getBattlePropTitle(prop.assetId) : `${terrainName} Ground`,
+        bodyLines: [
+          `Height ${inspectionTile.height}  •  ${terrainName}`,
+          chest
+            ? `Contains ${describeItemGain(chest.itemId, chest.quantity)}.`
+            : prop
+              ? describeProp(prop.assetId)
+              : describeTerrain(inspectionTile.terrain)
+        ],
+        statValues: [
+          `HEIGHT ${inspectionTile.height}`,
+          terrainName.toUpperCase(),
+          chest ? 'LOOT READY' : prop ? 'OCCUPIED' : '',
+          prop && PROP_RENDER_CONFIG[prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+        ],
+        healthColor: UI_COLOR_SUCCESS
+      })
+    };
+  }
+
+  const livingPlayers = units.filter((unit) => unit.team === 'player' && unit.alive).length;
+  const livingEnemies = units.filter((unit) => unit.team === 'enemy' && unit.alive).length;
+  return {
+    ...createStatusHudViewModel({
+      badgeText: 'BATTLE STATUS',
+      metaText: `${timeOfDayLabel}  •  ${levelEncounterType ?? 'Engagement'}`,
+      titleText: levelName,
+      bodyText: `${levelShortObjective ?? levelObjective}\nInspect a unit or tile for details.`,
+      statValues: [
+        `ALLIES ${livingPlayers}`,
+        `FOES ${livingEnemies}`,
+        `CHESTS ${chests.filter((chest) => !chest.opened).length}`,
+        `SCENE ${timeOfDayLabel.toUpperCase()}`
+      ],
+      healthColor: UI_COLOR_SUCCESS
+    })
+  };
+}
+
+export interface WorldSceneHudViewModelOptions {
+  inspection:
+    | { kind: 'mission' }
+    | {
+        kind: 'battle-unit';
+        unit: BattleUnit;
+      }
+    | {
+        kind: 'npc';
+        npc: NpcInspectionHudOptions['npc'] & {
+          disposition: 'hostile' | 'friendly';
+          aggressive: boolean;
+          aggressionRadius: number;
+          chaseLeashRadius: number;
+          patrolPath: readonly unknown[];
+          x: number;
+          y: number;
+          id: string;
+          spriteKey: string;
+        };
+      }
+    | {
+        kind: 'tile';
+        tile: Pick<TileData, 'x' | 'y' | 'height' | 'terrain'>;
+        prop: { assetId: MapPropAssetId } | null;
+      };
+  isBattlePlayerPhase: boolean;
+  activeUnit: BattleUnit | null;
+  selectedAbility: {
+    description: string;
+    rangeMin: number;
+    rangeMax: number;
+    target: 'ally' | 'enemy';
+  } | null;
+  selectedItemId: ItemId | null;
+  combatBodyMode: CombatUnitBodyMode;
+  turnMoveUsed: boolean;
+  areaName: string;
+  battleTimeOfDayLabel: string;
+  worldExplorationPlaqueMeta: string;
+  worldExplorationPlaqueObjective: string;
+  battleNpcCount: number;
+  propCount: number;
+  getBattleUnitInventory: (unit: BattleUnit) => Partial<Record<ItemId, number>>;
+}
+
+export function createWorldSceneHudViewModel({
+  inspection,
+  isBattlePlayerPhase,
+  activeUnit,
+  selectedAbility,
+  selectedItemId,
+  combatBodyMode,
+  turnMoveUsed,
+  areaName,
+  battleTimeOfDayLabel,
+  worldExplorationPlaqueMeta,
+  worldExplorationPlaqueObjective,
+  battleNpcCount,
+  propCount,
+  getBattleUnitInventory
+}: WorldSceneHudViewModelOptions): BattleHudViewModel {
+  switch (inspection.kind) {
+    case 'battle-unit':
+      return {
+        ...createCombatUnitInspectionHudViewModel({
+          unit: inspection.unit,
+          badgeText: inspection.unit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT',
+          isCommandFocus:
+            Boolean(activeUnit && activeUnit.id === inspection.unit.id && activeUnit.team === 'player' && isBattlePlayerPhase),
+          mode: combatBodyMode,
+          moveSpentText: `Stride up to ${inspection.unit.move} tiles across open ground.`,
+          movePromptText: turnMoveUsed ? 'Movement is already spent this turn.' : 'Select a reachable tile on the field.',
+          itemDescriptionText: selectedItemId ? getItemDefinition(selectedItemId).description : undefined,
+          itemRangeText: selectedItemId
+            ? `Range 1  •  Stock ${(getBattleUnitInventory(inspection.unit)[selectedItemId] ?? 0)}`
+            : undefined,
+          itemPromptText: 'Choose an item below.',
+          abilityDescriptionText: selectedAbility?.description,
+          abilityRangeText: selectedAbility
+            ? `Range ${selectedAbility.rangeMin}-${selectedAbility.rangeMax}  •  ${
+                selectedAbility.target === 'ally' ? 'Allies' : 'Enemies'
+              }`
+            : undefined,
+          abilityPromptText: 'Choose an ability below.',
+          healthColor: inspection.unit.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER
+        })
+      };
+    case 'npc': {
+      const summaryLines = [inspection.npc.summary];
+      if (inspection.npc.disposition === 'hostile') {
+        summaryLines.push(
+          inspection.npc.aggressive
+            ? `Aggro ${inspection.npc.aggressionRadius}  •  Leash ${inspection.npc.chaseLeashRadius}`
+            : 'Will only engage when pressed at close range.'
+        );
+      }
+
+      return {
+        ...createNpcInspectionHudViewModel({
+          npc: inspection.npc,
+          badgeText: inspection.npc.disposition === 'hostile' ? 'HOSTILE CONTACT' : 'ROAD CONTACT',
+          bodyText: summaryLines.join('\n'),
+          statValues: [
+            `TILE ${inspection.npc.x}, ${inspection.npc.y}`,
+            inspection.npc.disposition === 'hostile' ? 'HOSTILE' : 'FRIENDLY',
+            inspection.npc.patrolPath.length > 0 ? `PATROL ${inspection.npc.patrolPath.length}` : 'STATIONARY',
+            inspection.npc.disposition === 'hostile' ? `AGGRO ${inspection.npc.aggressionRadius}` : ''
+          ],
+          healthColor: inspection.npc.disposition === 'hostile' ? UI_COLOR_DANGER : UI_COLOR_SUCCESS
+        })
+      };
+    }
+    case 'tile': {
+      const terrainName = formatBattleTerrainName(inspection.tile.terrain);
+      return {
+        ...createTerrainInspectionHudViewModel({
+          tile: inspection.tile,
+          propAssetId: inspection.prop?.assetId,
+          badgeText: inspection.prop ? 'FIELD PROP' : 'TERRAIN TILE',
+          titleText: inspection.prop ? getBattlePropTitle(inspection.prop.assetId) : `${terrainName} Ground`,
+          bodyLines: [
+            `Height ${inspection.tile.height}  •  ${terrainName}`,
+            inspection.prop ? describeProp(inspection.prop.assetId) : describeTerrain(inspection.tile.terrain)
+          ],
+          statValues: [
+            `HEIGHT ${inspection.tile.height}`,
+            terrainName.toUpperCase(),
+            inspection.prop ? 'OCCUPIED' : 'OPEN TILE',
+            inspection.prop && PROP_RENDER_CONFIG[inspection.prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
+          ],
+          healthColor: UI_COLOR_SUCCESS
+        })
+      };
+    }
+    case 'mission':
+    default:
+      return createStatusHudViewModel({
+        badgeText: 'WAYSTATION',
+        metaText: `${battleTimeOfDayLabel}  •  ${worldExplorationPlaqueMeta}`,
+        titleText: areaName,
+        bodyText: `${worldExplorationPlaqueObjective}\nWalk the grounds and stand beside a contact to see what they offer.`,
+        statValues: [
+          `CONTACTS ${battleNpcCount}`,
+          `PROPS ${propCount}`,
+          `SCENE ${battleTimeOfDayLabel.toUpperCase()}`,
+          ''
+        ],
+        healthColor: UI_COLOR_SUCCESS
+      });
+  }
 }
 
 export function formatPlaqueHeaderTitle(
@@ -687,15 +1049,28 @@ export function createResultOverlayButtonDescriptors(
 
 export function createBattleResultOverlayCopy(
   result: 'Victory' | 'Defeat',
-  isWorldEncounterBattle: boolean
+  isWorldEncounterBattle: boolean,
+  isSetupBattle = false
 ): BattleResultOverlayCopy {
+  const secondaryLabel = isWorldEncounterBattle
+    ? 'RETURN TO ROAD'
+    : isSetupBattle
+      ? 'RETURN TO SETUP'
+      : 'MAP SELECT';
+
+  const bodyText =
+    result === 'Victory'
+      ? isSetupBattle
+        ? 'The drill holds.\nRetry the clash immediately or return to the war council.'
+        : 'The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.'
+      : isSetupBattle
+        ? 'The exercise breaks apart under pressure.\nRetry the clash immediately or return to the war council.'
+        : 'The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.';
+
   return {
-    eyebrowText: isWorldEncounterBattle ? 'MISSION SECURED' : 'MISSION BROKEN',
-    bodyText:
-      result === 'Victory'
-        ? 'The road ahead is yours again.\nReturn to the wilderness or fight the encounter again from this ridge.'
-        : 'The ambush scatters your force back into the ash.\nRetry the clash immediately or fall back to the road.',
-    secondaryLabel: isWorldEncounterBattle ? 'RETURN TO ROAD' : 'MAP SELECT'
+    eyebrowText: isWorldEncounterBattle ? 'MISSION SECURED' : isSetupBattle ? 'WAR COUNCIL DEBRIEF' : 'MISSION BROKEN',
+    bodyText,
+    secondaryLabel
   };
 }
 

@@ -5,6 +5,7 @@ import {
   UNIT_TURN_START_AUDIO_KEYS,
 } from '../assets';
 import { audioDirector } from '../audio/audioDirector';
+import type { BattleSetup } from '../battleSetup';
 import {
   ACTIVE_UNIT_OUTLINE_OFFSETS,
   applyBattleActorFacing,
@@ -34,6 +35,7 @@ import {
   formatBattleTerrainName,
   formatPlaqueHeaderTitle,
   getBattlePropTitle,
+  createWorldSceneHudViewModel,
   resolveCombatUnitBodyMode,
   resolveHeaderMenuActions,
   resolveDetailPortraitDescriptor,
@@ -115,7 +117,7 @@ import { getInventoryEntries, getItemDefinition, ItemId } from '../core/items';
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH } from '../core/mapData';
 import { buildPath, getTile, getTraversalNodes, manhattanDistance, pointKey } from '../core/pathfinding';
 import type { BattleUnit, FactionId, Point, ReachNode, SpriteFacing, TileData, UnitAbility } from '../core/types';
-import { createBattleUnitFromBlueprint, createLevelMap, getLevel } from '../levels';
+import { createBattleUnitFromBlueprint, createDefaultBattleSetup, createLevelMap, createLevelUnits, getLevel } from '../levels';
 import { getFactionProfile } from '../levels/factions';
 import type { LevelDefinition, MapPropPlacement } from '../levels/types';
 import type {
@@ -233,7 +235,8 @@ type Phase =
   | 'battle-player-item-action'
   | 'battle-enemy'
   | 'battle-animating'
-  | 'battle-complete';
+  | 'battle-complete'
+  | 'animating';
 
 type BattleMenuAction = 'move' | 'undo-move' | 'abilities' | 'items' | 'wait';
 
@@ -284,6 +287,7 @@ interface WorldBattleState extends BattleRuntimeState {
   encounterId: string;
   runtimeBattle: RuntimeBattleStartData;
   sourcePreviewActive: boolean;
+  battleOrigin: 'setup' | 'world';
 }
 
 interface CombatEffectPlayback {
@@ -555,6 +559,8 @@ export class WorldScene extends Phaser.Scene {
   private movingNpcIds = new Set<string>();
   private worldBattle: WorldBattleState | null = null;
   private battleTimeOfDay: TimeOfDayId = 'dusk';
+  private pendingSetupBattle: BattleSetup | null = null;
+  private battleLaunchOrigin: 'setup' | 'world' = 'world';
 
   constructor() {
     super('world');
@@ -572,6 +578,13 @@ export class WorldScene extends Phaser.Scene {
     this.selectedNpcActionId = null;
     this.moveNodes.clear();
     this.messages = [];
+    this.pendingSetupBattle = data?.setup
+      ? {
+          levelId: data.setup.levelId,
+          playerAssignments: { ...data.setup.playerAssignments }
+        }
+      : null;
+    this.battleLaunchOrigin = data?.battleLaunchOrigin ?? (this.pendingSetupBattle ? 'setup' : 'world');
     this.sessionState = resolveWorldSceneStart(data ?? { spawnId: DEFAULT_WORLD_SPAWN_ID });
     this.worldStateVersion = getWorldStateVersion();
     this.restarting = false;
@@ -617,7 +630,7 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     audioDirector.bindScene(this);
-    audioDirector.setMusic('setup');
+    audioDirector.setMusic(this.pendingSetupBattle ? 'battle' : 'setup');
     void audioDirector.unlock().catch(() => undefined);
     this.syncSceneAudioMute();
 
@@ -714,6 +727,12 @@ export class WorldScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.handleShutdown, this);
     this.handleResize();
+
+    if (this.pendingSetupBattle) {
+      this.phase = 'transition';
+      this.busy = true;
+      void this.beginBattleFromSetup(this.pendingSetupBattle);
+    }
   }
 
   update(time: number, delta: number): void {
@@ -2563,7 +2582,7 @@ export class WorldScene extends Phaser.Scene {
       autoBattleEnabled: this.worldBattle?.autoBattleEnabled ?? false,
       audioMuted: audioDirector.isMuted(),
       restartLabel: this.isWorldBattleActive() ? 'RESTART' : 'RESTART VISIT',
-      setupLabel: 'WORLD'
+      setupLabel: this.isSetupBattleActive() ? 'SETUP' : 'WORLD'
     });
     const headerMenuActions = resolveHeaderMenuActions(this.isBattlePlayerPhase() || this.isWorldBattleActive());
     syncHeaderMenuTexts(
@@ -2758,114 +2777,28 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private buildWorldHudViewModel(inspection: WorldHudInspection): BattleHudViewModel | null {
-    switch (inspection.kind) {
-      case 'battle-unit':
-        return this.buildWorldBattleHudViewModel(inspection.unit);
-      case 'npc': {
-        const summaryLines = [inspection.npc.summary];
-
-        if (inspection.npc.disposition === 'hostile') {
-          summaryLines.push(
-            inspection.npc.aggressive
-              ? `Aggro ${inspection.npc.aggressionRadius}  •  Leash ${inspection.npc.chaseLeashRadius}`
-              : 'Will only engage when pressed at close range.'
-          );
-        }
-
-        return createNpcInspectionHudViewModel({
-          npc: inspection.npc,
-          badgeText: inspection.npc.disposition === 'hostile' ? 'HOSTILE CONTACT' : 'ROAD CONTACT',
-          bodyText: summaryLines.join('\n'),
-          statValues: [
-            `TILE ${inspection.npc.x}, ${inspection.npc.y}`,
-            inspection.npc.disposition === 'hostile' ? 'HOSTILE' : 'FRIENDLY',
-            inspection.npc.patrolPath.length > 0 ? `PATROL ${inspection.npc.patrolPath.length}` : 'STATIONARY',
-            inspection.npc.disposition === 'hostile' ? `AGGRO ${inspection.npc.aggressionRadius}` : ''
-          ],
-          healthColor: inspection.npc.disposition === 'hostile' ? UI_COLOR_DANGER : UI_COLOR_SUCCESS
-        });
-      }
-      case 'tile': {
-        const terrainName = formatBattleTerrainName(inspection.tile.terrain);
-
-        return createTerrainInspectionHudViewModel({
-          tile: inspection.tile,
-          propAssetId: inspection.prop?.assetId,
-          badgeText: inspection.prop ? 'FIELD PROP' : 'TERRAIN TILE',
-          titleText: inspection.prop ? getBattlePropTitle(inspection.prop.assetId) : `${terrainName} Ground`,
-          bodyLines: [
-            `Height ${inspection.tile.height}  •  ${terrainName}`,
-            inspection.prop ? describeSharedProp(inspection.prop.assetId) : describeSharedTerrain(inspection.tile.terrain)
-          ],
-          statValues: [
-            `HEIGHT ${inspection.tile.height}`,
-            terrainName.toUpperCase(),
-            inspection.prop ? 'OCCUPIED' : 'OPEN TILE',
-            inspection.prop && PROP_RENDER_CONFIG[inspection.prop.assetId].blocksMovement ? 'BLOCKS MOVE' : ''
-          ],
-          healthColor: UI_COLOR_SUCCESS
-        });
-      }
-      case 'mission':
-      default:
-        return createStatusHudViewModel({
-          badgeText: 'WAYSTATION',
-          metaText: `${TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label}  •  ${this.getWorldExplorationPlaqueMeta()}`,
-          titleText: this.areaName,
-          bodyText: `${this.getWorldExplorationPlaqueObjective()}\nWalk the grounds and stand beside a contact to see what they offer.`,
-          statValues: [
-            `CONTACTS ${this.npcs.length}`,
-            `PROPS ${this.props.length}`,
-            `SCENE ${TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label.toUpperCase()}`,
-            ''
-          ],
-          healthColor: UI_COLOR_SUCCESS
-        });
-    }
-  }
-
-  private buildWorldBattleHudViewModel(inspectionUnit: BattleUnit): BattleHudViewModel {
-    const activeUnit = this.getActiveBattleUnit();
-    const selectedAbility = this.getSelectedBattleAbility();
-    const selectedItemId = this.worldBattle?.selectedItemId;
-
-    return createCombatUnitInspectionHudViewModel({
-      unit: inspectionUnit,
-      badgeText: inspectionUnit.team === 'player' ? 'ALLY UNIT' : 'FOE UNIT',
-      isCommandFocus:
-        Boolean(
-          activeUnit &&
-          activeUnit.id === inspectionUnit.id &&
-          activeUnit.team === 'player' &&
-          this.isBattlePlayerPhase()
-        ),
-      mode: resolveCombatUnitBodyMode({
+    const battleHudViewModel = createWorldSceneHudViewModel({
+      inspection,
+      isBattlePlayerPhase: this.isBattlePlayerPhase(),
+      activeUnit: this.getActiveBattleUnit(),
+      selectedAbility: this.getSelectedBattleAbility(),
+      selectedItemId: this.worldBattle?.selectedItemId ?? null,
+      combatBodyMode: resolveCombatUnitBodyMode({
         isMove: this.phase === 'battle-player-move',
         isItems: this.phase === 'battle-player-items' || this.phase === 'battle-player-item-action',
         isAbilities: this.phase === 'battle-player-abilities' || this.phase === 'battle-player-action'
       }),
-      moveSpentText: `Stride up to ${inspectionUnit.move} tiles across open ground.`,
-      movePromptText: this.worldBattle?.turnMoveUsed
-        ? 'Movement is already spent this turn.'
-        : 'Select a reachable tile on the field.',
-      itemDescriptionText: selectedItemId
-        ? getItemDefinition(selectedItemId).description
-        : undefined,
-      itemRangeText: selectedItemId
-        ? `Range 1  •  Stock ${this.getBattleUnitInventory(inspectionUnit)[selectedItemId] ?? 0}`
-        : undefined,
-      itemPromptText:
-        this.phase === 'battle-player-item-action' ? 'Select an adjacent target.' : 'Choose an item below.',
-      abilityDescriptionText: selectedAbility?.description,
-      abilityRangeText: selectedAbility
-        ? `Range ${selectedAbility.rangeMin}-${selectedAbility.rangeMax}  •  ${
-            selectedAbility.target === 'ally' ? 'Allies' : 'Enemies'
-          }`
-        : undefined,
-      abilityPromptText:
-        this.phase === 'battle-player-action' ? 'Select a valid target.' : 'Choose an ability below.',
-      healthColor: inspectionUnit.team === 'player' ? UI_COLOR_SUCCESS : UI_COLOR_DANGER
+      turnMoveUsed: this.worldBattle?.turnMoveUsed ?? false,
+      areaName: this.areaName,
+      battleTimeOfDayLabel: TIME_OF_DAY_CONFIG[this.battleTimeOfDay].label,
+      worldExplorationPlaqueMeta: this.getWorldExplorationPlaqueMeta(),
+      worldExplorationPlaqueObjective: this.getWorldExplorationPlaqueObjective(),
+      battleNpcCount: this.npcs.length,
+      propCount: this.props.length,
+      getBattleUnitInventory: (unit) => this.getBattleUnitInventory(unit)
     });
+
+    return battleHudViewModel;
   }
 
   private updateWorldDetailPanelForSelection(inspection: WorldHudInspection): void {
@@ -3451,6 +3384,10 @@ export class WorldScene extends Phaser.Scene {
     return this.worldBattle !== null;
   }
 
+  private isSetupBattleActive(): boolean {
+    return this.worldBattle?.battleOrigin === 'setup';
+  }
+
   private getBattleUnitById(unitId: string | null): BattleUnit | null {
     if (!unitId) {
       return null;
@@ -3858,6 +3795,10 @@ export class WorldScene extends Phaser.Scene {
         return;
       case 'setup':
         if (this.isWorldBattleActive()) {
+          if (this.isSetupBattleActive()) {
+            await this.returnSetupBattleToSetup();
+            return;
+          }
           await this.returnWorldBattleToRoad();
           return;
         }
@@ -4213,6 +4154,11 @@ export class WorldScene extends Phaser.Scene {
     await this.startEncounter(this.createEncounterFromHostileNpc(npc), previousPlayerPosition, npc);
   }
 
+  private async beginBattleFromSetup(setup: BattleSetup): Promise<void> {
+    this.battleLaunchOrigin = 'setup';
+    await this.beginWorldBattle('', this.buildRuntimeBattleStartDataFromSetup(setup));
+  }
+
   private async beginWorldBattle(encounterId: string, runtimeBattle: RuntimeBattleStartData): Promise<void> {
     const introStartPoints = this.getWorldBattleIntroStartPoints(runtimeBattle);
     const sourceArenaFocusPoint = this.getWorldBattleArenaFocusPoint(runtimeBattle);
@@ -4224,6 +4170,7 @@ export class WorldScene extends Phaser.Scene {
       encounterId,
       runtimeBattle,
       sourcePreviewActive: true,
+      battleOrigin: this.battleLaunchOrigin,
       units: runtimeBattle.units.map((unit) => ({ ...unit })),
       activeUnitId: null,
       selectedAbilityId: null,
@@ -5913,7 +5860,7 @@ export class WorldScene extends Phaser.Scene {
   private async endWorldBattle(result: 'victory' | 'defeat'): Promise<void> {
     const encounterId = this.worldBattle?.encounterId;
 
-    if (!encounterId) {
+    if (!this.worldBattle) {
       return;
     }
 
@@ -5924,7 +5871,7 @@ export class WorldScene extends Phaser.Scene {
     this.battleInspectionTarget = { kind: 'mission' };
     this.clearTurnStartCatchPhrase();
 
-    if (result === 'victory') {
+    if (result === 'victory' && encounterId) {
       markWorldEncounterCleared(encounterId);
       audioDirector.playVictory();
     } else {
@@ -5936,6 +5883,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private async finalizeWorldBattleReturn(result: 'Victory' | 'Defeat'): Promise<void> {
+    if (this.isSetupBattleActive()) {
+      await this.returnSetupBattleToSetup();
+      return;
+    }
+
     await this.restoreExplorationFromWorldBattle(
       result === 'Victory'
         ? 'The skirmish breaks and the road opens again.'
@@ -6045,7 +5997,8 @@ export class WorldScene extends Phaser.Scene {
       viewportWidth: this.scale.width,
       viewportHeight: this.scale.height,
       panelBoundsTarget: this.resultOverlayPanelBounds,
-      isWorldEncounterBattle: true
+      isWorldEncounterBattle: this.worldBattle?.battleOrigin === 'world',
+      isSetupBattle: this.worldBattle?.battleOrigin === 'setup'
     });
   }
 
@@ -6238,6 +6191,25 @@ export class WorldScene extends Phaser.Scene {
         arenaBounds,
         introEntries: formation.introEntries,
         preservedLightSources: this.createRuntimeEncounterPreservedLightSources(sourceLevel, arenaBounds)
+      }
+    };
+  }
+
+  private buildRuntimeBattleStartDataFromSetup(setup: BattleSetup): RuntimeBattleStartData {
+    const level = getLevel(setup.levelId);
+
+    return {
+      level,
+      units: createLevelUnits(level, setup.playerAssignments),
+      camera: {
+        scrollX: this.worldCamera.scrollX,
+        scrollY: this.worldCamera.scrollY,
+        zoom: this.worldCamera.zoom,
+        boardRotationStep: this.boardRotationStep,
+        origin: {
+          x: this.origin.x,
+          y: this.origin.y
+        }
       }
     };
   }
@@ -7645,6 +7617,28 @@ export class WorldScene extends Phaser.Scene {
     }
 
     await this.restoreExplorationFromWorldBattle('The skirmish disperses and the road opens again.');
+  }
+
+  private async returnSetupBattleToSetup(): Promise<void> {
+    if (!this.worldBattle) {
+      return;
+    }
+
+    const setup = this.pendingSetupBattle ?? createDefaultBattleSetup(this.worldBattle.runtimeBattle.level);
+
+    this.setPauseMenuOpen(false);
+    this.destroyWorldBattleResultOverlay();
+    this.clearTurnStartCatchPhrase();
+    this.restarting = true;
+    this.busy = true;
+    this.phase = 'animating';
+    this.input.enabled = false;
+    this.input.keyboard?.removeAllListeners();
+    this.worldBattle = null;
+    this.scene.start('setup', {
+      setup,
+      battleLaunchOrigin: 'setup'
+    });
   }
 
   private async restoreExplorationFromWorldBattle(message: string): Promise<void> {

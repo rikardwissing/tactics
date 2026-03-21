@@ -263,7 +263,10 @@ export class SetupScene extends Phaser.Scene {
       }
 
       audioDirector.playUiConfirm();
-      this.scene.start('battle', { setup: this.buildBattleSetup() });
+      this.scene.start('world', {
+        setup: this.buildBattleSetup(),
+        battleLaunchOrigin: 'setup'
+      });
     });
 
     this.menuShade = this.add.rectangle(0, 0, 0, 0, 0x080407, 0.84).setOrigin(0);

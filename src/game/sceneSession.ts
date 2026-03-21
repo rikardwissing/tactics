@@ -2,12 +2,6 @@ import type { BattleSetup } from './battleSetup';
 import type { BattleUnit, Point } from './core/types';
 import type { LevelDefinition } from './levels/types';
 
-export type SceneMode = 'battle' | 'exploration';
-
-export interface WorldEncounterBattleStartData {
-  encounterId: string;
-}
-
 export interface RuntimeBattleCameraState {
   scrollX: number;
   scrollY: number;
@@ -50,6 +44,13 @@ export interface RuntimeBattlePreservedLightSourceState {
   propId?: string;
 }
 
+export interface WorldSceneStartData {
+  spawnId?: string;
+  resumeSession?: boolean;
+  setup?: BattleSetup;
+  battleLaunchOrigin?: 'setup' | 'world';
+}
+
 export interface RuntimeBattleStartData {
   level: LevelDefinition;
   units: readonly BattleUnit[];
@@ -60,17 +61,4 @@ export interface RuntimeBattleStartData {
     introEntries: readonly RuntimeBattleIntroEntryState[];
     preservedLightSources: readonly RuntimeBattlePreservedLightSourceState[];
   };
-}
-
-export interface BoardSceneStartData {
-  mode?: SceneMode;
-  setup?: BattleSetup;
-  locationId?: string;
-  worldEncounter?: WorldEncounterBattleStartData;
-  runtimeBattle?: RuntimeBattleStartData;
-}
-
-export interface WorldSceneStartData {
-  spawnId?: string;
-  resumeSession?: boolean;
 }
