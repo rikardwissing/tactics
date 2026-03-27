@@ -103,3 +103,118 @@ body {
   height: 100%;
   image-rendering: pixelated;
 }
+
+.renations-calendar-picker-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 6, 11, 0.72);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+}
+
+.renations-calendar-picker {
+  width: min(360px, calc(100vw - 28px));
+  padding: 14px;
+  border: 1px solid rgba(228, 192, 138, 0.45);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(58, 28, 26, 0.95), rgba(22, 14, 17, 0.97)),
+    radial-gradient(circle at top, rgba(246, 205, 142, 0.18), transparent 58%);
+  box-shadow:
+    0 14px 48px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 234, 199, 0.08);
+  color: #f6ebd6;
+  font-family: "Palatino Linotype", "Book Antiqua", Baskerville, serif;
+}
+
+.renations-calendar-picker__title {
+  margin: 0 0 10px;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.renations-calendar-picker__month-bar {
+  display: grid;
+  grid-template-columns: 34px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.renations-calendar-picker__month-label {
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.renations-calendar-picker__nav-button,
+.renations-calendar-picker__action,
+.renations-calendar-picker__day {
+  border: 1px solid rgba(222, 183, 124, 0.35);
+  border-radius: 8px;
+  background: rgba(36, 24, 24, 0.74);
+  color: #f7ebd8;
+  cursor: pointer;
+}
+
+.renations-calendar-picker__nav-button {
+  height: 30px;
+  font-size: 0.85rem;
+}
+
+.renations-calendar-picker__weekdays,
+.renations-calendar-picker__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.renations-calendar-picker__weekdays {
+  margin-bottom: 6px;
+}
+
+.renations-calendar-picker__weekday {
+  font-size: 0.75rem;
+  color: #ddc9a5;
+  text-align: center;
+}
+
+.renations-calendar-picker__day {
+  min-height: 34px;
+  font-size: 0.85rem;
+}
+
+.renations-calendar-picker__day--spacer {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.renations-calendar-picker__day--selected {
+  border-color: rgba(250, 224, 166, 0.9);
+  background: linear-gradient(180deg, rgba(172, 84, 54, 0.9), rgba(122, 50, 37, 0.9));
+}
+
+.renations-calendar-picker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.renations-calendar-picker__action {
+  min-width: 86px;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.renations-calendar-picker__action--primary {
+  border-color: rgba(243, 206, 136, 0.65);
+  background: linear-gradient(180deg, rgba(170, 74, 47, 0.96), rgba(117, 42, 35, 0.96));
+}
+
+.renations-calendar-picker__action--secondary {
+  background: rgba(46, 32, 36, 0.8);
+}

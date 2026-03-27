@@ -622,7 +622,8 @@ export function serializeWorldEditorDraft(draft: WorldEditorMapDraft): string {
 
 export function buildWorldEditorArchive(
   drafts: readonly WorldEditorMapDraft[],
-  additionalFiles: readonly WorldEditorArchiveFileEntry[] = []
+  additionalFiles: readonly WorldEditorArchiveFileEntry[] = [],
+  options: { generatedAt?: string } = {}
 ): string {
   const files = Object.fromEntries([
     [
@@ -644,7 +645,7 @@ export function buildWorldEditorArchive(
   return `${JSON.stringify(
     {
       format: 'renations-world-archive-v1',
-      generatedAt: new Date().toISOString(),
+      generatedAt: options.generatedAt ?? new Date().toISOString(),
       files
     },
     null,
