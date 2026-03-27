@@ -60,10 +60,11 @@ import {
   UI_TEXT_LABEL,
   UI_TEXT_TITLE
 } from './components/UiTextStyles';
+import { pickCalendarDate } from '../ui/calendarDatePicker';
 
 type EditorTool = 'terrain' | 'heights' | WorldEditorObjectLayerName;
 type HeightBrushDirection = 'raise' | 'lower';
-type HeaderButtonId = 'back' | 'copy-archive' | 'download-archive';
+type HeaderButtonId = 'back' | 'copy-archive' | 'download-archive' | 'archive-date';
 type ActionButtonId = 'edit-chunk' | 'edit-object' | 'duplicate-object' | 'delete-object' | 'reset-chunk';
 type PaletteValue = TerrainType | HeightBrushDirection | MapPropAssetId;
 
@@ -217,6 +218,7 @@ export class WorldMapEditorScene extends Phaser.Scene {
   private draggingObject: SelectedObjectRef | null = null;
   private lastDragTileKey = '';
   private statusMessage = DEFAULT_STATUS;
+  private archiveDateYmd = new Date().toISOString().slice(0, 10);
 
   private backdrop!: Phaser.GameObjects.Image;
   private shade!: Phaser.GameObjects.Rectangle;
@@ -1189,6 +1191,7 @@ export class WorldMapEditorScene extends Phaser.Scene {
     const buttonLabels: Array<{ id: HeaderButtonId; label: string; enabled: boolean }> = [
       { id: 'download-archive', label: 'Download Archive', enabled: true },
       { id: 'copy-archive', label: 'Copy Archive', enabled: true },
+      { id: 'archive-date', label: `Date ${this.archiveDateYmd}`, enabled: true },
       { id: 'back', label: 'Back', enabled: true }
     ];
 
@@ -1614,7 +1617,7 @@ export class WorldMapEditorScene extends Phaser.Scene {
     this.hintText.setPosition(content.x, this.statusText.y + this.statusText.height + 8);
     this.hintText.setWordWrapWidth(content.width);
     this.hintText.setText(
-      'Shortcuts: T terrain, H height, P props, N NPCs, O encounters, R transitions, S spawns, E edit object, Delete remove, C copy archive, D download archive, Esc back. Height tool: Raise/Lower from the palette, or hold Shift to invert while dragging.'
+      'Shortcuts: T terrain, H height, P props, N NPCs, O encounters, R transitions, S spawns, E edit object, Delete remove, C copy archive, D download archive, G archive date, Esc back. Height tool: Raise/Lower from the palette, or hold Shift to invert while dragging.'
     );
   }
 
@@ -1897,6 +1900,9 @@ export class WorldMapEditorScene extends Phaser.Scene {
       case 'd':
         this.downloadArchive();
         return;
+      case 'g':
+        void this.chooseArchiveDate();
+        return;
       case 'e':
         void this.editSelectedObject();
         return;
@@ -1982,6 +1988,9 @@ export class WorldMapEditorScene extends Phaser.Scene {
         break;
       case 'download-archive':
         this.downloadArchive();
+        break;
+      case 'archive-date':
+        await this.chooseArchiveDate();
         break;
       default:
         break;
@@ -2168,7 +2177,28 @@ export class WorldMapEditorScene extends Phaser.Scene {
   }
 
   private buildArchiveContents(): string {
-    return buildWorldEditorArchive(this.outdoorDescriptors.map((descriptor) => this.getDraft(descriptor.fileName)));
+    return buildWorldEditorArchive(
+      this.outdoorDescriptors.map((descriptor) => this.getDraft(descriptor.fileName)),
+      [],
+      { generatedAt: `${this.archiveDateYmd}T12:00:00.000Z` }
+    );
+  }
+
+  private async chooseArchiveDate(): Promise<void> {
+    const selectedDate = await pickCalendarDate({
+      title: 'Select Archive Date',
+      initialDateYmd: this.archiveDateYmd,
+      confirmLabel: 'Set Date'
+    });
+
+    if (!selectedDate) {
+      return;
+    }
+
+    this.archiveDateYmd = selectedDate;
+    audioDirector.playUiConfirm();
+    this.statusMessage = `Archive date set to ${this.archiveDateYmd}.`;
+    this.refreshScene();
   }
 
   private async copyArchive(): Promise<void> {
